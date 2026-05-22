@@ -3,6 +3,7 @@ package orm
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,8 +13,10 @@ import (
 )
 
 type captureExecutor struct {
-	query string
-	args  []any
+	query           string
+	args            []any
+	rowsAffected    int64
+	rowsAffectedSet bool
 }
 
 func (e *captureExecutor) Query(string, ...any) (*sql.Rows, error) { return nil, nil }
@@ -26,19 +29,29 @@ func (e *captureExecutor) QueryRow(string, ...any) *sql.Row { return nil }
 
 func (e *captureExecutor) QueryRowContext(context.Context, string, ...any) *sql.Row { return nil }
 
-func (e *captureExecutor) Exec(string, ...any) (sql.Result, error) { return captureResult{}, nil }
+func (e *captureExecutor) Exec(string, ...any) (sql.Result, error) {
+	return captureResult{rowsAffected: e.rowsAffected, rowsAffectedSet: e.rowsAffectedSet}, nil
+}
 
 func (e *captureExecutor) ExecContext(_ context.Context, query string, args ...any) (sql.Result, error) {
 	e.query = query
 	e.args = append([]any(nil), args...)
-	return captureResult{}, nil
+	return captureResult{rowsAffected: e.rowsAffected, rowsAffectedSet: e.rowsAffectedSet}, nil
 }
 
-type captureResult struct{}
+type captureResult struct {
+	rowsAffected    int64
+	rowsAffectedSet bool
+}
 
 func (captureResult) LastInsertId() (int64, error) { return 0, nil }
 
-func (captureResult) RowsAffected() (int64, error) { return 1, nil }
+func (r captureResult) RowsAffected() (int64, error) {
+	if !r.rowsAffectedSet {
+		return 1, nil
+	}
+	return r.rowsAffected, nil
+}
 
 func newCaptureWriteDB(d driver.Dialect) (*DB, *captureExecutor) {
 	exec := &captureExecutor{}
@@ -175,6 +188,47 @@ func TestUpdateMapUsesSetArgsBeforePKArgs(t *testing.T) {
 	}
 }
 
+func TestUpdateExpectAffectedMapsZeroRowsToConflict(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.MySQLDialect{})
+	exec.rowsAffected = 0
+	exec.rowsAffectedSet = true
+
+	_, err := Update(
+		context.Background(),
+		db,
+		genericWriteUser{ID: 3, Name: "alice"},
+		Columns("name"),
+		WherePK(),
+		ExpectAffected(1),
+		NoRowsAs(ErrConflict),
+	)
+	if !errors.Is(err, ErrConflict) || !IsConflict(err) {
+		t.Fatalf("expected conflict error, got %v", err)
+	}
+	var affected RowsAffectedError
+	if !errors.As(err, &affected) || affected.Expected != 1 || affected.Actual != 0 {
+		t.Fatalf("expected rows affected details, got %#v", err)
+	}
+}
+
+func TestUpdateExpectAffectedMismatch(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.MySQLDialect{})
+	exec.rowsAffected = 2
+	exec.rowsAffectedSet = true
+
+	_, err := Update(
+		context.Background(),
+		db,
+		genericWriteUser{ID: 3, Name: "alice"},
+		Columns("name"),
+		WherePK(),
+		ExpectAffected(1),
+	)
+	if !errors.Is(err, ErrRowsAffected) {
+		t.Fatalf("expected rows affected error, got %v", err)
+	}
+}
+
 func TestInsertReturningPostgresAddsClause(t *testing.T) {
 	db, mock := newReturningMockDB(t)
 	mock.ExpectQuery(`INSERT INTO "users".*RETURNING "id", "name"$`).
@@ -284,6 +338,27 @@ func TestUpdateReturningTypedInfersColumns(t *testing.T) {
 	}
 	if row.ID != 3 || row.Name != "alice" || row.Age != 31 {
 		t.Fatalf("unexpected row: %+v", row)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestUpdateReturningNoRowsAsConflict(t *testing.T) {
+	db, mock := newReturningMockDB(t)
+	mock.ExpectQuery(`UPDATE "users" SET .* RETURNING "id", "name", "age"$`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "age"}))
+
+	_, err := UpdateReturning[genericWriteUser](
+		context.Background(),
+		db,
+		genericWriteUser{ID: 3, Name: "alice"},
+		Columns("name"),
+		WherePK(),
+		NoRowsAs(ErrConflict),
+	)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected conflict error, got %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("expectations: %v", err)
@@ -532,5 +607,190 @@ func TestUpsertPostgresConflictConstraint(t *testing.T) {
 	}
 	if !strings.Contains(exec.query, `ON CONFLICT ON CONSTRAINT "users_name_key" DO UPDATE SET`) {
 		t.Fatalf("expected named constraint conflict target, got: %s", exec.query)
+	}
+}
+
+func TestGenericWriteQuotesSchemaQualifiedTable(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := Insert(
+		context.Background(),
+		db,
+		map[string]any{"name": "alice"},
+		Table("app.users"),
+	)
+	if err != nil {
+		t.Fatalf("insert schema-qualified table: %v", err)
+	}
+	if !strings.Contains(exec.query, `INSERT INTO "app"."users"`) {
+		t.Fatalf("expected schema-qualified table path, got: %s", exec.query)
+	}
+}
+
+func TestGenericWriteTablePathOption(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.MySQLDialect{})
+
+	_, err := Insert(
+		context.Background(),
+		db,
+		map[string]any{"name": "alice"},
+		TablePath("app", "users"),
+	)
+	if err != nil {
+		t.Fatalf("insert table path: %v", err)
+	}
+	if !strings.Contains(exec.query, "INSERT INTO `app`.`users`") {
+		t.Fatalf("expected table path, got: %s", exec.query)
+	}
+}
+
+func TestGenericWriteSchemaNameOption(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := Insert(
+		context.Background(),
+		db,
+		genericWriteUser{Name: "alice"},
+		SchemaName("app"),
+		Columns("name"),
+	)
+	if err != nil {
+		t.Fatalf("insert schema name: %v", err)
+	}
+	if !strings.Contains(exec.query, `INSERT INTO "app"."users"`) {
+		t.Fatalf("expected schema name table path, got: %s", exec.query)
+	}
+}
+
+func TestNewDBWithExecutorUsesExternalExecutor(t *testing.T) {
+	exec := &captureExecutor{}
+	db := NewDBWithExecutor(exec, driver.PostgresDialect{})
+	defer db.Close()
+
+	if db.SQLDB() != nil {
+		t.Fatalf("external executor DB should not expose sql.DB")
+	}
+	if _, err := Insert(context.Background(), db, map[string]any{"name": "alice"}, Table("users")); err != nil {
+		t.Fatalf("insert with external executor: %v", err)
+	}
+	if !strings.Contains(exec.query, `INSERT INTO "users"`) {
+		t.Fatalf("expected executor query capture, got: %s", exec.query)
+	}
+}
+
+func TestUpdateExpressionAssignments(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := Update(
+		context.Background(),
+		db,
+		map[string]any{"id": int64(7), "email_verified_at": "ignored"},
+		Table("app.users"),
+		PK("id"),
+		WherePK(),
+		SetExpr("email_verified_at", "COALESCE(email_verified_at, ?)", "2026-05-22T00:00:00Z"),
+		Increment("credential_version", 1),
+	)
+	if err != nil {
+		t.Fatalf("update expression assignments: %v", err)
+	}
+	if !strings.Contains(exec.query, `UPDATE "app"."users" SET "email_verified_at"=COALESCE(email_verified_at, $1), "credential_version"="credential_version" + $2 WHERE "id"=$3`) {
+		t.Fatalf("unexpected query: %s", exec.query)
+	}
+	if len(exec.args) != 3 || exec.args[0] != "2026-05-22T00:00:00Z" || exec.args[1] != 1 || exec.args[2] != int64(7) {
+		t.Fatalf("unexpected args: %#v", exec.args)
+	}
+}
+
+func TestUpdateSetColumnAssignment(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := Update(
+		context.Background(),
+		db,
+		map[string]any{"id": int64(7)},
+		Table("users"),
+		PK("id"),
+		WherePK(),
+		SetColumn("updated_at", "password_changed_at"),
+	)
+	if err != nil {
+		t.Fatalf("update set column assignment: %v", err)
+	}
+	if !strings.Contains(exec.query, `SET "updated_at"="password_changed_at" WHERE "id"=$1`) {
+		t.Fatalf("unexpected query: %s", exec.query)
+	}
+	if len(exec.args) != 1 || exec.args[0] != int64(7) {
+		t.Fatalf("unexpected args: %#v", exec.args)
+	}
+}
+
+func TestUpsertExpressionAssignments(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := Upsert(
+		context.Background(),
+		db,
+		map[string]any{"id": int64(9), "name": "alice"},
+		Table("users"),
+		ConflictColumns("id"),
+		UpdateColumns("name"),
+		Increment("credential_version", 1),
+	)
+	if err != nil {
+		t.Fatalf("upsert expression assignments: %v", err)
+	}
+	if !strings.Contains(exec.query, `ON CONFLICT ("id") DO UPDATE SET "name"=EXCLUDED."name", "credential_version"="credential_version" + $3`) {
+		t.Fatalf("unexpected query: %s", exec.query)
+	}
+	if !hasArg(exec.args, int64(9)) || !hasArg(exec.args, "alice") || !hasArg(exec.args, 1) {
+		t.Fatalf("unexpected args: %#v", exec.args)
+	}
+}
+
+func TestInsertRejectsExpressionAssignments(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := Insert(
+		context.Background(),
+		db,
+		map[string]any{"name": "alice"},
+		Table("users"),
+		SetRaw("updated_at", "now()"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "assignment options are not supported for Insert") {
+		t.Fatalf("expected assignment insert error, got: %v", err)
+	}
+}
+
+func TestConflictDoNothingRejectsExpressionAssignments(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := Upsert(
+		context.Background(),
+		db,
+		map[string]any{"id": int64(9), "name": "alice"},
+		Table("users"),
+		ConflictColumns("id"),
+		ConflictDoNothing(),
+		Increment("credential_version", 1),
+	)
+	if err == nil || !strings.Contains(err.Error(), "ConflictDoNothing cannot be combined") {
+		t.Fatalf("expected do-nothing assignment error, got: %v", err)
+	}
+}
+
+func TestInsertOnceReturningRejectsExpressionAssignments(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, _, err := InsertOnceReturning[genericWriteUser](
+		context.Background(),
+		db,
+		genericWriteUser{ID: 5, Name: "alice"},
+		WherePK(),
+		Increment("credential_version", 1),
+	)
+	if err == nil || !strings.Contains(err.Error(), "ConflictDoNothing cannot be combined") {
+		t.Fatalf("expected insert-once assignment error, got: %v", err)
 	}
 }

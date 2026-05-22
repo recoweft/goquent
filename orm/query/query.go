@@ -41,6 +41,7 @@ type Query struct {
 	ctx           context.Context
 	err           error
 	dialect       driver.Dialect
+	paramSeq      int
 	primaryKey    string
 	approval      *Approval
 	suppressions  []Suppression
@@ -55,6 +56,7 @@ type Query struct {
 type CursorColumn struct {
 	Name      string
 	Direction string
+	Raw       bool
 }
 
 // CursorAsc returns an ascending keyset cursor column.
@@ -66,6 +68,24 @@ func CursorAsc(name string) CursorColumn {
 func CursorDesc(name string) CursorColumn {
 	return CursorColumn{Name: name, Direction: "desc"}
 }
+
+// CursorAscExpr returns an ascending trusted SQL expression for keyset cursor
+// predicates.
+func CursorAscExpr(expr string) CursorColumn {
+	return CursorColumn{Name: expr, Direction: "asc", Raw: true}
+}
+
+// CursorDescExpr returns a descending trusted SQL expression for keyset cursor
+// predicates.
+func CursorDescExpr(expr string) CursorColumn {
+	return CursorColumn{Name: expr, Direction: "desc", Raw: true}
+}
+
+// CursorAscAlias returns an ascending selected alias cursor column.
+func CursorAscAlias(alias string) CursorColumn { return CursorAsc(alias) }
+
+// CursorDescAlias returns a descending selected alias cursor column.
+func CursorDescAlias(alias string) CursorColumn { return CursorDesc(alias) }
 
 // New creates a Query with given db and table.
 func New(exec executor, table string, dialect driver.Dialect) *Query {
@@ -246,6 +266,11 @@ func (q *Query) queryRow(sqlStr string, args ...any) *sql.Row {
 	return q.exec.QueryRow(sqlStr, args...)
 }
 
+func (q *Query) nextParamName(prefix string) string {
+	q.paramSeq++
+	return fmt.Sprintf("__goquent_%s_%d", prefix, q.paramSeq)
+}
+
 // execStmt executes Exec or ExecContext depending on ctx.
 func (q *Query) execStmt(sqlStr string, args ...any) (sql.Result, error) {
 	if q.ctx != nil {
@@ -329,14 +354,21 @@ func (q *Query) cursorPredicate(columns []CursorColumn, values []any, after bool
 		for j := 0; j < i; j++ {
 			name := fmt.Sprintf("__goquent_cursor_%d_%d", i, j)
 			vals[name] = values[j]
-			comparisons = append(comparisons, fmt.Sprintf("%s = :%s", quoteIdentifierPath(q.dialect, columns[j].Name), name))
+			comparisons = append(comparisons, fmt.Sprintf("%s = :%s", q.cursorColumnSQL(columns[j]), name))
 		}
 		name := fmt.Sprintf("__goquent_cursor_%d_%d", i, i)
 		vals[name] = values[i]
-		comparisons = append(comparisons, fmt.Sprintf("%s %s :%s", quoteIdentifierPath(q.dialect, columns[i].Name), cursorComparisonOperator(columns[i].Direction, after), name))
+		comparisons = append(comparisons, fmt.Sprintf("%s %s :%s", q.cursorColumnSQL(columns[i]), cursorComparisonOperator(columns[i].Direction, after), name))
 		parts = append(parts, "("+strings.Join(comparisons, " AND ")+")")
 	}
 	return "(" + strings.Join(parts, " OR ") + ")", vals
+}
+
+func (q *Query) cursorColumnSQL(column CursorColumn) string {
+	if column.Raw {
+		return column.Name
+	}
+	return quoteIdentifierPath(q.dialect, column.Name)
 }
 
 // First scans the first result into dest struct.
@@ -765,6 +797,72 @@ func (q *Query) WhereRawNoArgs(raw string) *Query {
 	return q.WhereRaw(raw, map[string]any{})
 }
 
+// WhereJSONText adds a PostgreSQL JSONB text equality predicate:
+// column ->> key = value.
+func (q *Query) WhereJSONText(column, key string, value any) *Query {
+	if q.err != nil {
+		return q
+	}
+	if _, ok := q.dialect.(driver.PostgresDialect); !ok {
+		q.err = fmt.Errorf("goquent: JSONB predicates are only supported on PostgreSQL")
+		return q
+	}
+	column = strings.TrimSpace(column)
+	if column == "" {
+		q.err = fmt.Errorf("goquent: JSONB column is required")
+		return q
+	}
+	if key == "" {
+		q.err = fmt.Errorf("goquent: JSONB key is required")
+		return q
+	}
+	columnSQL := quoteIdentifierPath(q.dialect, column)
+	keyName := q.nextParamName("json_key")
+	valueName := q.nextParamName("json_value")
+	return q.WhereRaw(
+		fmt.Sprintf("%s ->> :%s = :%s", columnSQL, keyName, valueName),
+		map[string]any{keyName: key, valueName: value},
+	)
+}
+
+// WhereJSONHasKey adds a PostgreSQL JSONB key-existence predicate:
+// column ? key.
+func (q *Query) WhereJSONHasKey(column, key string) *Query {
+	return q.whereJSONHasKey(column, key, false)
+}
+
+// WhereJSONNotHasKey adds a negated PostgreSQL JSONB key-existence predicate:
+// NOT (column ? key).
+func (q *Query) WhereJSONNotHasKey(column, key string) *Query {
+	return q.whereJSONHasKey(column, key, true)
+}
+
+func (q *Query) whereJSONHasKey(column, key string, negated bool) *Query {
+	if q.err != nil {
+		return q
+	}
+	if _, ok := q.dialect.(driver.PostgresDialect); !ok {
+		q.err = fmt.Errorf("goquent: JSONB predicates are only supported on PostgreSQL")
+		return q
+	}
+	column = strings.TrimSpace(column)
+	if column == "" {
+		q.err = fmt.Errorf("goquent: JSONB column is required")
+		return q
+	}
+	if key == "" {
+		q.err = fmt.Errorf("goquent: JSONB key is required")
+		return q
+	}
+	columnSQL := quoteIdentifierPath(q.dialect, column)
+	keyName := q.nextParamName("json_key")
+	raw := fmt.Sprintf("%s ? :%s", columnSQL, keyName)
+	if negated {
+		raw = "NOT (" + raw + ")"
+	}
+	return q.WhereRaw(raw, map[string]any{keyName: key})
+}
+
 // OrWhereRaw appends raw OR WHERE condition.
 func (q *Query) OrWhereRaw(raw string, vals map[string]any) *Query {
 	if q.err != nil {
@@ -815,9 +913,10 @@ func (q *Query) WhereGroup(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.WhereGroup(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx}
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq}
 		_ = setFieldValue(reflect.ValueOf(&grp.builder.WhereQueryBuilder), "builder", reflect.ValueOf(b.GetBuilder()))
 		fn(grp)
+		q.paramSeq = grp.paramSeq
 		if grp.err != nil {
 			q.err = grp.err
 		}
@@ -831,9 +930,10 @@ func (q *Query) OrWhereGroup(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.OrWhereGroup(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx}
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq}
 		_ = setFieldValue(reflect.ValueOf(&grp.builder.WhereQueryBuilder), "builder", reflect.ValueOf(b.GetBuilder()))
 		fn(grp)
+		q.paramSeq = grp.paramSeq
 		if grp.err != nil {
 			q.err = grp.err
 		}
@@ -847,9 +947,10 @@ func (q *Query) WhereNot(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.WhereNot(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx}
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq}
 		_ = setFieldValue(reflect.ValueOf(&grp.builder.WhereQueryBuilder), "builder", reflect.ValueOf(b.GetBuilder()))
 		fn(grp)
+		q.paramSeq = grp.paramSeq
 		if grp.err != nil {
 			q.err = grp.err
 		}
@@ -863,9 +964,10 @@ func (q *Query) OrWhereNot(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.OrWhereNot(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx}
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq}
 		_ = setFieldValue(reflect.ValueOf(&grp.builder.WhereQueryBuilder), "builder", reflect.ValueOf(b.GetBuilder()))
 		fn(grp)
+		q.paramSeq = grp.paramSeq
 		if grp.err != nil {
 			q.err = grp.err
 		}
@@ -1912,11 +2014,17 @@ func validateCursorColumns(columns []CursorColumn, values []any) ([]CursorColumn
 		if name == "" {
 			return nil, fmt.Errorf("goquent: cursor column name is required")
 		}
-		if strings.Contains(name, "*") {
-			return nil, fmt.Errorf("goquent: cursor column %q cannot be a wildcard", col.Name)
-		}
-		if err := validateSelectColumn(name); err != nil {
-			return nil, fmt.Errorf("goquent: invalid cursor column %q: %w", col.Name, err)
+		if col.Raw {
+			if err := validateRawSQLFragment(name); err != nil {
+				return nil, fmt.Errorf("goquent: invalid cursor expression %q: %w", col.Name, err)
+			}
+		} else {
+			if strings.Contains(name, "*") {
+				return nil, fmt.Errorf("goquent: cursor column %q cannot be a wildcard", col.Name)
+			}
+			if err := validateSelectColumn(name); err != nil {
+				return nil, fmt.Errorf("goquent: invalid cursor column %q: %w", col.Name, err)
+			}
 		}
 		dir, err := validateOrderDirection(col.Direction)
 		if err != nil {
@@ -1925,7 +2033,7 @@ func validateCursorColumns(columns []CursorColumn, values []any) ([]CursorColumn
 		if values[i] == nil {
 			return nil, fmt.Errorf("goquent: cursor value for %s is nil", name)
 		}
-		normalized[i] = CursorColumn{Name: name, Direction: dir}
+		normalized[i] = CursorColumn{Name: name, Direction: dir, Raw: col.Raw}
 	}
 	return normalized, nil
 }

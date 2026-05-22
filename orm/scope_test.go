@@ -2,6 +2,7 @@ package orm
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -225,6 +226,32 @@ func TestUpdateByReturningAppliesScopes(t *testing.T) {
 	}
 	if row.ID != 1 || row.Name != "alice" || row.Age != 34 {
 		t.Fatalf("unexpected row: %+v", row)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestUpdateByReturningWithOptionsMapsNoRows(t *testing.T) {
+	ctx := context.Background()
+	db, mock := newReturningMockDB(t)
+
+	mock.ExpectQuery(`UPDATE "users" SET .* WHERE .* RETURNING "id", "name", "age"$`).
+		WithArgs("alice", 1, "hash-old").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "age"}))
+
+	_, err := UpdateByReturningWithOptions[genericWriteUser](
+		ctx,
+		db,
+		db.Table("users"),
+		map[string]any{"name": "alice"},
+		[]WriteOpt{NoRowsAs(ErrConflict)},
+		func(q *query.Query) *query.Query {
+			return q.Where("id", 1).Where("content_hash", "hash-old")
+		},
+	)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected conflict error, got %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("expectations: %v", err)

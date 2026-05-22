@@ -40,6 +40,32 @@ func TestJSONFieldScanValueDefaultAndValidate(t *testing.T) {
 	}
 }
 
+func TestEncodeDecodeJSONHelpers(t *testing.T) {
+	encoded, err := EncodeJSON(jsonSummary{Status: "ok", Count: 2})
+	if err != nil {
+		t.Fatalf("EncodeJSON: %v", err)
+	}
+	if !strings.Contains(encoded, `"status":"ok"`) {
+		t.Fatalf("encoded=%s", encoded)
+	}
+
+	decoded, err := DecodeJSON([]byte(encoded), jsonSummary{Status: "fallback"})
+	if err != nil {
+		t.Fatalf("DecodeJSON: %v", err)
+	}
+	if decoded.Status != "ok" || decoded.Count != 2 {
+		t.Fatalf("decoded=%+v", decoded)
+	}
+
+	fallback, err := DecodeJSON(nil, jsonSummary{Status: "fallback"})
+	if err != nil {
+		t.Fatalf("DecodeJSON nil: %v", err)
+	}
+	if fallback.Status != "fallback" {
+		t.Fatalf("fallback=%+v", fallback)
+	}
+}
+
 func TestJSONFieldNullAndNullableStrings(t *testing.T) {
 	field := JSONOf(jsonSummary{Status: "ok"})
 	if err := field.Scan(nil); err != nil {

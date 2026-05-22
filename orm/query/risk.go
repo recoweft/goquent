@@ -183,7 +183,7 @@ func finalizePlan(plan *QueryPlan, approval *Approval, suppressions []Suppressio
 	}
 	result := DefaultRiskEngine.CheckQuery(plan)
 	allWarnings := append([]Warning(nil), result.Warnings...)
-	allWarnings = append(allWarnings, checkPolicy(plan, nil)...)
+	allWarnings = append(allWarnings, checkPolicies(plan, nil)...)
 	warnings, suppressed, suppressionWarnings := applySuppressions(allWarnings, suppressions, time.Now().UTC())
 	warnings = append(warnings, suppressionWarnings...)
 
@@ -209,7 +209,7 @@ func finalizePlanWithPolicy(plan *QueryPlan, approval *Approval, suppressions []
 	}
 	result := DefaultRiskEngine.CheckQuery(plan)
 	allWarnings := append([]Warning(nil), result.Warnings...)
-	allWarnings = append(allWarnings, checkPolicy(plan, policy)...)
+	allWarnings = append(allWarnings, checkPolicies(plan, policy)...)
 	warnings, suppressed, suppressionWarnings := applySuppressions(allWarnings, suppressions, time.Now().UTC())
 	warnings = append(warnings, suppressionWarnings...)
 

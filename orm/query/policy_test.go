@@ -238,3 +238,112 @@ func TestRequiredFilterPolicy(t *testing.T) {
 		t.Fatalf("unexpected required filter warning=%#v", plan.Warnings)
 	}
 }
+
+func TestRegisteredPolicyChecksJoinedTables(t *testing.T) {
+	ResetPolicyRegistry()
+	t.Cleanup(ResetPolicyRegistry)
+	if err := RegisterTablePolicy(TablePolicy{Table: "users", TenantColumn: "tenant_id", TenantMode: PolicyModeBlock}); err != nil {
+		t.Fatalf("RegisterTablePolicy users: %v", err)
+	}
+	if err := RegisterTablePolicy(TablePolicy{Table: "memberships", TenantColumn: "tenant_id", TenantMode: PolicyModeBlock}); err != nil {
+		t.Fatalf("RegisterTablePolicy memberships: %v", err)
+	}
+
+	plan, err := New(&recordingExec{}, "users", ormdriver.MySQLDialect{}).
+		Select("users.id").
+		Join("memberships", "users.id", "=", "memberships.user_id").
+		Where("users.tenant_id", 7).
+		Limit(10).
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if countWarnings(plan.Warnings, WarningTenantFilterMissing) != 1 {
+		t.Fatalf("expected one joined-table tenant warning, got %#v", plan.Warnings)
+	}
+	if !plan.Blocked || plan.RiskLevel != RiskBlocked {
+		t.Fatalf("blocked=%v risk=%s warnings=%#v", plan.Blocked, plan.RiskLevel, plan.Warnings)
+	}
+
+	exec := &recordingExec{}
+	err = New(exec, "users", ormdriver.MySQLDialect{}).
+		Select("users.id").
+		Join("memberships", "users.id", "=", "memberships.user_id").
+		Where("users.tenant_id", 7).
+		Limit(10).
+		GetMaps(&[]map[string]any{})
+	if !errors.Is(err, ErrBlockedOperation) {
+		t.Fatalf("GetMaps error=%v", err)
+	}
+	if exec.calls != 0 {
+		t.Fatalf("blocked joined policy query executed database call count=%d", exec.calls)
+	}
+
+	plan, err = New(&recordingExec{}, "users", ormdriver.MySQLDialect{}).
+		Select("users.id").
+		Join("memberships", "users.id", "=", "memberships.user_id").
+		Where("users.tenant_id", 7).
+		Where("memberships.tenant_id", 7).
+		Limit(10).
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan with all tenant predicates: %v", err)
+	}
+	if warningCodeSet(plan.Warnings)[WarningTenantFilterMissing] {
+		t.Fatalf("unexpected tenant warning=%#v", plan.Warnings)
+	}
+}
+
+func TestRequiredFilterPolicySupportsParentScopes(t *testing.T) {
+	ResetPolicyRegistry()
+	t.Cleanup(ResetPolicyRegistry)
+	if err := RegisterTablePolicy(TablePolicy{
+		Table:                 "filing_cases",
+		TenantColumn:          "tenant_id",
+		TenantMode:            PolicyModeBlock,
+		RequiredFilterColumns: []string{"client_company_id", "workplace_id"},
+		RequiredFilterMode:    PolicyModeBlock,
+	}); err != nil {
+		t.Fatalf("RegisterTablePolicy: %v", err)
+	}
+
+	plan, err := New(&recordingExec{}, "filing_cases", ormdriver.MySQLDialect{}).
+		Select("id").
+		Where("tenant_id", 7).
+		Where("client_company_id", 11).
+		Limit(10).
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if countWarnings(plan.Warnings, WarningRequiredFilterMissing) != 1 {
+		t.Fatalf("expected missing workplace required filter, got %#v", plan.Warnings)
+	}
+	if !plan.Blocked {
+		t.Fatalf("missing required parent scope should block, warnings=%#v", plan.Warnings)
+	}
+
+	plan, err = New(&recordingExec{}, "filing_cases", ormdriver.MySQLDialect{}).
+		Select("id").
+		Where("tenant_id", 7).
+		Where("client_company_id", 11).
+		Where("workplace_id", 13).
+		Limit(10).
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan with parent scopes: %v", err)
+	}
+	if warningCodeSet(plan.Warnings)[WarningRequiredFilterMissing] {
+		t.Fatalf("unexpected required filter warning=%#v", plan.Warnings)
+	}
+}
+
+func countWarnings(warnings []Warning, code string) int {
+	count := 0
+	for _, warning := range warnings {
+		if warning.Code == code {
+			count++
+		}
+	}
+	return count
+}

@@ -23,6 +23,8 @@ type writeOptions struct {
 	wherePK            bool
 	returning          []string
 	table              string
+	tablePath          []string
+	schema             string
 	pkCols             map[string]struct{}
 	conflictCols       []string
 	conflictWhere      string
@@ -30,6 +32,27 @@ type writeOptions struct {
 	conflictTargetRaw  string
 	upsertUpdateCols   []string
 	hasUpsertUpdates   bool
+	conflictDoNothing  bool
+	assignments        []writeAssignment
+	expectAffected     *int64
+	zeroRowsErr        error
+}
+
+type writeAssignmentKind int
+
+const (
+	writeAssignmentRaw writeAssignmentKind = iota
+	writeAssignmentExpr
+	writeAssignmentColumn
+	writeAssignmentIncrement
+)
+
+type writeAssignment struct {
+	column       string
+	expression   string
+	args         []any
+	sourceColumn string
+	kind         writeAssignmentKind
 }
 
 // Columns limits write to specified columns.
@@ -103,11 +126,37 @@ func ConflictDoNothing() WriteOpt {
 	return func(o *writeOptions) {
 		o.upsertUpdateCols = nil
 		o.hasUpsertUpdates = true
+		o.conflictDoNothing = true
 	}
 }
 
 // Table sets table name (required for map writes).
-func Table(name string) WriteOpt { return func(o *writeOptions) { o.table = name } }
+func Table(name string) WriteOpt {
+	return func(o *writeOptions) {
+		o.table = name
+		o.tablePath = nil
+	}
+}
+
+// TablePath sets a schema-qualified or otherwise path-qualified table name.
+//
+// For example, TablePath("app", "users") renders "app"."users" on
+// PostgreSQL and `app`.`users` on MySQL.
+func TablePath(parts ...string) WriteOpt {
+	return func(o *writeOptions) {
+		o.tablePath = append([]string(nil), parts...)
+		o.table = strings.Join(parts, ".")
+		o.schema = ""
+	}
+}
+
+// SchemaName sets the schema for the write table. It can be combined with
+// Table("users") or an inferred struct table name.
+func SchemaName(name string) WriteOpt {
+	return func(o *writeOptions) {
+		o.schema = name
+	}
+}
 
 // PK specifies primary key columns for map writes.
 func PK(cols ...string) WriteOpt {
@@ -118,6 +167,70 @@ func PK(cols ...string) WriteOpt {
 		for _, c := range cols {
 			o.pkCols[c] = struct{}{}
 		}
+	}
+}
+
+// SetRaw adds a database-side assignment to Update or the conflict-update side
+// of Upsert. The expression is a trusted SQL fragment and must not contain
+// placeholders.
+func SetRaw(column, expression string) WriteOpt {
+	return func(o *writeOptions) {
+		o.assignments = append(o.assignments, writeAssignment{
+			column:     column,
+			expression: expression,
+			kind:       writeAssignmentRaw,
+		})
+	}
+}
+
+// SetExpr adds a database-side assignment with positional ? placeholders.
+// Placeholders are rewritten for the active dialect.
+func SetExpr(column, expression string, args ...any) WriteOpt {
+	return func(o *writeOptions) {
+		o.assignments = append(o.assignments, writeAssignment{
+			column:     column,
+			expression: expression,
+			args:       append([]any(nil), args...),
+			kind:       writeAssignmentExpr,
+		})
+	}
+}
+
+// SetColumn assigns one column from another column.
+func SetColumn(column, sourceColumn string) WriteOpt {
+	return func(o *writeOptions) {
+		o.assignments = append(o.assignments, writeAssignment{
+			column:       column,
+			sourceColumn: sourceColumn,
+			kind:         writeAssignmentColumn,
+		})
+	}
+}
+
+// Increment adds delta to column on Update or the conflict-update side of
+// Upsert.
+func Increment(column string, delta any) WriteOpt {
+	return func(o *writeOptions) {
+		o.assignments = append(o.assignments, writeAssignment{
+			column: column,
+			args:   []any{delta},
+			kind:   writeAssignmentIncrement,
+		})
+	}
+}
+
+// ExpectAffected requires the write to affect exactly n rows.
+func ExpectAffected(n int64) WriteOpt {
+	return func(o *writeOptions) {
+		o.expectAffected = &n
+	}
+}
+
+// NoRowsAs maps a zero-row write result to err. Use ErrConflict for explicit
+// optimistic-concurrency guards such as content_hash or version predicates.
+func NoRowsAs(err error) WriteOpt {
+	return func(o *writeOptions) {
+		o.zeroRowsErr = err
 	}
 }
 
@@ -154,6 +267,42 @@ func (o *writeOptions) isConflictColumn(col string) bool {
 
 func quote(d driver.Dialect, ident string) string { return d.QuoteIdent(ident) }
 
+func quoteIdentifierPath(d driver.Dialect, ident string) (string, error) {
+	return quoteIdentifierPathParts(d, strings.Split(ident, "."))
+}
+
+func quoteIdentifierPathParts(d driver.Dialect, parts []string) (string, error) {
+	if len(parts) == 0 {
+		return "", fmt.Errorf("goquent: identifier path is required")
+	}
+	quoted := make([]string, len(parts))
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return "", fmt.Errorf("goquent: identifier path contains an empty part")
+		}
+		quoted[i] = quote(d, part)
+	}
+	return strings.Join(quoted, "."), nil
+}
+
+func quoteWriteTable(d driver.Dialect, table string, o *writeOptions) (string, error) {
+	if len(o.tablePath) > 0 {
+		return quoteIdentifierPathParts(d, o.tablePath)
+	}
+	table = strings.TrimSpace(table)
+	if table == "" {
+		return "", fmt.Errorf("goquent: table name is required")
+	}
+	if schema := strings.TrimSpace(o.schema); schema != "" {
+		if strings.Contains(table, ".") {
+			return "", fmt.Errorf("goquent: Schema cannot be combined with schema-qualified table %q", table)
+		}
+		return quoteIdentifierPathParts(d, []string{schema, table})
+	}
+	return quoteIdentifierPath(d, table)
+}
+
 func buildPlaceholders(d driver.Dialect, n int, start int) []string {
 	ph := make([]string, n)
 	for i := 0; i < n; i++ {
@@ -183,7 +332,11 @@ func appendReturningClause(d driver.Dialect, sqlStr string, cols []string) (stri
 	}
 	rc := make([]string, len(cols))
 	for i, c := range cols {
-		rc[i] = quote(d, c)
+		quoted, err := quoteIdentifierPath(d, c)
+		if err != nil {
+			return "", err
+		}
+		rc[i] = quoted
 	}
 	return sqlStr + " RETURNING " + strings.Join(rc, ", "), nil
 }
@@ -238,8 +391,18 @@ func queryReturningOne[T any](ctx context.Context, db *DB, sqlStr string, args .
 	return scanRowsOne[T](db, rows)
 }
 
+func queryReturningOneWithOptions[T any](ctx context.Context, db *DB, sqlStr string, o *writeOptions, args ...any) (T, error) {
+	row, err := queryReturningOne[T](ctx, db, sqlStr, args...)
+	if err == nil || !IsNotFound(err) || o == nil || o.zeroRowsErr == nil {
+		return row, err
+	}
+	var zero T
+	return zero, RowsAffectedError{Expected: 1, Actual: 0, Cause: o.zeroRowsErr}
+}
+
 func ensureReturningColumns[T any](o *writeOptions) error {
-	if len(o.returning) > 0 {
+	returning := o != nil && len(o.returning) > 0
+	if returning {
 		return nil
 	}
 	cols, err := returningColumnsForQuery[T]()
@@ -269,11 +432,48 @@ func returningColumnsForQuery[T any]() ([]string, error) {
 	return cols, nil
 }
 
-func execWriteStatement(ctx context.Context, db *DB, sqlStr string, args []any, returning bool) (sql.Result, error) {
-	if returning {
-		return execReturningRows(ctx, db, sqlStr, args...)
+func execWriteStatement(ctx context.Context, db *DB, sqlStr string, args []any, o *writeOptions) (sql.Result, error) {
+	var (
+		res sql.Result
+		err error
+	)
+	if o != nil && len(o.returning) > 0 {
+		res, err = execReturningRows(ctx, db, sqlStr, args...)
+	} else {
+		res, err = db.execContextTrusted(ctx, sqlStr, args...)
 	}
-	return db.execContextTrusted(ctx, sqlStr, args...)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkRowsAffected(res, o); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func checkRowsAffected(res sql.Result, o *writeOptions) error {
+	if res == nil || o == nil || (o.expectAffected == nil && o.zeroRowsErr == nil) {
+		return nil
+	}
+	actual, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if o.expectAffected != nil {
+		expected := *o.expectAffected
+		if actual == expected {
+			return nil
+		}
+		cause := ErrRowsAffected
+		if actual == 0 && o.zeroRowsErr != nil {
+			cause = o.zeroRowsErr
+		}
+		return RowsAffectedError{Expected: expected, Actual: actual, Cause: cause}
+	}
+	if actual == 0 && o.zeroRowsErr != nil {
+		return RowsAffectedError{Expected: 1, Actual: actual, Cause: o.zeroRowsErr}
+	}
+	return nil
 }
 
 func validateWriteRawSQLFragment(raw string) error {
@@ -296,6 +496,126 @@ func validateWriteRawSQLFragment(raw string) error {
 	return nil
 }
 
+func writeAssignmentTargets(assignments []writeAssignment) map[string]struct{} {
+	targets := make(map[string]struct{}, len(assignments))
+	for _, assignment := range assignments {
+		column := strings.TrimSpace(assignment.column)
+		if column == "" {
+			continue
+		}
+		targets[column] = struct{}{}
+	}
+	return targets
+}
+
+func validateWriteAssignments(assignments []writeAssignment) error {
+	seen := make(map[string]struct{}, len(assignments))
+	for _, assignment := range assignments {
+		column := strings.TrimSpace(assignment.column)
+		if column == "" {
+			return fmt.Errorf("goquent: assignment column is required")
+		}
+		if _, ok := seen[column]; ok {
+			return fmt.Errorf("goquent: duplicate assignment for column %s", column)
+		}
+		seen[column] = struct{}{}
+	}
+	return nil
+}
+
+func buildWriteSetParts(d driver.Dialect, setCols []string, setArgs []any, assignments []writeAssignment, start int) ([]string, []any, error) {
+	if err := validateWriteAssignments(assignments); err != nil {
+		return nil, nil, err
+	}
+	setParts := make([]string, 0, len(setCols)+len(assignments))
+	args := make([]any, 0, len(setArgs)+len(assignments))
+	argPos := start
+	for i, col := range setCols {
+		setParts = append(setParts, fmt.Sprintf("%s=%s", quote(d, col), d.Placeholder(argPos)))
+		args = append(args, setArgs[i])
+		argPos++
+	}
+	for _, assignment := range assignments {
+		target, err := quoteIdentifierPath(d, assignment.column)
+		if err != nil {
+			return nil, nil, err
+		}
+		expr, exprArgs, err := renderWriteAssignment(d, assignment, argPos)
+		if err != nil {
+			return nil, nil, err
+		}
+		setParts = append(setParts, fmt.Sprintf("%s=%s", target, expr))
+		args = append(args, exprArgs...)
+		argPos += len(exprArgs)
+	}
+	return setParts, args, nil
+}
+
+func renderWriteAssignment(d driver.Dialect, assignment writeAssignment, start int) (string, []any, error) {
+	switch assignment.kind {
+	case writeAssignmentRaw:
+		if len(assignment.args) > 0 {
+			return "", nil, fmt.Errorf("goquent: SetRaw does not accept args")
+		}
+		expr := strings.TrimSpace(assignment.expression)
+		if err := validateWriteRawSQLFragment(expr); err != nil {
+			return "", nil, err
+		}
+		if strings.Contains(expr, "?") {
+			return "", nil, fmt.Errorf("goquent: SetRaw expression contains placeholders; use SetExpr")
+		}
+		return expr, nil, nil
+	case writeAssignmentExpr:
+		expr := strings.TrimSpace(assignment.expression)
+		if err := validateWriteRawSQLFragment(expr); err != nil {
+			return "", nil, err
+		}
+		rendered, err := renderWriteExpressionPlaceholders(d, expr, len(assignment.args), start)
+		if err != nil {
+			return "", nil, err
+		}
+		return rendered, append([]any(nil), assignment.args...), nil
+	case writeAssignmentColumn:
+		if len(assignment.args) > 0 {
+			return "", nil, fmt.Errorf("goquent: SetColumn does not accept args")
+		}
+		expr, err := quoteIdentifierPath(d, assignment.sourceColumn)
+		return expr, nil, err
+	case writeAssignmentIncrement:
+		if len(assignment.args) != 1 {
+			return "", nil, fmt.Errorf("goquent: Increment requires one delta arg")
+		}
+		target, err := quoteIdentifierPath(d, assignment.column)
+		if err != nil {
+			return "", nil, err
+		}
+		return fmt.Sprintf("%s + %s", target, d.Placeholder(start)), append([]any(nil), assignment.args...), nil
+	default:
+		return "", nil, fmt.Errorf("goquent: unknown assignment kind")
+	}
+}
+
+func renderWriteExpressionPlaceholders(d driver.Dialect, expr string, argCount int, start int) (string, error) {
+	if strings.Count(expr, "?") != argCount {
+		return "", fmt.Errorf("goquent: SetExpr placeholder count does not match args")
+	}
+	if argCount == 0 {
+		return expr, nil
+	}
+	var b strings.Builder
+	b.Grow(len(expr) + argCount*2)
+	argIndex := 0
+	for i := 0; i < len(expr); i++ {
+		if expr[i] != '?' {
+			b.WriteByte(expr[i])
+			continue
+		}
+		b.WriteString(d.Placeholder(start + argIndex))
+		argIndex++
+	}
+	return b.String(), nil
+}
+
 // Insert inserts v into its table.
 func Insert[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (sql.Result, error) {
 	o := applyWriteOpts(opts)
@@ -303,7 +623,7 @@ func Insert[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (sql.Resu
 	if err != nil {
 		return nil, err
 	}
-	return execWriteStatement(ctx, db, sqlStr, args, len(o.returning) > 0)
+	return execWriteStatement(ctx, db, sqlStr, args, o)
 }
 
 // InsertReturning inserts v and scans the Postgres RETURNING row into T.
@@ -317,10 +637,13 @@ func InsertReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...Wri
 	if err != nil {
 		return zero, err
 	}
-	return queryReturningOne[T](ctx, db, sqlStr, args...)
+	return queryReturningOneWithOptions[T](ctx, db, sqlStr, o, args...)
 }
 
 func buildInsertStatement(db *DB, v any, o *writeOptions) (string, []any, error) {
+	if len(o.assignments) > 0 {
+		return "", nil, fmt.Errorf("assignment options are not supported for Insert")
+	}
 	val := reflect.ValueOf(v)
 	typ := val.Type()
 	var table string
@@ -385,8 +708,12 @@ func buildInsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 	for i, c := range cols {
 		quotedCols[i] = quote(db.drv.Dialect, c)
 	}
-	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", quote(db.drv.Dialect, table), strings.Join(quotedCols, ", "), strings.Join(ph, ", "))
-	sqlStr, err := appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
+	tableSQL, err := quoteWriteTable(db.drv.Dialect, table, o)
+	if err != nil {
+		return "", nil, err
+	}
+	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableSQL, strings.Join(quotedCols, ", "), strings.Join(ph, ", "))
+	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
 	if err != nil {
 		return "", nil, err
 	}
@@ -400,7 +727,7 @@ func Update[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (sql.Resu
 	if err != nil {
 		return nil, err
 	}
-	return execWriteStatement(ctx, db, sqlStr, args, len(o.returning) > 0)
+	return execWriteStatement(ctx, db, sqlStr, args, o)
 }
 
 // UpdateReturning updates v and scans the Postgres RETURNING row into T.
@@ -414,13 +741,14 @@ func UpdateReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...Wri
 	if err != nil {
 		return zero, err
 	}
-	return queryReturningOne[T](ctx, db, sqlStr, args...)
+	return queryReturningOneWithOptions[T](ctx, db, sqlStr, o, args...)
 }
 
 func buildUpdateStatement(db *DB, v any, o *writeOptions) (string, []any, error) {
 	if !o.wherePK {
 		return "", nil, fmt.Errorf("Update[T] without WherePK is not allowed")
 	}
+	assignmentTargets := writeAssignmentTargets(o.assignments)
 	val := reflect.ValueOf(v)
 	typ := val.Type()
 	var table string
@@ -446,6 +774,9 @@ func buildUpdateStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 			if o.isPK(col) {
 				whereCols = append(whereCols, col)
 				whereArgs = append(whereArgs, v.Interface())
+				continue
+			}
+			if _, ok := assignmentTargets[col]; ok {
 				continue
 			}
 			if len(o.cols) > 0 {
@@ -483,6 +814,9 @@ func buildUpdateStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 			if fm.Readonly {
 				continue
 			}
+			if _, ok := assignmentTargets[fm.Col]; ok {
+				continue
+			}
 			if len(o.cols) > 0 {
 				if _, ok := o.cols[fm.Col]; !ok {
 					continue
@@ -503,20 +837,24 @@ func buildUpdateStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 	if len(whereCols) == 0 {
 		return "", nil, fmt.Errorf("WherePK requires pk values")
 	}
-	if len(setCols) == 0 {
+	if len(setCols) == 0 && len(o.assignments) == 0 {
 		return "", nil, fmt.Errorf("no columns to update")
 	}
-	setParts := make([]string, len(setCols))
-	for i, col := range setCols {
-		setParts[i] = fmt.Sprintf("%s=%s", quote(db.drv.Dialect, col), db.drv.Dialect.Placeholder(i+1))
+	setParts, setArgs, err := buildWriteSetParts(db.drv.Dialect, setCols, setArgs, o.assignments, 1)
+	if err != nil {
+		return "", nil, err
 	}
 	whereParts := make([]string, len(whereCols))
 	for i, col := range whereCols {
 		whereParts[i] = fmt.Sprintf("%s=%s", quote(db.drv.Dialect, col), db.drv.Dialect.Placeholder(len(setArgs)+i+1))
 	}
 	args := append(append([]any(nil), setArgs...), whereArgs...)
-	sqlStr := fmt.Sprintf("UPDATE %s SET %s WHERE %s", quote(db.drv.Dialect, table), strings.Join(setParts, ", "), strings.Join(whereParts, " AND "))
-	sqlStr, err := appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
+	tableSQL, err := quoteWriteTable(db.drv.Dialect, table, o)
+	if err != nil {
+		return "", nil, err
+	}
+	sqlStr := fmt.Sprintf("UPDATE %s SET %s WHERE %s", tableSQL, strings.Join(setParts, ", "), strings.Join(whereParts, " AND "))
+	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
 	if err != nil {
 		return "", nil, err
 	}
@@ -530,7 +868,7 @@ func Upsert[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (sql.Resu
 	if err != nil {
 		return nil, err
 	}
-	return execWriteStatement(ctx, db, sqlStr, args, len(o.returning) > 0)
+	return execWriteStatement(ctx, db, sqlStr, args, o)
 }
 
 // UpsertReturning upserts v and scans the Postgres RETURNING row into T.
@@ -544,7 +882,7 @@ func UpsertReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...Wri
 	if err != nil {
 		return zero, err
 	}
-	return queryReturningOne[T](ctx, db, sqlStr, args...)
+	return queryReturningOneWithOptions[T](ctx, db, sqlStr, o, args...)
 }
 
 // InsertOnceReturning inserts v once and scans the inserted or existing row.
@@ -561,6 +899,7 @@ func InsertOnceReturning[T any, V any](ctx context.Context, db *DB, v V, opts ..
 	}
 	o.upsertUpdateCols = nil
 	o.hasUpsertUpdates = true
+	o.conflictDoNothing = true
 
 	sqlStr, args, err := buildUpsertStatement(db, v, o)
 	if err != nil {
@@ -584,6 +923,9 @@ func InsertOnceReturning[T any, V any](ctx context.Context, db *DB, v V, opts ..
 func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error) {
 	if !o.wherePK && !o.hasConflictTarget() {
 		return "", nil, fmt.Errorf("Upsert[T] requires WherePK, ConflictColumns, or ConflictConstraint")
+	}
+	if o.conflictDoNothing && len(o.assignments) > 0 {
+		return "", nil, fmt.Errorf("ConflictDoNothing cannot be combined with assignment options")
 	}
 	val := reflect.ValueOf(v)
 	typ := val.Type()
@@ -691,9 +1033,17 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 	for i, c := range cols {
 		quotedCols[i] = quote(db.drv.Dialect, c)
 	}
-	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", quote(db.drv.Dialect, table), strings.Join(quotedCols, ", "), strings.Join(ph, ", "))
+	tableSQL, err := quoteWriteTable(db.drv.Dialect, table, o)
+	if err != nil {
+		return "", nil, err
+	}
+	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableSQL, strings.Join(quotedCols, ", "), strings.Join(ph, ", "))
 	targetCols := conflictTargetColumns(o, pkCols)
 	updateCols, err := upsertUpdateColumns(cols, targetCols, o)
+	if err != nil {
+		return "", nil, err
+	}
+	assignmentParts, assignmentArgs, err := buildWriteSetParts(db.drv.Dialect, nil, nil, o.assignments, len(args)+1)
 	if err != nil {
 		return "", nil, err
 	}
@@ -702,11 +1052,12 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 		if strings.TrimSpace(o.conflictWhere) != "" || strings.TrimSpace(o.conflictConstraint) != "" || strings.TrimSpace(o.conflictTargetRaw) != "" {
 			return "", nil, fmt.Errorf("ConflictWhere, ConflictConstraint, and ConflictTargetRaw are not supported on dialect: %T", db.drv.Dialect)
 		}
-		if len(updateCols) > 0 {
-			assigns := make([]string, len(updateCols))
-			for i, c := range updateCols {
-				assigns[i] = fmt.Sprintf("%s=VALUES(%s)", quote(db.drv.Dialect, c), quote(db.drv.Dialect, c))
+		if len(updateCols) > 0 || len(assignmentParts) > 0 {
+			assigns := make([]string, 0, len(updateCols)+len(assignmentParts))
+			for _, c := range updateCols {
+				assigns = append(assigns, fmt.Sprintf("%s=VALUES(%s)", quote(db.drv.Dialect, c), quote(db.drv.Dialect, c)))
 			}
+			assigns = append(assigns, assignmentParts...)
 			sqlStr += " ON DUPLICATE KEY UPDATE " + strings.Join(assigns, ", ")
 		} else {
 			sqlStr = strings.Replace(sqlStr, "INSERT", "INSERT IGNORE", 1)
@@ -716,11 +1067,12 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 		if err != nil {
 			return "", nil, err
 		}
-		if len(updateCols) > 0 {
-			assigns := make([]string, len(updateCols))
-			for i, c := range updateCols {
-				assigns[i] = fmt.Sprintf("%s=EXCLUDED.%s", quote(db.drv.Dialect, c), quote(db.drv.Dialect, c))
+		if len(updateCols) > 0 || len(assignmentParts) > 0 {
+			assigns := make([]string, 0, len(updateCols)+len(assignmentParts))
+			for _, c := range updateCols {
+				assigns = append(assigns, fmt.Sprintf("%s=EXCLUDED.%s", quote(db.drv.Dialect, c), quote(db.drv.Dialect, c)))
 			}
+			assigns = append(assigns, assignmentParts...)
 			sqlStr += fmt.Sprintf(" ON CONFLICT %s DO UPDATE SET %s", target, strings.Join(assigns, ", "))
 		} else {
 			sqlStr += fmt.Sprintf(" ON CONFLICT %s DO NOTHING", target)
@@ -732,6 +1084,7 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 	if err != nil {
 		return "", nil, err
 	}
+	args = append(args, assignmentArgs...)
 	return sqlStr, args, nil
 }
 
@@ -822,8 +1175,10 @@ func conflictTargetColumns(o *writeOptions, pkCols []string) []string {
 }
 
 func upsertUpdateColumns(cols []string, targetCols []string, o *writeOptions) ([]string, error) {
+	assignmentTargets := writeAssignmentTargets(o.assignments)
 	if o.hasUpsertUpdates {
 		updateCols := dedupeColumns(o.upsertUpdateCols)
+		updateCols = filterColumns(updateCols, assignmentTargets)
 		if err := ensureUpsertUpdateColumnsPresent(updateCols, cols); err != nil {
 			return nil, err
 		}
@@ -838,9 +1193,26 @@ func upsertUpdateColumns(cols []string, targetCols []string, o *writeOptions) ([
 		if _, ok := target[col]; ok {
 			continue
 		}
+		if _, ok := assignmentTargets[col]; ok {
+			continue
+		}
 		updateCols = append(updateCols, col)
 	}
 	return updateCols, nil
+}
+
+func filterColumns(cols []string, excluded map[string]struct{}) []string {
+	if len(excluded) == 0 {
+		return cols
+	}
+	out := make([]string, 0, len(cols))
+	for _, col := range cols {
+		if _, ok := excluded[col]; ok {
+			continue
+		}
+		out = append(out, col)
+	}
+	return out
 }
 
 func dedupeColumns(cols []string) []string {

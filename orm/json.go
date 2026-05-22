@@ -26,6 +26,25 @@ func JSONNull[T any]() JSONField[T] {
 	return JSONField[T]{}
 }
 
+// EncodeJSON marshals v for JSON/JSONB or text-JSON columns.
+func EncodeJSON(v any) (string, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// DecodeJSON decodes a JSON/JSONB or text-JSON database value. NULL returns
+// fallback without error.
+func DecodeJSON[T any](src any, fallback T) (T, error) {
+	var field JSONField[T]
+	if err := field.Scan(src); err != nil {
+		return fallback, err
+	}
+	return field.OrDefault(fallback), nil
+}
+
 // Scan implements sql.Scanner.
 func (j *JSONField[T]) Scan(src any) error {
 	if j == nil {

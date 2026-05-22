@@ -21,6 +21,18 @@ func CursorAsc(name string) CursorColumn { return query.CursorAsc(name) }
 // CursorDesc returns a descending keyset cursor column.
 func CursorDesc(name string) CursorColumn { return query.CursorDesc(name) }
 
+// CursorAscExpr returns an ascending trusted SQL expression cursor column.
+func CursorAscExpr(expr string) CursorColumn { return query.CursorAscExpr(expr) }
+
+// CursorDescExpr returns a descending trusted SQL expression cursor column.
+func CursorDescExpr(expr string) CursorColumn { return query.CursorDescExpr(expr) }
+
+// CursorAscAlias returns an ascending selected alias cursor column.
+func CursorAscAlias(alias string) CursorColumn { return query.CursorAscAlias(alias) }
+
+// CursorDescAlias returns a descending selected alias cursor column.
+func CursorDescAlias(alias string) CursorColumn { return query.CursorDescAlias(alias) }
+
 // ApplyScopes applies scopes to q in order. Nil scopes are ignored.
 // If a scope returns nil, the current query is kept.
 func ApplyScopes(q *query.Query, scopes ...Scope) *query.Query {
@@ -126,10 +138,17 @@ func UpdateBy(ctx context.Context, base *query.Query, data any, scopes ...Scope)
 
 // UpdateByReturning applies scopes, executes an UPDATE, and scans the Postgres RETURNING row into T.
 func UpdateByReturning[T any](ctx context.Context, db *DB, base *query.Query, data any, scopes ...Scope) (T, error) {
+	return UpdateByReturningWithOptions[T](ctx, db, base, data, nil, scopes...)
+}
+
+// UpdateByReturningWithOptions applies scopes, executes an UPDATE with
+// RETURNING, and applies write options such as NoRowsAs for guarded updates.
+func UpdateByReturningWithOptions[T any](ctx context.Context, db *DB, base *query.Query, data any, opts []WriteOpt, scopes ...Scope) (T, error) {
 	var zero T
 	if db == nil {
 		return zero, fmt.Errorf("db is nil")
 	}
+	o := applyWriteOpts(opts)
 	q, err := scopedQuery(base, scopes...)
 	if err != nil {
 		return zero, err
@@ -141,15 +160,18 @@ func UpdateByReturning[T any](ctx context.Context, db *DB, base *query.Query, da
 	if err := query.EnsurePlanExecutable(plan); err != nil {
 		return zero, err
 	}
-	cols, err := returningColumnsForQuery[T]()
+	if len(o.returning) == 0 {
+		cols, err := returningColumnsForQuery[T]()
+		if err != nil {
+			return zero, err
+		}
+		o.returning = cols
+	}
+	sqlStr, err := appendReturningClause(db.drv.Dialect, plan.SQL, o.returning)
 	if err != nil {
 		return zero, err
 	}
-	sqlStr, err := appendReturningClause(db.drv.Dialect, plan.SQL, cols)
-	if err != nil {
-		return zero, err
-	}
-	return queryReturningOne[T](ctx, db, sqlStr, plan.Params...)
+	return queryReturningOneWithOptions[T](ctx, db, sqlStr, o, plan.Params...)
 }
 
 // DeleteBy applies scopes to base and executes a DELETE using the resulting query.

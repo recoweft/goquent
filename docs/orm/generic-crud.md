@@ -567,6 +567,36 @@ _, err := orm.Upsert(
 
 Every column named in `UpdateColumns` must also be present in the insert column set, because PostgreSQL `EXCLUDED` and MySQL `VALUES(...)` read from the attempted insert row.
 
+### Expression assignments
+
+Use assignment options when the database should compute the updated value.
+They apply to `Update` and to the conflict-update side of `Upsert`; `Insert`
+rejects them.
+
+```go
+_, err := orm.Update(
+    ctx,
+    db,
+    map[string]any{"id": userID},
+    orm.TablePath("app", "users"),
+    orm.PK("id"),
+    orm.WherePK(),
+    orm.SetExpr("email_verified_at", "COALESCE(email_verified_at, ?)", verifiedAt),
+    orm.Increment("credential_version", 1),
+)
+```
+
+Available assignment helpers:
+
+- `SetRaw("column", "trusted_sql_expression")`
+- `SetExpr("column", "COALESCE(column, ?)", value)`
+- `Increment("column", 1)`
+- `SetColumn("updated_at", "password_changed_at")`
+
+`SetRaw` and `SetExpr` validate raw fragments to reject statement
+separators, comments, and write/DDL keywords. `SetExpr` rewrites `?`
+placeholders for the active dialect.
+
 ### `ConflictDoNothing()`
 
 `ConflictDoNothing` forces a no-op conflict action even when the insert payload contains non-conflict columns.
@@ -591,6 +621,27 @@ _, err := orm.Insert(
     db,
     map[string]any{"name": "sam"},
     orm.Table("users"),
+)
+```
+
+For schema-qualified tables, either pass a dotted table name or use
+`TablePath(...)`/`SchemaName(...)`; generic writes quote each identifier part:
+
+```go
+_, err := orm.Insert(
+    ctx,
+    db,
+    map[string]any{"name": "sam"},
+    orm.TablePath("app", "users"),
+)
+
+_, err = orm.Update(
+    ctx,
+    db,
+    User{ID: 1, Name: "sam"},
+    orm.SchemaName("app"),
+    orm.Columns("name"),
+    orm.WherePK(),
 )
 ```
 
@@ -663,6 +714,16 @@ if err := tx.Commit(); err != nil {
 
 The same pattern works with `db.Begin()`.
 
+When transaction ownership lives outside goquent, wrap the existing executor:
+
+```go
+txDB := orm.NewTxDB(sqlTx, driver.PostgresDialect{})
+_, err := orm.Update(ctx, txDB, row, orm.Columns("name"), orm.WherePK())
+```
+
+If you already have a configured `*orm.DB`, `db.WrapTx(sqlTx)` preserves its
+dialect, scan options, and raw-SQL approval state.
+
 ## JSON, nullable values, and projections
 
 Use `JSONField[T]` in persistence rows for JSON/JSONB columns when you want
@@ -684,12 +745,45 @@ summary := row.ValidationSummary.OrDefault(ValidationSummary{Status: "unknown"})
 For insert/update maps, `JSONOf(value)` stores typed JSON and `JSONNull[T]()`
 stores SQL NULL. `NullString`, `NullStringPtr`, and `NullStringEmpty` are small
 helpers for optional string/UUID fields represented as `sql.NullString`.
+Use `EncodeJSON` and `DecodeJSON` when a repository needs a plain text/JSON
+column value instead of a `sql.Scanner` field:
+
+```go
+payload, err := orm.EncodeJSON(ValidationSummary{Status: "ok"})
+summary, err := orm.DecodeJSON(rawPayload, ValidationSummary{Status: "unknown"})
+_, _ = payload, summary
+```
 
 Wide read projections should use explicit select aliases and dedicated row
 structs. For nested JSON aggregate snapshots, keep the raw SQL in a small
 repository method, require raw approval, and scan into a typed row containing
 `JSONField[T]` fields. That preserves the SQL review boundary without forcing
 nested aggregate SQL into the structured builder.
+
+For reviewed raw projections, carry both the approval reason and the touched
+table list on the DB copy:
+
+```go
+rows, err := orm.SelectAll[WorkItemRow](
+    ctx,
+    db.RequireRawApproval("reviewed work item union projection").
+        TouchedTables("filing_cases", "document_projects", "notices"),
+    sqlText,
+    tenantID,
+)
+```
+
+For PostgreSQL JSONB filters, the query builder has narrow predicates for
+common key lookups:
+
+```go
+err := db.Table("audit_events").
+    Select("id", "payload").
+    WhereJSONText("payload", "reason", "initial_sync").
+    WhereJSONHasKey("payload", "cache_invalidated_at").
+    WhereJSONNotHasKey("payload", "ignored_at").
+    GetMaps(&rows)
+```
 
 ## Scope-Based Advanced Path
 
@@ -743,6 +837,20 @@ tenantDocs := orm.ComposeScopes(
 scopeBindings := orm.TenantScope(tenantID, "scope_tenant_id")
 ```
 
+For joined queries with registered tenant policies on multiple tables, prefer qualified columns so
+the `QueryPlan` can prove each table is scoped:
+
+```go
+var out []map[string]any
+err := db.Table("users").
+    Select("users.id", "memberships.role").
+    Join("memberships", "users.id", "=", "memberships.user_id").
+    Where("users.tenant_id", tenantID).
+    Where("memberships.tenant_id", tenantID).
+    Limit(50).
+    GetMaps(&out)
+```
+
 ### `CursorAfter(...)` and `CursorBefore(...)`
 
 Cursor scopes add keyset pagination predicates without hand-written raw SQL.
@@ -770,6 +878,17 @@ rows, err := orm.SelectAllBy[WorkQueueRow](
 )
 ```
 
+For computed cursor keys, use the explicit expression helpers:
+
+```go
+scope := orm.CursorAfter(
+    []orm.CursorColumn{
+        orm.CursorDescExpr("(entity_type || ':' || entity_id)"),
+    },
+    cursorEntityKey,
+)
+```
+
 ### `SelectOneBy[T]` and `SelectAllBy[T]`
 
 These helpers build SQL from a scoped query and still scan through the generic read path.
@@ -793,6 +912,29 @@ _, err := orm.UpdateBy(
 )
 ```
 
+Use `UpdateByReturningWithOptions` for optimistic concurrency guards where zero
+rows should be treated as a stale-write conflict instead of a generic not-found:
+
+```go
+updated, err := orm.UpdateByReturningWithOptions[EditSessionRow](
+    ctx,
+    db,
+    db.Table("document_edit_sessions"),
+    map[string]any{"draft_nodes_json": payload},
+    []orm.WriteOpt{orm.NoRowsAs(orm.ErrConflict)},
+    func(q *query.Query) *query.Query {
+        return q.
+            Where("tenant_id", tenantID).
+            Where("id", id).
+            Where("content_hash", previousHash)
+    },
+)
+if orm.IsConflict(err) {
+    return ErrEditSessionStale
+}
+_ = updated
+```
+
 ### `DeleteBy(...)`
 
 `DeleteBy` does the same for `DELETE`.
@@ -806,6 +948,8 @@ _, err := orm.DeleteBy(ctx, db.Table("users"), WithProfile(), BioLike("%python%"
 - goquent ships with built-in `orm.MySQL` and `orm.Postgres` driver names.
 - `SelectOne` and `SelectAll` execute the SQL string you pass in, so placeholder syntax must match your driver.
 - `Insert`, `Update`, and `Upsert` use the configured dialect to quote identifiers and build placeholders.
+- `ErrNotFound` aliases `sql.ErrNoRows`; use `IsNotFound(err)` for wrapped errors.
+- `ExpectAffected(n)` validates write row counts. Combine it with `NoRowsAs(ErrConflict)` for explicit guarded writes.
 - `Returning(...)` is PostgreSQL-only in the current implementation.
 - Bool scanning follows the same compatibility rules as the rest of goquent. See [Boolean dialect compatibility](../../README.md#boolean-dialect-compatibility).
 
