@@ -183,7 +183,7 @@ func finalizePlan(plan *QueryPlan, approval *Approval, suppressions []Suppressio
 	}
 	result := DefaultRiskEngine.CheckQuery(plan)
 	allWarnings := append([]Warning(nil), result.Warnings...)
-	allWarnings = append(allWarnings, checkPolicy(plan, nil)...)
+	allWarnings = append(allWarnings, checkPolicies(plan, nil)...)
 	warnings, suppressed, suppressionWarnings := applySuppressions(allWarnings, suppressions, time.Now().UTC())
 	warnings = append(warnings, suppressionWarnings...)
 
@@ -209,7 +209,7 @@ func finalizePlanWithPolicy(plan *QueryPlan, approval *Approval, suppressions []
 	}
 	result := DefaultRiskEngine.CheckQuery(plan)
 	allWarnings := append([]Warning(nil), result.Warnings...)
-	allWarnings = append(allWarnings, checkPolicy(plan, policy)...)
+	allWarnings = append(allWarnings, checkPolicies(plan, policy)...)
 	warnings, suppressed, suppressionWarnings := applySuppressions(allWarnings, suppressions, time.Now().UTC())
 	warnings = append(warnings, suppressionWarnings...)
 
@@ -347,14 +347,75 @@ func hasNoPredicate(plan *QueryPlan) bool {
 }
 
 func hasPrimaryKeyLikePredicate(plan *QueryPlan) bool {
+	if hasMetadataNarrowPredicate(plan) {
+		return true
+	}
 	for _, predicate := range plan.Predicates {
 		col := strings.ToLower(strings.TrimSpace(predicate.Column))
 		col = strings.Trim(col, "`\"")
-		if col == "id" || strings.HasSuffix(col, ".id") || strings.HasSuffix(col, "_id") {
+		if col == "id" || strings.HasSuffix(col, ".id") {
 			return true
 		}
 	}
 	return false
+}
+
+func hasMetadataNarrowPredicate(plan *QueryPlan) bool {
+	if plan == nil || plan.Metadata == nil {
+		return false
+	}
+	metadata, ok := plan.Metadata[MetadataTableRisk].([]TableRiskMetadata)
+	if !ok || len(metadata) == 0 {
+		return false
+	}
+	predicateCols := predicateColumnSet(plan)
+	for _, table := range metadata {
+		if hasAllPredicateColumns(predicateCols, table.PrimaryKeyColumns) {
+			return true
+		}
+		for _, indexCols := range table.UniqueIndexes {
+			if hasAllPredicateColumns(predicateCols, indexCols) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func predicateColumnSet(plan *QueryPlan) map[string]struct{} {
+	out := make(map[string]struct{}, len(plan.Predicates)*2)
+	for _, predicate := range plan.Predicates {
+		addPredicateColumn(out, predicate.Column)
+		addPredicateColumn(out, predicate.ValueColumn)
+	}
+	return out
+}
+
+func addPredicateColumn(out map[string]struct{}, column string) {
+	column = normalizeColumnName(column)
+	if column == "" {
+		return
+	}
+	out[column] = struct{}{}
+	if _, name := splitColumnReference(column); name != "" {
+		out[name] = struct{}{}
+	}
+}
+
+func hasAllPredicateColumns(predicateCols map[string]struct{}, keyCols []string) bool {
+	if len(keyCols) == 0 {
+		return false
+	}
+	for _, col := range keyCols {
+		col = normalizeColumnName(col)
+		if col == "" {
+			return false
+		}
+		if _, ok := predicateCols[col]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func hasWeakPredicate(plan *QueryPlan) bool {

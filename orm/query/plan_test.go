@@ -167,6 +167,56 @@ func TestWhereCursorRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestWhereCursorSupportsTrustedExpression(t *testing.T) {
+	plan, err := New(&recordingExec{}, "events", ormdriver.PostgresDialect{}).
+		SelectRaw("(entity_type || ':' || entity_id) AS entity_sort_key").
+		WhereCursorAfter([]CursorColumn{CursorDescExpr("(entity_type || ':' || entity_id)")}, "source:1").
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if !strings.Contains(plan.SQL, `(entity_type || ':' || entity_id) <`) {
+		t.Fatalf("expected raw cursor expression, sql=%q", plan.SQL)
+	}
+	if len(plan.Params) != 1 || plan.Params[0] != "source:1" {
+		t.Fatalf("params=%#v", plan.Params)
+	}
+}
+
+func TestPostgresJSONBPredicates(t *testing.T) {
+	plan, err := New(&recordingExec{}, "events", ormdriver.PostgresDialect{}).
+		Select("id").
+		WhereJSONText("payload", "reason", "initial_sync").
+		WhereJSONHasKey("payload", "cache_invalidated_at").
+		WhereJSONNotHasKey("payload", "ignored_at").
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	for _, want := range []string{`"payload" ->>`, `"payload" ?`, `NOT ("payload" ?`} {
+		if !strings.Contains(plan.SQL, want) {
+			t.Fatalf("expected %q in sql=%q", want, plan.SQL)
+		}
+	}
+	if len(plan.Params) != 4 ||
+		plan.Params[0] != "reason" ||
+		plan.Params[1] != "initial_sync" ||
+		plan.Params[2] != "cache_invalidated_at" ||
+		plan.Params[3] != "ignored_at" {
+		t.Fatalf("params=%#v", plan.Params)
+	}
+}
+
+func TestJSONBPredicatesRequirePostgres(t *testing.T) {
+	_, err := newPlanTestQuery(&recordingExec{}).
+		Select("id").
+		WhereJSONHasKey("payload", "reason").
+		Plan(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "only supported on PostgreSQL") {
+		t.Fatalf("expected postgres-only error, got %v", err)
+	}
+}
+
 func TestWritePlanSnapshots(t *testing.T) {
 	ctx := context.Background()
 

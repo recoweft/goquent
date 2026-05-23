@@ -31,6 +31,7 @@ var (
 	ErrForbiddenField          = errors.New("goquent operation: forbidden field")
 	ErrInvalidFilter           = errors.New("goquent operation: invalid filter")
 	ErrInvalidOrder            = errors.New("goquent operation: invalid order")
+	ErrValueRefMissing         = errors.New("goquent operation: value_ref missing")
 	ErrRequiredFilterMissing   = errors.New("goquent operation: required filter missing")
 	ErrPIIAccessReasonRequired = errors.New("goquent operation: PII access reason required")
 	ErrStaleManifest           = errors.New("goquent operation: stale manifest")
@@ -221,6 +222,14 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 		}
 		if !supportedFilterOp(filter.Op) {
 			return validationResult{}, fmt.Errorf("%w: unsupported operator %q", ErrInvalidFilter, filter.Op)
+		}
+		if strings.TrimSpace(filter.ValueRef) != "" {
+			if opts.Values == nil {
+				return validationResult{}, fmt.Errorf("%w: %s", ErrValueRefMissing, filter.ValueRef)
+			}
+			if _, ok := opts.Values[filter.ValueRef]; !ok {
+				return validationResult{}, fmt.Errorf("%w: %s", ErrValueRefMissing, filter.ValueRef)
+			}
 		}
 	}
 	for _, order := range spec.OrderBy {

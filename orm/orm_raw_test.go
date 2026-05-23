@@ -74,3 +74,21 @@ func TestDeprecatedQueryRowExecutesApprovedRawSQL(t *testing.T) {
 		t.Fatalf("expected no rejected sentinel query, got %#v", exec.queryRowsContext)
 	}
 }
+
+func TestRawPlanIncludesTouchedTables(t *testing.T) {
+	exec := &rawQueryRowExecutor{}
+	db := newDB(&driver.Driver{Dialect: driver.MySQLDialect{}}, exec).
+		RequireRawApproval("reviewed work item projection").
+		TouchedTables("work_items", "users", "users")
+
+	plan, err := db.RawPlan(context.Background(), "SELECT * FROM work_items JOIN users ON users.id = work_items.user_id")
+	if err != nil {
+		t.Fatalf("RawPlan: %v", err)
+	}
+	if len(plan.Tables) != 2 || plan.Tables[0].Name != "work_items" || plan.Tables[1].Name != "users" {
+		t.Fatalf("tables=%#v", plan.Tables)
+	}
+	if plan.Approval == nil || plan.Approval.Reason == "" {
+		t.Fatalf("approval=%#v", plan.Approval)
+	}
+}

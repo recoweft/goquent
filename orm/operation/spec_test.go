@@ -77,6 +77,15 @@ func TestValidateRejectsUnsafeSpec(t *testing.T) {
 	if !errors.Is(err, ErrForbiddenField) {
 		t.Fatalf("expected forbidden field rejection, got %v", err)
 	}
+	_, err = Validate(OperationSpec{
+		Operation: OperationSelect,
+		Model:     "Order",
+		Select:    []string{"id"},
+		Filters:   []FilterSpec{{Field: "tenant_id", Op: "=", ValueRef: "current_tenant"}},
+	}, Options{Manifest: m})
+	if !errors.Is(err, ErrValueRefMissing) {
+		t.Fatalf("expected missing value_ref rejection, got %v", err)
+	}
 }
 
 func TestValidatePolicyAndPII(t *testing.T) {

@@ -158,6 +158,31 @@ type QueryPlan struct {
 	Metadata           map[string]any    `json:"metadata,omitempty"`
 }
 
+// MetadataTableRisk stores []TableRiskMetadata in QueryPlan.Metadata.
+const MetadataTableRisk = "table_risk_metadata"
+
+// TableRiskMetadata gives the risk engine table key context without depending
+// on the manifest package.
+type TableRiskMetadata struct {
+	Table                 string     `json:"table"`
+	PrimaryKeyColumns     []string   `json:"primary_key_columns,omitempty"`
+	UniqueIndexes         [][]string `json:"unique_indexes,omitempty"`
+	TenantColumn          string     `json:"tenant_column,omitempty"`
+	SoftDeleteColumn      string     `json:"soft_delete_column,omitempty"`
+	RequiredFilterColumns []string   `json:"required_filter_columns,omitempty"`
+}
+
+// AttachTableRiskMetadata attaches table key metadata used by risk checks.
+func AttachTableRiskMetadata(plan *QueryPlan, metadata []TableRiskMetadata) {
+	if plan == nil || len(metadata) == 0 {
+		return
+	}
+	if plan.Metadata == nil {
+		plan.Metadata = make(map[string]any, 1)
+	}
+	plan.Metadata[MetadataTableRisk] = append([]TableRiskMetadata(nil), metadata...)
+}
+
 // RequiresApproval reports whether this plan needs explicit approval.
 func (p *QueryPlan) RequiresApproval() bool {
 	return p != nil && p.RequiredApproval

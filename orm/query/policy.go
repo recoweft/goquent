@@ -132,7 +132,82 @@ func cloneTablePolicy(policy TablePolicy) TablePolicy {
 	return policy
 }
 
+type policyCheckContext struct {
+	ambiguousPredicateColumns map[string]bool
+}
+
+func checkPolicies(plan *QueryPlan, extra *TablePolicy) []Warning {
+	if plan == nil {
+		return nil
+	}
+
+	byTable := make(map[string]TablePolicy)
+	for _, policy := range RegisteredTablePolicies() {
+		byTable[normalizeTableName(policy.Table)] = policy
+	}
+	if extra != nil && strings.TrimSpace(extra.Table) != "" {
+		byTable[normalizeTableName(extra.Table)] = cloneTablePolicy(*extra)
+	}
+
+	keys := make([]string, 0, len(byTable))
+	for key := range byTable {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	policies := make([]TablePolicy, 0, len(keys))
+	for _, key := range keys {
+		policy := byTable[key]
+		if planTouchesTable(plan, policy.Table) {
+			policies = append(policies, policy)
+		}
+	}
+
+	ctx := newPolicyCheckContext(policies)
+	var warnings []Warning
+	for i := range policies {
+		policy := policies[i]
+		warnings = append(warnings, checkPolicyWithContext(plan, &policy, ctx)...)
+	}
+	return warnings
+}
+
+func newPolicyCheckContext(policies []TablePolicy) policyCheckContext {
+	columnOwners := make(map[string]map[string]struct{})
+	addOwner := func(table, column string) {
+		column = normalizeColumnName(column)
+		if column == "" {
+			return
+		}
+		table = normalizeTableName(table)
+		if columnOwners[column] == nil {
+			columnOwners[column] = make(map[string]struct{})
+		}
+		columnOwners[column][table] = struct{}{}
+	}
+
+	for _, policy := range policies {
+		addOwner(policy.Table, policy.TenantColumn)
+		addOwner(policy.Table, policy.SoftDeleteColumn)
+		for _, col := range policy.RequiredFilterColumns {
+			addOwner(policy.Table, col)
+		}
+	}
+
+	ambiguous := make(map[string]bool)
+	for col, owners := range columnOwners {
+		if len(owners) > 1 {
+			ambiguous[col] = true
+		}
+	}
+	return policyCheckContext{ambiguousPredicateColumns: ambiguous}
+}
+
 func checkPolicy(plan *QueryPlan, policy *TablePolicy) []Warning {
+	return checkPolicyWithContext(plan, policy, policyCheckContext{})
+}
+
+func checkPolicyWithContext(plan *QueryPlan, policy *TablePolicy, ctx policyCheckContext) []Warning {
 	if plan == nil || policy == nil || policy.Table == "" {
 		return nil
 	}
@@ -141,7 +216,7 @@ func checkPolicy(plan *QueryPlan, policy *TablePolicy) []Warning {
 	}
 
 	var warnings []Warning
-	if policy.TenantColumn != "" && policyAppliesToOperation(plan.Operation) && !hasPredicateColumn(plan, policy.TenantColumn) {
+	if policy.TenantColumn != "" && policyAppliesToOperation(plan.Operation) && !hasPolicyPredicateColumn(plan, policy.Table, policy.TenantColumn, !ctx.ambiguousPredicateColumns[normalizeColumnName(policy.TenantColumn)]) {
 		warnings = append(warnings, policyWarning(
 			WarningTenantFilterMissing,
 			policyModeLevel(policy.TenantMode, RiskHigh),
@@ -151,7 +226,7 @@ func checkPolicy(plan *QueryPlan, policy *TablePolicy) []Warning {
 		))
 	}
 	for _, col := range policy.RequiredFilterColumns {
-		if policyAppliesToOperation(plan.Operation) && !hasPredicateColumn(plan, col) {
+		if policyAppliesToOperation(plan.Operation) && !hasPolicyPredicateColumn(plan, policy.Table, col, !ctx.ambiguousPredicateColumns[normalizeColumnName(col)]) {
 			warnings = append(warnings, policyWarning(
 				WarningRequiredFilterMissing,
 				policyModeLevel(policy.RequiredFilterMode, RiskHigh),
@@ -161,7 +236,7 @@ func checkPolicy(plan *QueryPlan, policy *TablePolicy) []Warning {
 			))
 		}
 	}
-	if policy.SoftDeleteColumn != "" && policyAppliesToOperation(plan.Operation) && shouldRequireSoftDeleteFilter(plan) && !hasPredicateColumn(plan, policy.SoftDeleteColumn) {
+	if policy.SoftDeleteColumn != "" && policyAppliesToOperation(plan.Operation) && shouldRequireSoftDeleteFilter(plan, policy.Table) && !hasPolicyPredicateColumn(plan, policy.Table, policy.SoftDeleteColumn, !ctx.ambiguousPredicateColumns[normalizeColumnName(policy.SoftDeleteColumn)]) {
 		warnings = append(warnings, policyWarning(
 			WarningSoftDeleteFilterMissing,
 			policyModeLevel(policy.SoftDeleteMode, RiskMedium),
@@ -171,7 +246,7 @@ func checkPolicy(plan *QueryPlan, policy *TablePolicy) []Warning {
 		))
 	}
 	if plan.Operation == OperationSelect {
-		for _, col := range selectedPIIColumns(plan, policy.PIIColumns) {
+		for _, col := range selectedPIIColumnsForPolicy(plan, policy.Table, policy.PIIColumns) {
 			w := policyWarning(
 				WarningPIIColumnSelected,
 				policyModeLevel(policy.PIIMode, RiskMedium),
@@ -230,12 +305,17 @@ func planTouchesTable(plan *QueryPlan, table string) bool {
 }
 
 func hasPredicateColumn(plan *QueryPlan, column string) bool {
+	return hasPolicyPredicateColumn(plan, "", column, true)
+}
+
+func hasPolicyPredicateColumn(plan *QueryPlan, table, column string, allowUnqualified bool) bool {
 	target := normalizeColumnName(column)
+	qualifiers := tableQualifierSet(plan, table)
 	for _, predicate := range plan.Predicates {
-		if normalizeColumnName(predicate.Column) == target {
+		if predicateColumnMatches(predicate.Column, target, qualifiers, allowUnqualified) {
 			return true
 		}
-		if normalizeColumnName(predicate.ValueColumn) == target {
+		if predicateColumnMatches(predicate.ValueColumn, target, qualifiers, allowUnqualified) {
 			return true
 		}
 	}
@@ -243,18 +323,23 @@ func hasPredicateColumn(plan *QueryPlan, column string) bool {
 }
 
 func selectedPIIColumns(plan *QueryPlan, piiColumns []string) []string {
+	return selectedPIIColumnsForPolicy(plan, "", piiColumns)
+}
+
+func selectedPIIColumnsForPolicy(plan *QueryPlan, table string, piiColumns []string) []string {
 	if len(piiColumns) == 0 {
 		return nil
 	}
+	qualifiers := tableQualifierSet(plan, table)
 	selectedAll := false
-	selected := make(map[string]struct{})
+	selected := make([]string, 0, len(plan.Columns))
 	for _, column := range plan.Columns {
 		if strings.TrimSpace(column.Name) == "*" || strings.TrimSpace(column.Expression) == "*" {
 			selectedAll = true
 			continue
 		}
 		if column.Name != "" {
-			selected[normalizeColumnName(column.Name)] = struct{}{}
+			selected = append(selected, column.Name)
 		}
 	}
 	var out []string
@@ -263,20 +348,86 @@ func selectedPIIColumns(plan *QueryPlan, piiColumns []string) []string {
 			out = append(out, pii)
 			continue
 		}
-		if _, ok := selected[normalizeColumnName(pii)]; ok {
-			out = append(out, pii)
+		target := normalizeColumnName(pii)
+		for _, column := range selected {
+			if predicateColumnMatches(column, target, qualifiers, true) {
+				out = append(out, pii)
+				break
+			}
 		}
 	}
 	return out
 }
 
-func shouldRequireSoftDeleteFilter(plan *QueryPlan) bool {
+func shouldRequireSoftDeleteFilter(plan *QueryPlan, table string) bool {
 	if plan.Metadata != nil {
 		if v, ok := plan.Metadata["soft_delete"].(string); ok && v == "with_deleted" {
-			return false
+			if policyTable, ok := plan.Metadata["policy_table"].(string); !ok || normalizeTableName(policyTable) == normalizeTableName(table) {
+				return false
+			}
 		}
 	}
 	return true
+}
+
+func predicateColumnMatches(reference, target string, qualifiers map[string]struct{}, allowUnqualified bool) bool {
+	qualifier, name := splitColumnReference(reference)
+	if name == "" || name != target {
+		return false
+	}
+	if len(qualifiers) == 0 {
+		return true
+	}
+	if qualifier == "" {
+		return allowUnqualified
+	}
+	_, ok := qualifiers[qualifier]
+	return ok
+}
+
+func splitColumnReference(reference string) (string, string) {
+	reference = strings.TrimSpace(reference)
+	if reference == "" {
+		return "", ""
+	}
+	idx := strings.LastIndex(reference, ".")
+	if idx < 0 {
+		return "", normalizeColumnName(reference)
+	}
+	return normalizeIdentifierToken(reference[:idx]), normalizeColumnName(reference)
+}
+
+func tableQualifierSet(plan *QueryPlan, table string) map[string]struct{} {
+	if plan == nil || strings.TrimSpace(table) == "" {
+		return nil
+	}
+	target := normalizeTableName(table)
+	out := make(map[string]struct{})
+	for _, ref := range plan.Tables {
+		if normalizeTableName(ref.Name) != target {
+			continue
+		}
+		addTableQualifier(out, ref.Name)
+		addTableQualifier(out, ref.Alias)
+		name, alias := splitTableAlias(ref.Name)
+		addTableQualifier(out, name)
+		addTableQualifier(out, alias)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func addTableQualifier(out map[string]struct{}, value string) {
+	value = normalizeIdentifierToken(value)
+	if value == "" {
+		return
+	}
+	out[value] = struct{}{}
+	if idx := strings.LastIndex(value, "."); idx >= 0 && idx+1 < len(value) {
+		out[value[idx+1:]] = struct{}{}
+	}
 }
 
 func normalizeColumnName(column string) string {
@@ -294,15 +445,27 @@ func normalizeTableName(table string) string {
 	if table == "" {
 		return ""
 	}
+	table, _ = splitTableAlias(table)
+	return normalizeIdentifierToken(table)
+}
+
+func splitTableAlias(table string) (string, string) {
+	table = strings.TrimSpace(table)
 	fields := strings.Fields(table)
 	if len(fields) >= 3 && strings.EqualFold(fields[1], "as") {
-		table = fields[0]
+		return fields[0], fields[2]
 	} else if len(fields) == 2 && isSimpleIdentifierToken(fields[0]) && isSimpleIdentifierToken(fields[1]) {
-		table = fields[0]
+		return fields[0], fields[1]
 	}
-	table = strings.TrimSpace(table)
-	table = strings.Trim(table, "`\"")
-	return strings.ToLower(table)
+	return table, ""
+}
+
+func normalizeIdentifierToken(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, "`\"")
+	value = strings.ReplaceAll(value, "`", "")
+	value = strings.ReplaceAll(value, `"`, "")
+	return strings.ToLower(value)
 }
 
 func isSimpleIdentifierToken(value string) bool {

@@ -71,7 +71,12 @@ func Open(driverName, dsn string, maxOpen, maxIdle int, lifetime time.Duration) 
 }
 
 // Close closes the underlying DB.
-func (d *Driver) Close() error { return d.DB.Close() }
+func (d *Driver) Close() error {
+	if d == nil || d.DB == nil {
+		return nil
+	}
+	return d.DB.Close()
+}
 
 // Tx wraps sql.Tx for transaction handling.
 type Tx struct{ *sql.Tx }

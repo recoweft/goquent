@@ -27,6 +27,8 @@ go run ./cmd/goquent manifest verify --format json \
 ```bash
 go run ./cmd/goquent review \
   --manifest goquent.manifest.json \
+  --schema schema.json \
+  --policy policies.json \
   --require-fresh-manifest \
   ./...
 ```
@@ -34,7 +36,8 @@ go run ./cmd/goquent review \
 Exit behavior:
 
 - `manifest verify` returns `0` when fresh and `1` when stale.
-- `review --require-fresh-manifest` returns `3` when the manifest is stale.
+- `review --require-fresh-manifest` returns `3` when the manifest is missing, stale, or cannot be
+  verified against current inputs.
 
 MCP exposes freshness through `goquent://manifest` and `goquent://manifest-status`.
 
@@ -46,8 +49,18 @@ go run ./cmd/goquent manifest verify \
   --schema schema.json \
   --policy policies.json \
   --code ./orm
-go run ./cmd/goquent review --manifest goquent.manifest.json --require-fresh-manifest ./...
+go run ./cmd/goquent review \
+  --manifest goquent.manifest.json \
+  --schema schema.json \
+  --policy policies.json \
+  --code ./orm \
+  --require-fresh-manifest \
+  ./...
 ```
+
+When `--require-fresh-manifest` is used, pass at least one current input such as `--schema`,
+`--policy`, `--code`, or `--database-schema`. Without current inputs, review reports
+`MANIFEST_UNVERIFIED` because the manifest cannot be trusted as fresh.
 
 If verification fails, regenerate the manifest or update the schema/policy inputs before asking AI
 tools to generate database code.

@@ -13,8 +13,8 @@ import (
 	"github.com/faciam-dev/goquent/orm/query"
 )
 
-// executor abstracts sql.DB and sql.Tx.
-type executor interface {
+// Executor abstracts sql.DB, sql.Tx, and compatible transaction wrappers.
+type Executor interface {
 	// Query runs a SQL statement returning multiple rows.
 	Query(query string, args ...any) (*sql.Rows, error)
 	// QueryContext is the context-aware version of Query.
@@ -32,9 +32,10 @@ type executor interface {
 // DB provides main ORM interface.
 type DB struct {
 	drv         *driver.Driver
-	exec        executor
+	exec        Executor
 	scanOpts    ScanOptions
 	rawApproval *query.Approval
+	rawTables   []string
 	rawErr      error
 }
 
@@ -67,7 +68,7 @@ func defaultDialect(name string) driver.Dialect {
 	return driver.MySQLDialect{}
 }
 
-func newDB(d *driver.Driver, exec executor, opts ...Option) *DB {
+func newDB(d *driver.Driver, exec Executor, opts ...Option) *DB {
 	db := &DB{drv: d, exec: exec, scanOpts: ScanOptions{BoolPolicy: BoolCompat}}
 	for _, o := range opts {
 		o(db)
@@ -90,10 +91,47 @@ func (db *DB) RequireRawApproval(reason string) *DB {
 	return &next
 }
 
+// TouchedTables returns a shallow DB copy that annotates raw SQL QueryPlans
+// with the tables the caller reviewed.
+func (db *DB) TouchedTables(tables ...string) *DB {
+	next := *db
+	next.rawTables = append([]string(nil), db.rawTables...)
+	seen := make(map[string]struct{}, len(next.rawTables)+len(tables))
+	for _, table := range next.rawTables {
+		seen[strings.ToLower(strings.TrimSpace(table))] = struct{}{}
+	}
+	for _, table := range tables {
+		table = strings.TrimSpace(table)
+		if table == "" {
+			continue
+		}
+		key := strings.ToLower(table)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		next.rawTables = append(next.rawTables, table)
+	}
+	return &next
+}
+
 // NewDB wraps an existing sql.DB with a dialect into DB.
 func NewDB(sqlDB *sql.DB, dialect driver.Dialect, opts ...Option) *DB {
 	d := &driver.Driver{DB: sqlDB, Dialect: dialect}
 	return newDB(d, sqlDB, opts...)
+}
+
+// NewDBWithExecutor wraps an existing sql.DB/sql.Tx-compatible executor with a
+// dialect into DB. The returned DB does not own the executor; Close is a no-op
+// unless the executor was created by Open/OpenWithDriver/NewDB with *sql.DB.
+func NewDBWithExecutor(exec Executor, dialect driver.Dialect, opts ...Option) *DB {
+	d := &driver.Driver{Dialect: dialect}
+	return newDB(d, exec, opts...)
+}
+
+// NewTxDB wraps an existing sql.Tx with a dialect into DB.
+func NewTxDB(tx *sql.Tx, dialect driver.Dialect, opts ...Option) *DB {
+	return NewDBWithExecutor(tx, dialect, opts...)
 }
 
 // Open opens a MySQL database with default pooling. Deprecated: use
@@ -140,12 +178,28 @@ func OpenWithDriverOptions(driverName, dsn string, opts ...Option) (*DB, error) 
 	return newDB(drv, drv.DB, opts...), nil
 }
 
-// Close closes underlying DB.
-func (db *DB) Close() error { return db.drv.Close() }
+// Close closes the owned underlying DB. DB values created around an external
+// executor or transaction do not own a sql.DB, so Close is a no-op for them.
+func (db *DB) Close() error {
+	if db == nil || db.drv == nil || db.drv.DB == nil {
+		return nil
+	}
+	return db.drv.Close()
+}
 
 // newTransactionDB wraps a sql.Tx in a DB instance bound to the same driver.
 func (db *DB) newTransactionDB(tx *sql.Tx) *DB {
-	return &DB{drv: db.drv, exec: tx, scanOpts: db.scanOpts, rawApproval: db.rawApproval, rawErr: db.rawErr}
+	return &DB{drv: db.drv, exec: tx, scanOpts: db.scanOpts, rawApproval: db.rawApproval, rawTables: append([]string(nil), db.rawTables...), rawErr: db.rawErr}
+}
+
+// WrapTx returns a DB copy that executes through tx while preserving this DB's
+// dialect, scan options, and raw-SQL approval state.
+func (db *DB) WrapTx(tx *sql.Tx, opts ...Option) *DB {
+	next := db.newTransactionDB(tx)
+	for _, o := range opts {
+		o(next)
+	}
+	return next
 }
 
 // Tx represents a transaction-scoped DB wrapper.
@@ -200,6 +254,12 @@ func (db *DB) Table(name string) *query.Query {
 	return query.New(db.exec, name, db.drv.Dialect)
 }
 
+// TablePath creates a query for a schema-qualified or otherwise
+// path-qualified table name.
+func (db *DB) TablePath(parts ...string) *query.Query {
+	return db.Table(strings.Join(parts, "."))
+}
+
 func (db *DB) rawPlan(ctx context.Context, q string, args ...any) (*query.QueryPlan, error) {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
@@ -213,6 +273,9 @@ func (db *DB) rawPlan(ctx context.Context, q string, args ...any) (*query.QueryP
 	if db.rawApproval != nil {
 		copied := *db.rawApproval
 		plan.Approval = &copied
+	}
+	for _, table := range db.rawTables {
+		plan.Tables = append(plan.Tables, query.TableRef{Name: table})
 	}
 	return plan, nil
 }
