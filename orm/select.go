@@ -139,7 +139,10 @@ func SelectAll[T any](ctx context.Context, db *DB, q string, args ...any) ([]T, 
 		return nil, err
 	}
 	defer rows.Close()
+	return scanRowsAll[T](db, rows)
+}
 
+func scanRowsAll[T any](db *DB, rows *sql.Rows) ([]T, error) {
 	var t T
 	typ := reflect.TypeOf(t)
 	switch {

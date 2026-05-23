@@ -391,6 +391,15 @@ func queryReturningOne[T any](ctx context.Context, db *DB, sqlStr string, args .
 	return scanRowsOne[T](db, rows)
 }
 
+func queryReturningAll[T any](ctx context.Context, db *DB, sqlStr string, args ...any) ([]T, error) {
+	rows, err := db.queryContextTrusted(ctx, sqlStr, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanRowsAll[T](db, rows)
+}
+
 func queryReturningOneWithOptions[T any](ctx context.Context, db *DB, sqlStr string, o *writeOptions, args ...any) (T, error) {
 	row, err := queryReturningOne[T](ctx, db, sqlStr, args...)
 	if err == nil || !IsNotFound(err) || o == nil || o.zeroRowsErr == nil {
@@ -640,6 +649,35 @@ func InsertReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...Wri
 	return queryReturningOneWithOptions[T](ctx, db, sqlStr, o, args...)
 }
 
+// InsertMany inserts all values in one INSERT statement.
+//
+// Empty slices return an error instead of a no-op result. Map writes require
+// Table, and every row must provide the selected column set.
+func InsertMany[T any](ctx context.Context, db *DB, values []T, opts ...WriteOpt) (sql.Result, error) {
+	o := applyWriteOpts(opts)
+	sqlStr, args, err := buildInsertManyStatement(db, values, o)
+	if err != nil {
+		return nil, err
+	}
+	return execWriteStatement(ctx, db, sqlStr, args, o)
+}
+
+// InsertManyReturning inserts all values and scans PostgreSQL RETURNING rows.
+func InsertManyReturning[R any, T any](ctx context.Context, db *DB, values []T, opts ...WriteOpt) ([]R, error) {
+	if len(values) == 0 {
+		return nil, fmt.Errorf("goquent: no rows to insert")
+	}
+	o := applyWriteOpts(opts)
+	if err := ensureReturningColumns[R](o); err != nil {
+		return nil, err
+	}
+	sqlStr, args, err := buildInsertManyStatement(db, values, o)
+	if err != nil {
+		return nil, err
+	}
+	return queryReturningAll[R](ctx, db, sqlStr, args...)
+}
+
 func buildInsertStatement(db *DB, v any, o *writeOptions) (string, []any, error) {
 	if len(o.assignments) > 0 {
 		return "", nil, fmt.Errorf("assignment options are not supported for Insert")
@@ -713,6 +751,221 @@ func buildInsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 		return "", nil, err
 	}
 	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableSQL, strings.Join(quotedCols, ", "), strings.Join(ph, ", "))
+	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
+	if err != nil {
+		return "", nil, err
+	}
+	return sqlStr, args, nil
+}
+
+func buildInsertManyStatement[T any](db *DB, values []T, o *writeOptions) (string, []any, error) {
+	if len(values) == 0 {
+		return "", nil, fmt.Errorf("goquent: no rows to insert")
+	}
+	if err := validateInsertManyOptions(o); err != nil {
+		return "", nil, err
+	}
+
+	first := reflect.ValueOf(values[0])
+	if !first.IsValid() {
+		return "", nil, fmt.Errorf("unsupported type <nil>")
+	}
+	typ := first.Type()
+
+	var (
+		table string
+		cols  []string
+		args  []any
+		err   error
+	)
+	switch {
+	case isMapStringInterface(typ):
+		if o.table == "" {
+			return "", nil, fmt.Errorf("Table option required for map writes")
+		}
+		table = o.table
+		cols, args, err = insertManyMapColumnsAndArgs(values, o)
+	case typ.Kind() == reflect.Struct:
+		table = o.table
+		if table == "" {
+			table = model.TableName(values[0])
+		}
+		cols, args, err = insertManyStructColumnsAndArgs(values, typ, o)
+	default:
+		return "", nil, fmt.Errorf("unsupported type %s", typ)
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	return buildInsertManySQL(db, table, cols, len(values), args, o)
+}
+
+func validateInsertManyOptions(o *writeOptions) error {
+	if len(o.assignments) > 0 {
+		return fmt.Errorf("assignment options are not supported for InsertMany")
+	}
+	if len(o.conflictCols) > 0 ||
+		strings.TrimSpace(o.conflictWhere) != "" ||
+		strings.TrimSpace(o.conflictConstraint) != "" ||
+		strings.TrimSpace(o.conflictTargetRaw) != "" ||
+		o.hasUpsertUpdates ||
+		o.conflictDoNothing {
+		return fmt.Errorf("conflict/upsert options are not supported for InsertMany")
+	}
+	return nil
+}
+
+func insertManyStructColumnsAndArgs[T any](values []T, typ reflect.Type, o *writeOptions) ([]string, []any, error) {
+	var cols []string
+	args := make([]any, 0, len(values))
+	for i, row := range values {
+		val := reflect.ValueOf(row)
+		if !val.IsValid() {
+			return nil, nil, fmt.Errorf("goquent: InsertMany row %d is nil", i)
+		}
+		if val.Type() != typ {
+			return nil, nil, fmt.Errorf("goquent: InsertMany row %d has type %s, expected %s", i, val.Type(), typ)
+		}
+		rowCols, rowArgs, err := insertStructColumnsAndArgs(val, o)
+		if err != nil {
+			return nil, nil, err
+		}
+		if i == 0 {
+			cols = rowCols
+		} else if !sameColumns(cols, rowCols) {
+			return nil, nil, fmt.Errorf("goquent: InsertMany requires identical columns in every row")
+		}
+		args = append(args, rowArgs...)
+	}
+	if len(cols) == 0 {
+		return nil, nil, fmt.Errorf("no columns to insert")
+	}
+	return cols, args, nil
+}
+
+func insertStructColumnsAndArgs(val reflect.Value, o *writeOptions) ([]string, []any, error) {
+	meta, err := getTypeMeta(val.Type())
+	if err != nil {
+		return nil, nil, err
+	}
+	cols := make([]string, 0, len(meta.Fields))
+	args := make([]any, 0, len(meta.Fields))
+	for _, fm := range meta.Fields {
+		if fm.Readonly {
+			continue
+		}
+		if len(o.cols) > 0 {
+			if _, ok := o.cols[fm.Col]; !ok {
+				continue
+			}
+		}
+		if _, ok := o.omit[fm.Col]; ok {
+			continue
+		}
+		fv := val.FieldByIndex(fm.IndexPath)
+		if fm.OmitEmpty && fv.IsZero() {
+			continue
+		}
+		cols = append(cols, fm.Col)
+		args = append(args, fv.Interface())
+	}
+	return cols, args, nil
+}
+
+func insertManyMapColumnsAndArgs[T any](values []T, o *writeOptions) ([]string, []any, error) {
+	first := reflect.ValueOf(values[0])
+	cols := mapInsertManyColumnSet(first, o)
+	if len(cols) == 0 {
+		return nil, nil, fmt.Errorf("no columns to insert")
+	}
+	requireExact := len(o.cols) == 0
+	args := make([]any, 0, len(values)*len(cols))
+	for i, row := range values {
+		val := reflect.ValueOf(row)
+		if !val.IsValid() {
+			return nil, nil, fmt.Errorf("goquent: InsertMany map row %d is nil", i)
+		}
+		if !isMapStringInterface(val.Type()) {
+			return nil, nil, fmt.Errorf("goquent: InsertMany row %d has type %s, expected %s", i, val.Type(), first.Type())
+		}
+		if requireExact && !sameColumns(cols, mapInsertManyColumnSet(val, o)) {
+			return nil, nil, fmt.Errorf("goquent: InsertMany map row %d has inconsistent columns", i)
+		}
+		rowArgs, err := mapInsertManyRowArgs(val, cols, i)
+		if err != nil {
+			return nil, nil, err
+		}
+		args = append(args, rowArgs...)
+	}
+	return cols, args, nil
+}
+
+func mapInsertManyColumnSet(val reflect.Value, o *writeOptions) []string {
+	if len(o.cols) > 0 {
+		cols := make([]string, 0, len(o.cols))
+		for col := range o.cols {
+			if _, omitted := o.omit[col]; omitted {
+				continue
+			}
+			cols = append(cols, col)
+		}
+		sort.Strings(cols)
+		return cols
+	}
+	cols := make([]string, 0, val.Len())
+	iter := val.MapRange()
+	for iter.Next() {
+		col := iter.Key().String()
+		if _, omitted := o.omit[col]; omitted {
+			continue
+		}
+		cols = append(cols, col)
+	}
+	sort.Strings(cols)
+	return cols
+}
+
+func mapInsertManyRowArgs(val reflect.Value, cols []string, row int) ([]any, error) {
+	args := make([]any, 0, len(cols))
+	for _, col := range cols {
+		mv := val.MapIndex(reflect.ValueOf(col))
+		if !mv.IsValid() {
+			return nil, fmt.Errorf("goquent: InsertMany map row %d missing column %s", row, col)
+		}
+		args = append(args, mv.Interface())
+	}
+	return args, nil
+}
+
+func sameColumns(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func buildInsertManySQL(db *DB, table string, cols []string, rowCount int, args []any, o *writeOptions) (string, []any, error) {
+	quotedCols := make([]string, len(cols))
+	for i, c := range cols {
+		quotedCols[i] = quote(db.drv.Dialect, c)
+	}
+	values := make([]string, rowCount)
+	argPos := 1
+	for i := 0; i < rowCount; i++ {
+		ph := buildPlaceholders(db.drv.Dialect, len(cols), argPos)
+		values[i] = "(" + strings.Join(ph, ", ") + ")"
+		argPos += len(cols)
+	}
+	tableSQL, err := quoteWriteTable(db.drv.Dialect, table, o)
+	if err != nil {
+		return "", nil, err
+	}
+	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES %s", tableSQL, strings.Join(quotedCols, ", "), strings.Join(values, ", "))
 	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
 	if err != nil {
 		return "", nil, err

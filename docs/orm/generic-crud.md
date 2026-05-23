@@ -5,9 +5,11 @@ The generic API is the small set of helpers around:
 - `SelectOne[T]`
 - `SelectAll[T]`
 - `Insert[T]`
+- `InsertMany[T]`
 - `Update[T]`
 - `Upsert[T]`
 - `InsertReturning[T]`
+- `InsertManyReturning[T]`
 - `UpdateReturning[T]`
 - `UpsertReturning[T]`
 
@@ -50,6 +52,7 @@ The write side of the generic API builds simple `INSERT`, `UPDATE`, and `UPSERT`
 
 ```go
 _, err := orm.Insert(ctx, db, User{Name: "sam", Age: 18})
+_, err = orm.InsertMany(ctx, db, []User{{Name: "sam"}, {Name: "lee"}}, orm.Columns("name"))
 _, err = orm.Update(ctx, db, User{ID: 1, Name: "sam"}, orm.Columns("name"), orm.WherePK())
 _, err = orm.Upsert(ctx, db, User{ID: 1, Name: "sam", Age: 18}, orm.WherePK())
 created, err := orm.InsertReturning[User](ctx, db, User{Name: "sam", Age: 18})
@@ -197,7 +200,8 @@ type ScoreRow struct {
 
 ### Supported input shapes
 
-`Insert`, `Update`, and `Upsert` currently accept:
+`Insert`, `Update`, and `Upsert` accept one value. `InsertMany` accepts a slice
+of values. The supported element shapes are:
 
 - A non-pointer struct value
 - `map[string]any`
@@ -254,6 +258,55 @@ _, err := orm.Insert(ctx, db, map[string]any{
     "active": true,
 }, orm.Table("users"))
 ```
+
+### `InsertMany[T]`
+
+`InsertMany` builds one multi-row `INSERT` statement. It supports struct slices
+and `[]map[string]any`, uses the same `Table(...)`, `TablePath(...)`,
+`SchemaName(...)`, `Columns(...)`, `Omit(...)`, and `Returning(...)` options as
+single-row inserts, and works with transaction-wrapped `*orm.DB` values.
+
+An empty slice returns `goquent: no rows to insert`. It is not treated as a
+successful no-op.
+
+For struct slices, columns are collected in struct metadata order. All rows
+must resolve to the same column set; if `omitempty` causes one row to omit a
+column that another row includes, split the write or remove `omitempty` from
+that persistence field.
+
+```go
+_, err := orm.InsertMany(
+    ctx,
+    db,
+    []User{
+        {Name: "sam", Age: 18, Active: true},
+        {Name: "lee", Age: 22, Active: true},
+    },
+    orm.Columns("name", "age", "active"),
+)
+```
+
+For map slices, `Table(...)` is required. Without `Columns(...)`, goquent takes
+the column set from the first row after `Omit(...)` and requires every row to
+have the same keys. With `Columns(...)`, every row must provide those columns;
+extra map keys are ignored.
+
+```go
+_, err := orm.InsertMany(
+    ctx,
+    db,
+    []map[string]any{
+        {"document_id": docID, "node_id": "n1", "body": "Intro"},
+        {"document_id": docID, "node_id": "n2", "body": "Facts"},
+    },
+    orm.TablePath("app", "document_nodes"),
+    orm.Columns("document_id", "node_id", "body"),
+)
+```
+
+`InsertMany` does not support assignment or conflict/upsert options. Use
+`Upsert` for single-row conflict handling; a future bulk upsert can keep its
+own semantics instead of overloading insert.
 
 ### `Update[T]`
 
@@ -384,7 +437,10 @@ _, err := orm.Upsert(
 
 ### Typed returning helpers
 
-`InsertReturning[T]`, `UpdateReturning[T]`, and `UpsertReturning[T]` execute the same generated write statements as `Insert`, `Update`, and `Upsert`, but scan the PostgreSQL `RETURNING` row into `T`.
+`InsertReturning[T]`, `InsertManyReturning[T]`, `UpdateReturning[T]`, and
+`UpsertReturning[T]` execute the same generated write statements as `Insert`,
+`InsertMany`, `Update`, and `Upsert`, but scan PostgreSQL `RETURNING` rows into
+typed values.
 
 If you do not pass `Returning(...)`, goquent infers the returning column list from the destination struct tags.
 
@@ -393,6 +449,21 @@ created, err := orm.InsertReturning[User](
     ctx,
     db,
     User{Name: "sam", Age: 18, Active: true},
+)
+```
+
+Bulk returning scans every returned row:
+
+```go
+nodes, err := orm.InsertManyReturning[DocumentNodeRow](
+    ctx,
+    db,
+    []map[string]any{
+        {"document_id": docID, "node_id": "n1", "body": "Intro"},
+        {"document_id": docID, "node_id": "n2", "body": "Facts"},
+    },
+    orm.Table("document_nodes"),
+    orm.Returning("document_id", "node_id", "body", "created_at"),
 )
 ```
 
@@ -410,7 +481,10 @@ updated, err := orm.UpdateByReturning[User](
 )
 ```
 
-Map return values cannot infer a column list. For `InsertReturning`, `UpdateReturning`, and `UpsertReturning`, pass `Returning(...)` when the destination is `map[string]any`. `UpdateByReturning` currently infers columns from a struct destination.
+Map return values cannot infer a column list. For `InsertReturning`,
+`InsertManyReturning`, `UpdateReturning`, and `UpsertReturning`, pass
+`Returning(...)` when the destination is `map[string]any`. `UpdateByReturning`
+currently infers columns from a struct destination.
 
 ### Insert-once returning
 
@@ -497,7 +571,9 @@ _, err := orm.Update(
 )
 ```
 
-`Insert`, `Update`, and `Upsert` still return `sql.Result` when you use `Returning(...)`; they consume the returned rows to count affected rows. Use the typed returning helpers when you need row values.
+`Insert`, `InsertMany`, `Update`, and `Upsert` still return `sql.Result` when
+you use `Returning(...)`; they consume the returned rows to count affected rows.
+Use the typed returning helpers when you need row values.
 
 ### `ConflictColumns(...)`
 
@@ -571,7 +647,7 @@ Every column named in `UpdateColumns` must also be present in the insert column 
 
 Use assignment options when the database should compute the updated value.
 They apply to `Update` and to the conflict-update side of `Upsert`; `Insert`
-rejects them.
+and `InsertMany` reject them.
 
 ```go
 _, err := orm.Update(
@@ -947,7 +1023,7 @@ _, err := orm.DeleteBy(ctx, db.Table("users"), WithProfile(), BioLike("%python%"
 
 - goquent ships with built-in `orm.MySQL` and `orm.Postgres` driver names.
 - `SelectOne` and `SelectAll` execute the SQL string you pass in, so placeholder syntax must match your driver.
-- `Insert`, `Update`, and `Upsert` use the configured dialect to quote identifiers and build placeholders.
+- `Insert`, `InsertMany`, `Update`, and `Upsert` use the configured dialect to quote identifiers and build placeholders.
 - `ErrNotFound` aliases `sql.ErrNoRows`; use `IsNotFound(err)` for wrapped errors.
 - `ExpectAffected(n)` validates write row counts. Combine it with `NoRowsAs(ErrConflict)` for explicit guarded writes.
 - `Returning(...)` is PostgreSQL-only in the current implementation.
@@ -956,9 +1032,10 @@ _, err := orm.DeleteBy(ctx, db.Table("users"), WithProfile(), BioLike("%python%"
 ## Limitations and caveats
 
 - Reads only support struct destinations and `map[string]any`. Pointer destinations are not supported.
-- Writes only support non-pointer struct values and `map[string]any`.
+- Writes only support non-pointer struct values and `map[string]any`; `InsertMany` supports slices of those shapes.
 - Generic `Update` only supports primary-key-based updates through `WherePK()`. For arbitrary predicates, use `UpdateBy` or `UpdateByReturning`.
 - Generic `Upsert` can use `WherePK()`, `ConflictColumns(...)`, `ConflictConstraint(...)`, or `ConflictTargetRaw(...)`.
+- Generic `InsertMany` is insert-only and rejects conflict/upsert and assignment options.
 - Scoped helpers are the recommended bridge when you want arbitrary predicates, joins, or `DELETE` while still keeping generic read/write helpers as the main public API.
 - Struct `Update` and `Upsert` depend on `db:"...,pk"` tags. Without them, `WherePK()` has no primary-key columns to use.
 - Since generic writes take struct values, a `TableName() string` override must be available on the value type. A pointer-receiver-only `TableName` method is not picked up here.

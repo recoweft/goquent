@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -294,6 +295,196 @@ func TestInsertReturningMapUsesExplicitColumns(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestInsertManyStructBuildsSingleStatement(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.MySQLDialect{})
+
+	_, err := InsertMany(
+		context.Background(),
+		db,
+		[]genericWriteUser{
+			{Name: "alice", Age: 30},
+			{Name: "bob", Age: 31},
+		},
+		Columns("name", "age"),
+	)
+	if err != nil {
+		t.Fatalf("insert many struct: %v", err)
+	}
+	wantSQL := "INSERT INTO `users` (`name`, `age`) VALUES (?, ?), (?, ?)"
+	if exec.query != wantSQL {
+		t.Fatalf("unexpected query:\nwant %s\ngot  %s", wantSQL, exec.query)
+	}
+	wantArgs := []any{"alice", 30, "bob", 31}
+	if !reflect.DeepEqual(exec.args, wantArgs) {
+		t.Fatalf("unexpected args: %#v", exec.args)
+	}
+}
+
+func TestInsertManyMapBuildsSingleStatement(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.MySQLDialect{})
+
+	_, err := InsertMany(
+		context.Background(),
+		db,
+		[]map[string]any{
+			{"name": "alice", "age": 30},
+			{"name": "bob", "age": 31},
+		},
+		Table("users"),
+	)
+	if err != nil {
+		t.Fatalf("insert many map: %v", err)
+	}
+	wantSQL := "INSERT INTO `users` (`age`, `name`) VALUES (?, ?), (?, ?)"
+	if exec.query != wantSQL {
+		t.Fatalf("unexpected query:\nwant %s\ngot  %s", wantSQL, exec.query)
+	}
+	wantArgs := []any{30, "alice", 31, "bob"}
+	if !reflect.DeepEqual(exec.args, wantArgs) {
+		t.Fatalf("unexpected args: %#v", exec.args)
+	}
+}
+
+func TestInsertManyPostgresPlaceholderNumbering(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := InsertMany(
+		context.Background(),
+		db,
+		[]genericWriteUser{
+			{Name: "alice", Age: 30},
+			{Name: "bob", Age: 31},
+		},
+		Columns("name", "age"),
+	)
+	if err != nil {
+		t.Fatalf("insert many postgres: %v", err)
+	}
+	wantSQL := `INSERT INTO "users" ("name", "age") VALUES ($1, $2), ($3, $4)`
+	if exec.query != wantSQL {
+		t.Fatalf("unexpected query:\nwant %s\ngot  %s", wantSQL, exec.query)
+	}
+}
+
+func TestInsertManyTablePathOption(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := InsertMany(
+		context.Background(),
+		db,
+		[]map[string]any{
+			{"name": "alice"},
+			{"name": "bob"},
+		},
+		TablePath("app", "users"),
+	)
+	if err != nil {
+		t.Fatalf("insert many table path: %v", err)
+	}
+	if !strings.Contains(exec.query, `INSERT INTO "app"."users"`) {
+		t.Fatalf("expected table path, got: %s", exec.query)
+	}
+}
+
+func TestInsertManyEmptySliceReturnsError(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := InsertMany[genericWriteUser](context.Background(), db, nil)
+	if err == nil || !strings.Contains(err.Error(), "goquent: no rows to insert") {
+		t.Fatalf("expected no rows error, got: %v", err)
+	}
+}
+
+func TestInsertManyMapRejectsInconsistentKeys(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := InsertMany(
+		context.Background(),
+		db,
+		[]map[string]any{
+			{"name": "alice"},
+			{"name": "bob", "age": 31},
+		},
+		Table("users"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "inconsistent columns") {
+		t.Fatalf("expected inconsistent map columns error, got: %v", err)
+	}
+}
+
+func TestInsertManyReturningTypedStructScan(t *testing.T) {
+	db, mock := newReturningMockDB(t)
+	sqlText := `INSERT INTO "users" ("name", "age") VALUES ($1, $2), ($3, $4) RETURNING "id", "name", "age"`
+	mock.ExpectQuery(regexp.QuoteMeta(sqlText)).
+		WithArgs("alice", 30, "bob", 31).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "age"}).
+			AddRow(1, "alice", 30).
+			AddRow(2, "bob", 31))
+
+	rows, err := InsertManyReturning[genericWriteUser](
+		context.Background(),
+		db,
+		[]genericWriteUser{
+			{Name: "alice", Age: 30},
+			{Name: "bob", Age: 31},
+		},
+		Columns("name", "age"),
+	)
+	if err != nil {
+		t.Fatalf("insert many returning: %v", err)
+	}
+	if len(rows) != 2 || rows[0].ID != 1 || rows[1].Name != "bob" {
+		t.Fatalf("unexpected rows: %+v", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestInsertManyReturningMapRequiresReturning(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := InsertManyReturning[map[string]any](
+		context.Background(),
+		db,
+		[]map[string]any{{"name": "alice"}},
+		Table("users"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "Returning columns are required for map return values") {
+		t.Fatalf("expected returning columns error, got: %v", err)
+	}
+}
+
+func TestInsertManyRejectsAssignmentOptions(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := InsertMany(
+		context.Background(),
+		db,
+		[]map[string]any{{"name": "alice"}},
+		Table("users"),
+		SetRaw("updated_at", "now()"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "assignment options are not supported for InsertMany") {
+		t.Fatalf("expected assignment insert many error, got: %v", err)
+	}
+}
+
+func TestInsertManyRejectsConflictOptions(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := InsertMany(
+		context.Background(),
+		db,
+		[]map[string]any{{"id": 1, "name": "alice"}},
+		Table("users"),
+		ConflictColumns("id"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "conflict/upsert options are not supported for InsertMany") {
+		t.Fatalf("expected conflict insert many error, got: %v", err)
 	}
 }
 

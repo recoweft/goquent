@@ -32,6 +32,7 @@ func newFieldMeta(col string, index []int) *fieldMeta {
 type typeMeta struct {
 	FieldsByName map[string]*fieldMeta
 	FieldsByNorm map[string]*fieldMeta
+	Fields       []*fieldMeta
 	PKCols       []string
 }
 
@@ -107,6 +108,7 @@ func getTypeMeta(t reflect.Type) (*typeMeta, error) {
 		}
 		m.FieldsByName[col] = fm
 		m.FieldsByNorm[normalize(col)] = fm
+		m.Fields = append(m.Fields, fm)
 	}
 	metaCache.Store(t, m)
 	return m, nil
