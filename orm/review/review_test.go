@@ -119,6 +119,89 @@ func TestRunReviewsStaleManifest(t *testing.T) {
 	}
 }
 
+func TestRunRequiresFreshManifestRejectsMissingAndUnverified(t *testing.T) {
+	dir := t.TempDir()
+	report, err := Run(Options{Paths: []string{dir}, RequireFreshManifest: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ManifestStatus == nil || report.ManifestStatus.State != "missing" {
+		t.Fatalf("expected missing manifest status, got %#v", report.ManifestStatus)
+	}
+	if !hasFinding(report.Findings, manifest.WarningRequired) {
+		t.Fatalf("expected %s finding, got %#v", manifest.WarningRequired, report.Findings)
+	}
+
+	m, err := manifest.Generate(manifest.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := m.ToJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, "goquent.manifest.json")
+	if err := os.WriteFile(manifestPath, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err = Run(Options{ManifestPath: manifestPath, RequireFreshManifest: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ManifestStatus == nil || report.ManifestStatus.State != "unverified" {
+		t.Fatalf("expected unverified manifest status, got %#v", report.ManifestStatus)
+	}
+	if !hasFinding(report.Findings, manifest.WarningUnverified) {
+		t.Fatalf("expected %s finding, got %#v", manifest.WarningUnverified, report.Findings)
+	}
+}
+
+func TestRunVerifiesManifestAgainstCurrentInputs(t *testing.T) {
+	dir := t.TempDir()
+	stored, err := manifest.Generate(manifest.Options{
+		Schema: &migration.Schema{Tables: []migration.TableSchema{{
+			Name:    "users",
+			Columns: []migration.ColumnSchema{{Name: "id", Type: "bigint"}},
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := manifest.Generate(manifest.Options{
+		Schema: &migration.Schema{Tables: []migration.TableSchema{{
+			Name:    "users",
+			Columns: []migration.ColumnSchema{{Name: "id", Type: "bigint"}},
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := stored.ToJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, "goquent.manifest.json")
+	if err := os.WriteFile(manifestPath, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(Options{
+		ManifestPath:         manifestPath,
+		RequireFreshManifest: true,
+		CurrentManifest:      current,
+		ManifestInputs:       true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ManifestStatus == nil || report.ManifestStatus.State != "fresh" || !report.ManifestStatus.Verified {
+		t.Fatalf("expected verified fresh manifest status, got %#v", report.ManifestStatus)
+	}
+	if hasFinding(report.Findings, manifest.WarningUnverified) || hasFinding(report.Findings, manifest.WarningStale) {
+		t.Fatalf("unexpected freshness finding: %#v", report.Findings)
+	}
+}
+
 func TestRunReviewsSuppressedWarningsFromQueryPlanJSON(t *testing.T) {
 	dir := t.TempDir()
 	plan := query.QueryPlan{
@@ -249,6 +332,53 @@ func run(q any, db any, sqlText string) {
 	}
 	if unsupported.AnalysisPrecision != query.AnalysisUnsupported {
 		t.Fatalf("expected unsupported precision, got %s", unsupported.AnalysisPrecision)
+	}
+}
+
+func TestRunReviewsGoSourceWithManifestPolicies(t *testing.T) {
+	dir := t.TempDir()
+	goPath := filepath.Join(dir, "repo.go")
+	src := `package sample
+
+func run(db any) {
+	var rows []map[string]any
+	db.Table("users").Select("id", "email").GetMaps(&rows)
+	db.Table("users").Where("tenant_id", "tenant-1").Update(map[string]any{"name": "x"})
+}
+`
+	if err := os.WriteFile(goPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := &manifest.Manifest{Tables: []manifest.Table{{
+		Name:  "users",
+		Model: "User",
+		Columns: []manifest.Column{
+			{Name: "id", Primary: true},
+			{Name: "tenant_id", TenantScope: true, RequiredFilter: true},
+			{Name: "deleted_at", SoftDelete: true},
+			{Name: "email", PII: true},
+			{Name: "name"},
+		},
+		Policies: []manifest.Policy{
+			{Type: "tenant_scope", Column: "tenant_id", Mode: query.PolicyModeEnforce},
+			{Type: "soft_delete", Column: "deleted_at", Mode: query.PolicyModeEnforce},
+			{Type: "pii", Column: "email", Mode: query.PolicyModeWarn},
+		},
+	}}}
+
+	report, err := Run(Options{Paths: []string{goPath}, CurrentManifest: m, ManifestInputs: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{
+		query.WarningTenantFilterMissing,
+		query.WarningSoftDeleteFilterMissing,
+		query.WarningPIIColumnSelected,
+		query.WarningBulkUpdateDetected,
+	} {
+		if !hasFinding(report.Findings, code) {
+			t.Fatalf("expected %s finding, got %#v", code, report.Findings)
+		}
 	}
 }
 

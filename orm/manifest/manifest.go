@@ -22,6 +22,8 @@ const (
 	Version           = "1"
 	Generator         = "goquent"
 	WarningStale      = "MANIFEST_STALE"
+	WarningUnverified = "MANIFEST_UNVERIFIED"
+	WarningRequired   = "MANIFEST_REQUIRED"
 	WarningUnreadable = "MANIFEST_UNREADABLE"
 )
 

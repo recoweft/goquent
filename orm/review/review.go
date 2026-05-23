@@ -38,8 +38,10 @@ type ReviewSummary struct {
 
 // ManifestStatus is reserved for Phase 6 stale manifest integration.
 type ManifestStatus struct {
-	Fresh bool   `json:"fresh"`
-	Path  string `json:"path,omitempty"`
+	Fresh    bool   `json:"fresh"`
+	Verified bool   `json:"verified,omitempty"`
+	State    string `json:"state,omitempty"`
+	Path     string `json:"path,omitempty"`
 }
 
 // ReviewReport is the top-level report produced by goquent review.
@@ -56,6 +58,10 @@ type Options struct {
 	ShowSuppressed       bool
 	ManifestPath         string
 	RequireFreshManifest bool
+	CurrentManifest      *manifest.Manifest
+	ManifestInputs       bool
+	Rules                map[string]query.RiskRuleConfig
+	ConfigSuppressions   []ConfigSuppression
 }
 
 // Run reviews all configured paths.
@@ -64,11 +70,12 @@ func Run(opts Options) (ReviewReport, error) {
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
+	ctx := newReviewContext(opts)
 
 	var report ReviewReport
 	var errs []error
-	if strings.TrimSpace(opts.ManifestPath) != "" {
-		findings, status, err := reviewManifestFreshness(opts.ManifestPath)
+	if strings.TrimSpace(opts.ManifestPath) != "" || opts.RequireFreshManifest {
+		findings, status, err := reviewManifestFreshness(opts)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -84,7 +91,7 @@ func Run(opts Options) (ReviewReport, error) {
 			continue
 		}
 		for _, file := range files {
-			findings, err := reviewFile(file)
+			findings, err := reviewFile(ctx, file)
 			if err != nil {
 				errs = append(errs, err)
 				continue
@@ -105,33 +112,94 @@ func Run(opts Options) (ReviewReport, error) {
 	return report, errors.Join(errs...)
 }
 
-func reviewManifestFreshness(path string) ([]Finding, *ManifestStatus, error) {
+func reviewManifestFreshness(opts Options) ([]Finding, *ManifestStatus, error) {
+	path := strings.TrimSpace(opts.ManifestPath)
+	if path == "" {
+		if !opts.RequireFreshManifest {
+			return nil, nil, nil
+		}
+		status := &ManifestStatus{Fresh: false, State: "missing"}
+		return []Finding{manifestFinding(
+			manifest.WarningRequired,
+			query.RiskHigh,
+			"fresh manifest is required but no manifest path was provided",
+			"pass --manifest and current schema, policy, code, or database fingerprint inputs",
+			&query.SourceLocation{Line: 1},
+			nil,
+		)}, status, nil
+	}
 	m, err := manifest.Load(path)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	if opts.CurrentManifest != nil {
+		verification := manifest.Verify(m, opts.CurrentManifest, time.Time{})
+		status := &ManifestStatus{Fresh: verification.Fresh, Verified: true, Path: path}
+		if verification.Fresh {
+			status.State = "fresh"
+			return nil, status, nil
+		}
+		status.State = "stale"
+		return []Finding{staleManifestFinding(path, verification)}, status, nil
+	}
+
+	if opts.RequireFreshManifest && !opts.ManifestInputs {
+		status := &ManifestStatus{Fresh: false, State: "unverified", Path: path}
+		return []Finding{manifestFinding(
+			manifest.WarningUnverified,
+			query.RiskHigh,
+			"manifest freshness could not be verified against current inputs",
+			"pass --schema, --policy, --code, or --database-schema with --require-fresh-manifest",
+			&query.SourceLocation{File: path, Line: 1},
+			nil,
+		)}, status, nil
+	}
+
 	status := &ManifestStatus{Fresh: true, Path: path}
 	if m.Verification != nil {
 		status.Fresh = m.Verification.Fresh
+		status.Verified = true
 	}
-	if m.Verification == nil || m.Verification.Fresh {
+	if m.Verification == nil {
+		status.State = "unverified"
 		return nil, status, nil
 	}
+	if m.Verification.Fresh {
+		status.State = "fresh"
+		return nil, status, nil
+	}
+	status.State = "stale"
+	return []Finding{staleManifestFinding(path, *m.Verification)}, status, nil
+}
+
+func staleManifestFinding(path string, verification manifest.Verification) Finding {
 	var evidence []query.Evidence
-	for _, check := range m.Verification.Checks {
+	for _, check := range verification.Checks {
 		if check.Status == "stale" {
 			evidence = append(evidence, query.Evidence{Key: check.Name, Value: check.Message})
 		}
 	}
-	return []Finding{{
-		Code:              manifest.WarningStale,
-		Level:             query.RiskHigh,
-		Message:           "manifest does not match current schema, policy, generated code, or database fingerprint",
-		Location:          &query.SourceLocation{File: path, Line: 1},
-		Hint:              "regenerate the manifest or run goquent manifest verify against current inputs",
+	return manifestFinding(
+		manifest.WarningStale,
+		query.RiskHigh,
+		"manifest does not match current schema, policy, generated code, or database fingerprint",
+		"regenerate the manifest or run goquent manifest verify against current inputs",
+		&query.SourceLocation{File: path, Line: 1},
+		evidence,
+	)
+}
+
+func manifestFinding(code string, level query.RiskLevel, message, hint string, loc *query.SourceLocation, evidence []query.Evidence) Finding {
+	return Finding{
+		Code:              code,
+		Level:             level,
+		Message:           message,
+		Location:          loc,
+		Hint:              hint,
 		Evidence:          evidence,
 		AnalysisPrecision: query.AnalysisPrecise,
-	}}, status, nil
+	}
 }
 
 func discoverFiles(root string) ([]string, error) {
@@ -192,20 +260,20 @@ func supportedFile(path string) bool {
 	}
 }
 
-func reviewFile(path string) ([]Finding, error) {
+func reviewFile(ctx reviewContext, path string) ([]Finding, error) {
 	switch filepath.Ext(path) {
 	case ".go":
-		return reviewGoFile(path)
+		return reviewGoFile(ctx, path)
 	case ".sql":
-		return reviewSQLFile(path)
+		return reviewSQLFile(ctx, path)
 	case ".json":
-		return reviewPlanJSONFile(path)
+		return reviewPlanJSONFile(ctx, path)
 	default:
 		return nil, nil
 	}
 }
 
-func reviewSQLFile(path string) ([]Finding, error) {
+func reviewSQLFile(ctx reviewContext, path string) ([]Finding, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -216,12 +284,12 @@ func reviewSQLFile(path string) ([]Finding, error) {
 			return nil, err
 		} else if len(plan.Steps) > 0 {
 			findings := warningsToFindings(plan.Warnings, plan.AnalysisPrecision, &query.SourceLocation{File: path, Line: 1})
-			return applyFileSuppressions(path, findings)
+			return applyFileSuppressions(ctx, path, findings)
 		}
 	}
 	plan := query.NewRawPlan(sqlText)
 	findings := findingsFromPlan(plan, query.AnalysisPrecise, &query.SourceLocation{File: path, Line: 1})
-	return applyFileSuppressions(path, findings)
+	return applyFileSuppressions(ctx, path, findings)
 }
 
 func looksLikeMigrationSQL(sqlText string) bool {
@@ -234,7 +302,7 @@ func looksLikeMigrationSQL(sqlText string) bool {
 	return false
 }
 
-func reviewPlanJSONFile(path string) ([]Finding, error) {
+func reviewPlanJSONFile(ctx reviewContext, path string) ([]Finding, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -246,9 +314,15 @@ func reviewPlanJSONFile(path string) ([]Finding, error) {
 	if plan.Operation == "" || plan.SQL == "" {
 		migrationFindings, ok, err := reviewMigrationPlanJSON(path, b)
 		if err != nil || ok {
-			return migrationFindings, err
+			if err != nil {
+				return nil, err
+			}
+			return applyFileSuppressions(ctx, path, migrationFindings)
 		}
 		return nil, nil
+	}
+	if len(ctx.riskMetadata) > 0 {
+		query.AttachTableRiskMetadata(&plan, ctx.riskMetadata)
 	}
 	result := query.DefaultRiskEngine.CheckQuery(&plan)
 	warnings := plan.Warnings
@@ -260,7 +334,7 @@ func reviewPlanJSONFile(path string) ([]Finding, error) {
 		finding.Suppressed = true
 		findings = append(findings, finding)
 	}
-	return applyFileSuppressions(path, findings)
+	return applyFileSuppressions(ctx, path, findings)
 }
 
 func reviewMigrationPlanJSON(path string, b []byte) ([]Finding, bool, error) {
@@ -280,8 +354,7 @@ func reviewMigrationPlanJSON(path string, b []byte) ([]Finding, bool, error) {
 		plan.AnalysisPrecision = planned.AnalysisPrecision
 	}
 	findings := warningsToFindings(plan.Warnings, plan.AnalysisPrecision, &query.SourceLocation{File: path, Line: 1})
-	findings, err := applyFileSuppressions(path, findings)
-	return findings, true, err
+	return findings, true, nil
 }
 
 func findingsFromPlan(plan *query.QueryPlan, precision query.AnalysisPrecision, loc *query.SourceLocation) []Finding {
@@ -323,7 +396,8 @@ func cloneLocation(loc *query.SourceLocation) *query.SourceLocation {
 	return &copied
 }
 
-func applyFileSuppressions(path string, findings []Finding) ([]Finding, error) {
+func applyFileSuppressions(ctx reviewContext, path string, findings []Finding) ([]Finding, error) {
+	findings = applyReviewRules(findings, ctx.rules)
 	if len(findings) == 0 {
 		return findings, nil
 	}
@@ -331,6 +405,11 @@ func applyFileSuppressions(path string, findings []Finding) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	configSuppressions, err := configSuppressionsForFile(path, ctx.configSuppressions)
+	if err != nil {
+		return nil, err
+	}
+	suppressions = append(suppressions, configSuppressions...)
 	if len(suppressions) == 0 {
 		return findings, nil
 	}
@@ -401,7 +480,7 @@ func findingSuppressible(code string) bool {
 	switch code {
 	case query.WarningUpdateWithoutWhere, query.WarningDeleteWithoutWhere, query.WarningDestructiveSQL,
 		migration.WarningMigrationDropTable, migration.WarningMigrationDropColumn, migration.WarningMigrationTypeNarrowing,
-		manifest.WarningStale:
+		manifest.WarningStale, manifest.WarningUnverified, manifest.WarningRequired:
 		return false
 	default:
 		return true
@@ -450,6 +529,19 @@ func HasFindingsAtOrAbove(report ReviewReport, threshold query.RiskLevel) bool {
 	return false
 }
 
+// HasFindingsAtOrAbovePrecision reports whether findings meet a precision threshold.
+func HasFindingsAtOrAbovePrecision(report ReviewReport, threshold query.AnalysisPrecision) bool {
+	for _, finding := range report.Findings {
+		if finding.Suppressed {
+			continue
+		}
+		if comparePrecision(finding.AnalysisPrecision, threshold) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // ParseRiskLevel parses a CLI threshold.
 func ParseRiskLevel(s string) (query.RiskLevel, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
@@ -465,6 +557,39 @@ func ParseRiskLevel(s string) (query.RiskLevel, error) {
 		return query.RiskBlocked, nil
 	default:
 		return "", fmt.Errorf("unknown risk level %q", s)
+	}
+}
+
+// ParseAnalysisPrecision parses a CLI precision threshold.
+func ParseAnalysisPrecision(s string) (query.AnalysisPrecision, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "":
+		return "", nil
+	case "precise":
+		return query.AnalysisPrecise, nil
+	case "partial":
+		return query.AnalysisPartial, nil
+	case "unsupported":
+		return query.AnalysisUnsupported, nil
+	default:
+		return "", fmt.Errorf("unknown analysis precision %q", s)
+	}
+}
+
+func comparePrecision(a, b query.AnalysisPrecision) int {
+	return precisionRank(a) - precisionRank(b)
+}
+
+func precisionRank(precision query.AnalysisPrecision) int {
+	switch precision {
+	case query.AnalysisPrecise, "":
+		return 0
+	case query.AnalysisPartial:
+		return 1
+	case query.AnalysisUnsupported:
+		return 2
+	default:
+		return 0
 	}
 }
 

@@ -109,6 +109,8 @@ go run ./cmd/goquent review \
   --format github \
   --fail-on high \
   --manifest goquent.manifest.json \
+  --schema schema.json \
+  --policy policies.json \
   --require-fresh-manifest \
   ./...
 ```
@@ -161,7 +163,9 @@ go run ./cmd/goquent manifest verify \
   --policy policies.json
 ```
 
-Use `review --require-fresh-manifest` when stale schema or policy context should fail CI. A stale manifest is not a warning to ignore; regenerate it or stop using it as authoritative context.
+Use `review --require-fresh-manifest` with current inputs such as `--schema`, `--policy`, `--code`,
+or `--database-schema` when stale or unverified schema or policy context should fail CI. A stale
+manifest is not a warning to ignore; regenerate it or stop using it as authoritative context.
 
 ## MCP Server
 

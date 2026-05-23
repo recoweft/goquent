@@ -29,6 +29,11 @@ You can run the engine directly:
 result := orm.DefaultRiskEngine.CheckQuery(plan)
 ```
 
+Broad write detection is conservative. Without table key metadata, only `id` and qualified `*.id`
+predicates are treated as narrow. Foreign-key-looking columns such as `tenant_id` are not treated
+as primary-key-like by name alone. When review has manifest metadata, complete primary-key or
+unique-index predicates can be treated as narrow, including composite keys.
+
 Risk rules can be customized for local policy:
 
 ```go

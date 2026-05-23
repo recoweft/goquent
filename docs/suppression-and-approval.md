@@ -25,6 +25,22 @@ Inline suppressions are supported by the review CLI:
 err := db.Table("users").Where("tenant_id", tenantID).Get(&rows)
 ```
 
+Config suppressions are supported by `goquent review --config`:
+
+```json
+{
+  "suppressions": [
+    {
+      "code": "LIMIT_MISSING",
+      "path": "internal/admin/export.go",
+      "reason": "admin export is bounded by caller authorization and audit logging",
+      "owner": "data-platform",
+      "expires": "2026-08-01"
+    }
+  ]
+}
+```
+
 Suppression cannot hide non-suppressible findings such as blocked updates or deletes without a
 predicate.
 

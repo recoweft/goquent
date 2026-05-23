@@ -59,6 +59,44 @@ func TestRiskEngineBlocksUpdateAndDeleteWithoutWhere(t *testing.T) {
 	}
 }
 
+func TestRiskEngineDoesNotTreatForeignIDAsPrimaryKey(t *testing.T) {
+	plan := &QueryPlan{
+		Operation: OperationUpdate,
+		SQL:       "UPDATE users SET name = ? WHERE tenant_id = ?",
+		Tables:    []TableRef{{Name: "users"}},
+		Predicates: []PredicateRef{{
+			Column:   "tenant_id",
+			Operator: "=",
+		}},
+	}
+	result := DefaultRiskEngine.CheckQuery(plan)
+	if !warningCodeSet(result.Warnings)[WarningBulkUpdateDetected] {
+		t.Fatalf("expected tenant_id-only update to remain bulk, got %#v", result.Warnings)
+	}
+}
+
+func TestRiskEngineUsesTableRiskMetadataForCompositeUniqueKeys(t *testing.T) {
+	plan := &QueryPlan{
+		Operation: OperationUpdate,
+		SQL:       "UPDATE users SET name = ? WHERE tenant_id = ? AND external_id = ?",
+		Tables:    []TableRef{{Name: "users"}},
+		Predicates: []PredicateRef{
+			{Column: "tenant_id", Operator: "="},
+			{Column: "external_id", Operator: "="},
+		},
+	}
+	AttachTableRiskMetadata(plan, []TableRiskMetadata{{
+		Table:         "users",
+		UniqueIndexes: [][]string{{"tenant_id", "external_id"}},
+		TenantColumn:  "tenant_id",
+	}})
+
+	result := DefaultRiskEngine.CheckQuery(plan)
+	if warningCodeSet(result.Warnings)[WarningBulkUpdateDetected] {
+		t.Fatalf("expected composite unique predicate to be narrow, got %#v", result.Warnings)
+	}
+}
+
 func TestApprovalRequiredAndProvided(t *testing.T) {
 	exec := &recordingExec{}
 	_, err := newPlanTestQuery(exec).
