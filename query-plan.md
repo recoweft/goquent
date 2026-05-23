@@ -42,4 +42,12 @@ Important fields:
 - `analysis_precision`: `precise`, `partial`, or `unsupported`.
 
 Raw SQL can be wrapped with `query.NewRawPlan(sql, args...)`. Raw plans are useful for review, but
-they are high risk because Goquent cannot fully inspect arbitrary SQL.
+they are high risk because Goquent cannot fully inspect arbitrary SQL. When executing raw
+projections through `orm.SelectOne` or `orm.SelectAll`, use a DB copy with an approval reason and
+touched-table metadata so the review artifact explains the escape hatch:
+
+```go
+plan, err := db.RequireRawApproval("reviewed audit snapshot aggregation").
+    TouchedTables("audit_snapshots", "snapshot_items", "document_versions").
+    RawPlan(ctx, sqlText, tenantID)
+```

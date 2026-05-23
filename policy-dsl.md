@@ -20,6 +20,48 @@ Policy checks:
 - Required filters: configured columns must be present in predicates.
 - PII: selecting configured columns emits a warning and should include an access reason.
 
+Registered policies are checked for every table visible in a `QueryPlan`, including joined tables.
+When more than one policy table requires the same predicate column, qualify the predicate so the
+scope is unambiguous:
+
+```go
+err := orm.RegisterTablePolicy(orm.TablePolicy{
+    Table:        "users",
+    TenantColumn: "tenant_id",
+    TenantMode:   orm.PolicyModeBlock,
+})
+if err != nil {
+    return err
+}
+err = orm.RegisterTablePolicy(orm.TablePolicy{
+    Table:        "memberships",
+    TenantColumn: "tenant_id",
+    TenantMode:   orm.PolicyModeBlock,
+})
+if err != nil {
+    return err
+}
+
+plan, err := db.Table("users").
+    Select("users.id").
+    Join("memberships", "users.id", "=", "memberships.user_id").
+    Where("users.tenant_id", tenantID).
+    Where("memberships.tenant_id", tenantID).
+    Limit(50).
+    Plan(ctx)
+```
+
+Use `RequiredFilter` for parent scopes that must always be visible alongside tenant scope:
+
+```go
+err := orm.Model(FilingCase{}).
+    Table("filing_cases").
+    TenantScoped("tenant_id", orm.PolicyModeBlock).
+    RequiredFilter("client_company_id", "workplace_id").
+    PolicyMode(orm.PolicyModeBlock).
+    Register()
+```
+
 Soft delete helpers:
 
 ```go

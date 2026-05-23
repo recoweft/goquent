@@ -55,6 +55,7 @@ Current constraints:
 - The model must exist in the manifest.
 - Selected fields must be explicit.
 - Unknown or forbidden fields are rejected.
+- Every `value_ref` must be present in the supplied values map.
 - Required filters from manifest policy must be present.
 - PII fields require an access reason.
 - Joins, aggregates, group by, having, subqueries, raw SQL hints, CTEs, and mutation fields are not current OperationSpec features.

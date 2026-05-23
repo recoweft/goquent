@@ -35,6 +35,8 @@ Treat it as a prompt to add a runtime `QueryPlan`, reduce dynamic SQL, or add fo
 Static review is strongest when:
 
 - Goquent builder calls are inline and explicit.
+- `goquent review` receives a fresh manifest and current schema/policy inputs so tenant, soft
+  delete, PII, required-filter, and unique-key metadata can be checked.
 - Query plans are checked into artifacts or generated in tests.
 - Raw SQL is isolated in `.sql` files for review.
 - Suppressions include reasons and expiration dates.

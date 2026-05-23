@@ -56,6 +56,8 @@ Review the database surface:
 go run ./cmd/goquent review \
   --fail-on high \
   --manifest goquent.manifest.json \
+  --schema schema.json \
+  --policy policies.json \
   --require-fresh-manifest \
   ./...
 ```

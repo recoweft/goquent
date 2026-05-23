@@ -50,6 +50,71 @@ if plan.RequiresApproval() {
 }
 ```
 
+## Lightweight Status Reader
+
+`ReadStatus` is a small readiness helper for reading the migration table. It
+answers whether the table exists, which versions are applied, what the latest
+applied version is, whether desired versions are pending, and whether a
+configured dirty column contains a dirty row.
+
+It is not a drift detector. It does not compare live database schema,
+manifests, generated code, migration file fingerprints, or application
+expectations. If the database has applied versions that are not present in the
+caller-provided desired list, the status includes a warning and marks the
+result as unknown instead of claiming a complete drift verdict.
+
+```go
+desired := []string{
+    "202605220001_create_users",
+    "202605220002_add_document_nodes",
+}
+
+status, err := migration.ReadStatus(
+    ctx,
+    sqlDB,
+    driver.PostgresDialect{},
+    desired,
+    migration.WithStatusTable("schema_migrations"),
+    migration.WithStatusAppliedAtColumn("applied_at"),
+    migration.WithStatusDirtyColumn("dirty"),
+)
+if err != nil {
+    return err
+}
+if !status.Exists || status.Dirty || len(status.Pending) > 0 {
+    // not ready
+}
+```
+
+Readiness endpoint sketch:
+
+```go
+func readyz(w http.ResponseWriter, r *http.Request) {
+    status, err := migration.ReadStatus(
+        r.Context(),
+        sqlDB,
+        driver.PostgresDialect{},
+        desiredMigrationVersions,
+        migration.WithStatusDirtyColumn("dirty"),
+    )
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusServiceUnavailable)
+        return
+    }
+    if !status.Exists || status.Dirty || len(status.Pending) > 0 {
+        http.Error(w, "migrations pending", http.StatusServiceUnavailable)
+        return
+    }
+    w.WriteHeader(http.StatusNoContent)
+}
+```
+
+The first implementation supports PostgreSQL and MySQL migration tables. The
+default table is `schema_migrations` and the default version column is
+`version`. Desired versions are supplied by the caller; file discovery and
+manifest/schema/generated-code comparison are explicit non-goals for this
+helper.
+
 ## Human-Controlled Apply
 
 `migrate apply` validates the same approval gates and requires `--driver` and `--dsn`, but it is a

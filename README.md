@@ -11,11 +11,17 @@ import "github.com/faciam-dev/goquent/orm"
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func ApplyScopes\(q \*query.Query, scopes ...Scope\) \*query.Query](<#ApplyScopes>)
+- [func DecodeJSON\[T any\]\(src any, fallback T\) \(T, error\)](<#DecodeJSON>)
 - [func DeleteBy\(ctx context.Context, base \*query.Query, scopes ...Scope\) \(sql.Result, error\)](<#DeleteBy>)
+- [func EncodeJSON\(v any\) \(string, error\)](<#EncodeJSON>)
 - [func GetDriver\(name string\) \(sqldriver.Driver, bool\)](<#GetDriver>)
 - [func Insert\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(sql.Result, error\)](<#Insert>)
+- [func InsertMany\[T any\]\(ctx context.Context, db \*DB, values \[\]T, opts ...WriteOpt\) \(sql.Result, error\)](<#InsertMany>)
+- [func InsertManyReturning\[R any, T any\]\(ctx context.Context, db \*DB, values \[\]T, opts ...WriteOpt\) \(\[\]R, error\)](<#InsertManyReturning>)
 - [func InsertOnceReturning\[T any, V any\]\(ctx context.Context, db \*DB, v V, opts ...WriteOpt\) \(T, bool, error\)](<#InsertOnceReturning>)
 - [func InsertReturning\[T any, V any\]\(ctx context.Context, db \*DB, v V, opts ...WriteOpt\) \(T, error\)](<#InsertReturning>)
+- [func IsConflict\(err error\) bool](<#IsConflict>)
+- [func IsNotFound\(err error\) bool](<#IsNotFound>)
 - [func ManifestJSONSchema\(\) \(\[\]byte, error\)](<#ManifestJSONSchema>)
 - [func NullString\(value string\) sql.NullString](<#NullString>)
 - [func NullStringEmpty\(value string\) sql.NullString](<#NullStringEmpty>)
@@ -36,6 +42,7 @@ import "github.com/faciam-dev/goquent/orm"
 - [func Update\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(sql.Result, error\)](<#Update>)
 - [func UpdateBy\(ctx context.Context, base \*query.Query, data any, scopes ...Scope\) \(sql.Result, error\)](<#UpdateBy>)
 - [func UpdateByReturning\[T any\]\(ctx context.Context, db \*DB, base \*query.Query, data any, scopes ...Scope\) \(T, error\)](<#UpdateByReturning>)
+- [func UpdateByReturningWithOptions\[T any\]\(ctx context.Context, db \*DB, base \*query.Query, data any, opts \[\]WriteOpt, scopes ...Scope\) \(T, error\)](<#UpdateByReturningWithOptions>)
 - [func UpdateReturning\[T any, V any\]\(ctx context.Context, db \*DB, v V, opts ...WriteOpt\) \(T, error\)](<#UpdateReturning>)
 - [func Upsert\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(sql.Result, error\)](<#Upsert>)
 - [func UpsertReturning\[T any, V any\]\(ctx context.Context, db \*DB, v V, opts ...WriteOpt\) \(T, error\)](<#UpsertReturning>)
@@ -48,9 +55,15 @@ import "github.com/faciam-dev/goquent/orm"
 - [type ColumnSchema](<#ColumnSchema>)
 - [type CursorColumn](<#CursorColumn>)
   - [func CursorAsc\(name string\) CursorColumn](<#CursorAsc>)
+  - [func CursorAscAlias\(alias string\) CursorColumn](<#CursorAscAlias>)
+  - [func CursorAscExpr\(expr string\) CursorColumn](<#CursorAscExpr>)
   - [func CursorDesc\(name string\) CursorColumn](<#CursorDesc>)
+  - [func CursorDescAlias\(alias string\) CursorColumn](<#CursorDescAlias>)
+  - [func CursorDescExpr\(expr string\) CursorColumn](<#CursorDescExpr>)
 - [type DB](<#DB>)
   - [func NewDB\(sqlDB \*sql.DB, dialect driver.Dialect, opts ...Option\) \*DB](<#NewDB>)
+  - [func NewDBWithExecutor\(exec Executor, dialect driver.Dialect, opts ...Option\) \*DB](<#NewDBWithExecutor>)
+  - [func NewTxDB\(tx \*sql.Tx, dialect driver.Dialect, opts ...Option\) \*DB](<#NewTxDB>)
   - [func Open\(dsn string\) \(\*DB, error\)](<#Open>)
   - [func OpenWithDriver\(driverName, dsn string\) \(\*DB, error\)](<#OpenWithDriver>)
   - [func OpenWithDriverOptions\(driverName, dsn string, opts ...Option\) \(\*DB, error\)](<#OpenWithDriverOptions>)
@@ -71,11 +84,15 @@ import "github.com/faciam-dev/goquent/orm"
   - [func \(db \*DB\) SelectMap\(ctx context.Context, q string, args ...any\) \(map\[string\]any, error\)](<#DB.SelectMap>)
   - [func \(db \*DB\) SelectMaps\(ctx context.Context, q string, args ...any\) \(\[\]map\[string\]any, error\)](<#DB.SelectMaps>)
   - [func \(db \*DB\) Table\(name string\) \*query.Query](<#DB.Table>)
+  - [func \(db \*DB\) TablePath\(parts ...string\) \*query.Query](<#DB.TablePath>)
+  - [func \(db \*DB\) TouchedTables\(tables ...string\) \*DB](<#DB.TouchedTables>)
   - [func \(db \*DB\) Transaction\(fn func\(tx Tx\) error\) error](<#DB.Transaction>)
   - [func \(db \*DB\) TransactionContext\(ctx context.Context, fn func\(tx Tx\) error\) error](<#DB.TransactionContext>)
+  - [func \(db \*DB\) WrapTx\(tx \*sql.Tx, opts ...Option\) \*DB](<#DB.WrapTx>)
 - [type ErrBoolParse](<#ErrBoolParse>)
   - [func \(e ErrBoolParse\) Error\(\) string](<#ErrBoolParse.Error>)
 - [type Evidence](<#Evidence>)
+- [type Executor](<#Executor>)
 - [type FilterSpec](<#FilterSpec>)
 - [type IndexSchema](<#IndexSchema>)
 - [type JSONField](<#JSONField>)
@@ -134,6 +151,10 @@ import "github.com/faciam-dev/goquent/orm"
 - [type RiskLevel](<#RiskLevel>)
 - [type RiskResult](<#RiskResult>)
 - [type RiskRuleConfig](<#RiskRuleConfig>)
+- [type RowsAffectedError](<#RowsAffectedError>)
+  - [func \(e RowsAffectedError\) Error\(\) string](<#RowsAffectedError.Error>)
+  - [func \(e RowsAffectedError\) Is\(target error\) bool](<#RowsAffectedError.Is>)
+  - [func \(e RowsAffectedError\) Unwrap\(\) error](<#RowsAffectedError.Unwrap>)
 - [type ScanOptions](<#ScanOptions>)
 - [type Schema](<#Schema>)
 - [type Scope](<#Scope>)
@@ -163,10 +184,18 @@ import "github.com/faciam-dev/goquent/orm"
   - [func ConflictDoNothing\(\) WriteOpt](<#ConflictDoNothing>)
   - [func ConflictTargetRaw\(target string\) WriteOpt](<#ConflictTargetRaw>)
   - [func ConflictWhere\(predicate string\) WriteOpt](<#ConflictWhere>)
+  - [func ExpectAffected\(n int64\) WriteOpt](<#ExpectAffected>)
+  - [func Increment\(column string, delta any\) WriteOpt](<#Increment>)
+  - [func NoRowsAs\(err error\) WriteOpt](<#NoRowsAs>)
   - [func Omit\(cols ...string\) WriteOpt](<#Omit>)
   - [func PK\(cols ...string\) WriteOpt](<#PK>)
   - [func Returning\(cols ...string\) WriteOpt](<#Returning>)
+  - [func SchemaName\(name string\) WriteOpt](<#SchemaName>)
+  - [func SetColumn\(column, sourceColumn string\) WriteOpt](<#SetColumn>)
+  - [func SetExpr\(column, expression string, args ...any\) WriteOpt](<#SetExpr>)
+  - [func SetRaw\(column, expression string\) WriteOpt](<#SetRaw>)
   - [func Table\(name string\) WriteOpt](<#Table>)
+  - [func TablePath\(parts ...string\) WriteOpt](<#TablePath>)
   - [func UpdateColumns\(cols ...string\) WriteOpt](<#UpdateColumns>)
   - [func WherePK\(\) WriteOpt](<#WherePK>)
 
@@ -313,6 +342,26 @@ var (
 )
 ```
 
+<a name="ErrConflict"></a>ErrConflict represents an explicit optimistic\-concurrency or stale\-write conflict chosen by the caller.
+
+```go
+var ErrConflict = errors.New("goquent: conflict")
+```
+
+<a name="ErrNotFound"></a>ErrNotFound is returned by one\-row read helpers when no row is available.
+
+It aliases sql.ErrNoRows for compatibility with existing callers.
+
+```go
+var ErrNotFound = sql.ErrNoRows
+```
+
+<a name="ErrRowsAffected"></a>ErrRowsAffected reports that a write did not affect the requested number of rows.
+
+```go
+var ErrRowsAffected = errors.New("goquent: unexpected rows affected")
+```
+
 <a name="ApplyScopes"></a>
 ## func ApplyScopes
 
@@ -322,6 +371,15 @@ func ApplyScopes(q *query.Query, scopes ...Scope) *query.Query
 
 ApplyScopes applies scopes to q in order. Nil scopes are ignored. If a scope returns nil, the current query is kept.
 
+<a name="DecodeJSON"></a>
+## func DecodeJSON
+
+```go
+func DecodeJSON[T any](src any, fallback T) (T, error)
+```
+
+DecodeJSON decodes a JSON/JSONB or text\-JSON database value. NULL returns fallback without error.
+
 <a name="DeleteBy"></a>
 ## func DeleteBy
 
@@ -330,6 +388,15 @@ func DeleteBy(ctx context.Context, base *query.Query, scopes ...Scope) (sql.Resu
 ```
 
 DeleteBy applies scopes to base and executes a DELETE using the resulting query.
+
+<a name="EncodeJSON"></a>
+## func EncodeJSON
+
+```go
+func EncodeJSON(v any) (string, error)
+```
+
+EncodeJSON marshals v for JSON/JSONB or text\-JSON columns.
 
 <a name="GetDriver"></a>
 ## func GetDriver
@@ -348,6 +415,26 @@ func Insert[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (sql.Resu
 ```
 
 Insert inserts v into its table.
+
+<a name="InsertMany"></a>
+## func InsertMany
+
+```go
+func InsertMany[T any](ctx context.Context, db *DB, values []T, opts ...WriteOpt) (sql.Result, error)
+```
+
+InsertMany inserts all values in one INSERT statement.
+
+Empty slices return an error instead of a no\-op result. Map writes require Table, and every row must provide the selected column set.
+
+<a name="InsertManyReturning"></a>
+## func InsertManyReturning
+
+```go
+func InsertManyReturning[R any, T any](ctx context.Context, db *DB, values []T, opts ...WriteOpt) ([]R, error)
+```
+
+InsertManyReturning inserts all values and scans PostgreSQL RETURNING rows.
 
 <a name="InsertOnceReturning"></a>
 ## func InsertOnceReturning
@@ -368,6 +455,24 @@ func InsertReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...Wri
 ```
 
 InsertReturning inserts v and scans the Postgres RETURNING row into T.
+
+<a name="IsConflict"></a>
+## func IsConflict
+
+```go
+func IsConflict(err error) bool
+```
+
+IsConflict reports whether err represents an explicit write conflict.
+
+<a name="IsNotFound"></a>
+## func IsNotFound
+
+```go
+func IsNotFound(err error) bool
+```
+
+IsNotFound reports whether err represents a no\-row result.
 
 <a name="ManifestJSONSchema"></a>
 ## func ManifestJSONSchema
@@ -549,6 +654,15 @@ func UpdateByReturning[T any](ctx context.Context, db *DB, base *query.Query, da
 
 UpdateByReturning applies scopes, executes an UPDATE, and scans the Postgres RETURNING row into T.
 
+<a name="UpdateByReturningWithOptions"></a>
+## func UpdateByReturningWithOptions
+
+```go
+func UpdateByReturningWithOptions[T any](ctx context.Context, db *DB, base *query.Query, data any, opts []WriteOpt, scopes ...Scope) (T, error)
+```
+
+UpdateByReturningWithOptions applies scopes, executes an UPDATE with RETURNING, and applies write options such as NoRowsAs for guarded updates.
+
 <a name="UpdateReturning"></a>
 ## func UpdateReturning
 
@@ -667,6 +781,24 @@ func CursorAsc(name string) CursorColumn
 
 CursorAsc returns an ascending keyset cursor column.
 
+<a name="CursorAscAlias"></a>
+### func CursorAscAlias
+
+```go
+func CursorAscAlias(alias string) CursorColumn
+```
+
+CursorAscAlias returns an ascending selected alias cursor column.
+
+<a name="CursorAscExpr"></a>
+### func CursorAscExpr
+
+```go
+func CursorAscExpr(expr string) CursorColumn
+```
+
+CursorAscExpr returns an ascending trusted SQL expression cursor column.
+
 <a name="CursorDesc"></a>
 ### func CursorDesc
 
@@ -675,6 +807,24 @@ func CursorDesc(name string) CursorColumn
 ```
 
 CursorDesc returns a descending keyset cursor column.
+
+<a name="CursorDescAlias"></a>
+### func CursorDescAlias
+
+```go
+func CursorDescAlias(alias string) CursorColumn
+```
+
+CursorDescAlias returns a descending selected alias cursor column.
+
+<a name="CursorDescExpr"></a>
+### func CursorDescExpr
+
+```go
+func CursorDescExpr(expr string) CursorColumn
+```
+
+CursorDescExpr returns a descending trusted SQL expression cursor column.
 
 <a name="DB"></a>
 ## type DB
@@ -695,6 +845,24 @@ func NewDB(sqlDB *sql.DB, dialect driver.Dialect, opts ...Option) *DB
 ```
 
 NewDB wraps an existing sql.DB with a dialect into DB.
+
+<a name="NewDBWithExecutor"></a>
+### func NewDBWithExecutor
+
+```go
+func NewDBWithExecutor(exec Executor, dialect driver.Dialect, opts ...Option) *DB
+```
+
+NewDBWithExecutor wraps an existing sql.DB/sql.Tx\-compatible executor with a dialect into DB. The returned DB does not own the executor; Close is a no\-op unless the executor was created by Open/OpenWithDriver/NewDB with \*sql.DB.
+
+<a name="NewTxDB"></a>
+### func NewTxDB
+
+```go
+func NewTxDB(tx *sql.Tx, dialect driver.Dialect, opts ...Option) *DB
+```
+
+NewTxDB wraps an existing sql.Tx with a dialect into DB.
 
 <a name="Open"></a>
 ### func Open
@@ -748,7 +916,7 @@ BeginTx starts a transaction using ctx and returns the Tx.
 func (db *DB) Close() error
 ```
 
-Close closes underlying DB.
+Close closes the owned underlying DB. DB values created around an external executor or transaction do not own a sql.DB, so Close is a no\-op for them.
 
 <a name="DB.Exec"></a>
 ### func \(\*DB\) Exec
@@ -880,6 +1048,24 @@ func (db *DB) Table(name string) *query.Query
 
 Table creates a query for table name.
 
+<a name="DB.TablePath"></a>
+### func \(\*DB\) TablePath
+
+```go
+func (db *DB) TablePath(parts ...string) *query.Query
+```
+
+TablePath creates a query for a schema\-qualified or otherwise path\-qualified table name.
+
+<a name="DB.TouchedTables"></a>
+### func \(\*DB\) TouchedTables
+
+```go
+func (db *DB) TouchedTables(tables ...string) *DB
+```
+
+TouchedTables returns a shallow DB copy that annotates raw SQL QueryPlans with the tables the caller reviewed.
+
 <a name="DB.Transaction"></a>
 ### func \(\*DB\) Transaction
 
@@ -897,6 +1083,15 @@ func (db *DB) TransactionContext(ctx context.Context, fn func(tx Tx) error) erro
 ```
 
 TransactionContext executes fn in a transaction using ctx.
+
+<a name="DB.WrapTx"></a>
+### func \(\*DB\) WrapTx
+
+```go
+func (db *DB) WrapTx(tx *sql.Tx, opts ...Option) *DB
+```
+
+WrapTx returns a DB copy that executes through tx while preserving this DB's dialect, scan options, and raw\-SQL approval state.
 
 <a name="ErrBoolParse"></a>
 ## type ErrBoolParse
@@ -927,6 +1122,28 @@ func (e ErrBoolParse) Error() string
 
 ```go
 type Evidence = query.Evidence
+```
+
+<a name="Executor"></a>
+## type Executor
+
+Executor abstracts sql.DB, sql.Tx, and compatible transaction wrappers.
+
+```go
+type Executor interface {
+    // Query runs a SQL statement returning multiple rows.
+    Query(query string, args ...any) (*sql.Rows, error)
+    // QueryContext is the context-aware version of Query.
+    QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+    // QueryRow executes a query expected to return at most one row.
+    QueryRow(query string, args ...any) *sql.Row
+    // QueryRowContext executes a single-row query with context.
+    QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+    // Exec runs a SQL statement that doesn't return rows.
+    Exec(query string, args ...any) (sql.Result, error)
+    // ExecContext runs Exec with a context.
+    ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
 ```
 
 <a name="FilterSpec"></a>
@@ -1458,6 +1675,46 @@ type RiskResult = query.RiskResult
 type RiskRuleConfig = query.RiskRuleConfig
 ```
 
+<a name="RowsAffectedError"></a>
+## type RowsAffectedError
+
+RowsAffectedError describes a failed rows\-affected expectation.
+
+```go
+type RowsAffectedError struct {
+    Expected int64
+    Actual   int64
+    Cause    error
+}
+```
+
+<a name="RowsAffectedError.Error"></a>
+### func \(RowsAffectedError\) Error
+
+```go
+func (e RowsAffectedError) Error() string
+```
+
+
+
+<a name="RowsAffectedError.Is"></a>
+### func \(RowsAffectedError\) Is
+
+```go
+func (e RowsAffectedError) Is(target error) bool
+```
+
+
+
+<a name="RowsAffectedError.Unwrap"></a>
+### func \(RowsAffectedError\) Unwrap
+
+```go
+func (e RowsAffectedError) Unwrap() error
+```
+
+
+
 <a name="ScanOptions"></a>
 ## type ScanOptions
 
@@ -1732,6 +1989,33 @@ func ConflictWhere(predicate string) WriteOpt
 
 ConflictWhere adds a Postgres partial\-index predicate to the conflict target.
 
+<a name="ExpectAffected"></a>
+### func ExpectAffected
+
+```go
+func ExpectAffected(n int64) WriteOpt
+```
+
+ExpectAffected requires the write to affect exactly n rows.
+
+<a name="Increment"></a>
+### func Increment
+
+```go
+func Increment(column string, delta any) WriteOpt
+```
+
+Increment adds delta to column on Update or the conflict\-update side of Upsert.
+
+<a name="NoRowsAs"></a>
+### func NoRowsAs
+
+```go
+func NoRowsAs(err error) WriteOpt
+```
+
+NoRowsAs maps a zero\-row write result to err. Use ErrConflict for explicit optimistic\-concurrency guards such as content\_hash or version predicates.
+
 <a name="Omit"></a>
 ### func Omit
 
@@ -1759,6 +2043,42 @@ func Returning(cols ...string) WriteOpt
 
 Returning specifies columns to return \(Postgres only\).
 
+<a name="SchemaName"></a>
+### func SchemaName
+
+```go
+func SchemaName(name string) WriteOpt
+```
+
+SchemaName sets the schema for the write table. It can be combined with Table\("users"\) or an inferred struct table name.
+
+<a name="SetColumn"></a>
+### func SetColumn
+
+```go
+func SetColumn(column, sourceColumn string) WriteOpt
+```
+
+SetColumn assigns one column from another column.
+
+<a name="SetExpr"></a>
+### func SetExpr
+
+```go
+func SetExpr(column, expression string, args ...any) WriteOpt
+```
+
+SetExpr adds a database\-side assignment with positional ? placeholders. Placeholders are rewritten for the active dialect.
+
+<a name="SetRaw"></a>
+### func SetRaw
+
+```go
+func SetRaw(column, expression string) WriteOpt
+```
+
+SetRaw adds a database\-side assignment to Update or the conflict\-update side of Upsert. The expression is a trusted SQL fragment and must not contain placeholders.
+
 <a name="Table"></a>
 ### func Table
 
@@ -1767,6 +2087,17 @@ func Table(name string) WriteOpt
 ```
 
 Table sets table name \(required for map writes\).
+
+<a name="TablePath"></a>
+### func TablePath
+
+```go
+func TablePath(parts ...string) WriteOpt
+```
+
+TablePath sets a schema\-qualified or otherwise path\-qualified table name.
+
+For example, TablePath\("app", "users"\) renders "app"."users" on PostgreSQL and \`app\`.\`users\` on MySQL.
 
 <a name="UpdateColumns"></a>
 ### func UpdateColumns
@@ -2054,6 +2385,8 @@ const (
     Version           = "1"
     Generator         = "goquent"
     WarningStale      = "MANIFEST_STALE"
+    WarningUnverified = "MANIFEST_UNVERIFIED"
+    WarningRequired   = "MANIFEST_REQUIRED"
     WarningUnreadable = "MANIFEST_UNREADABLE"
 )
 ```
@@ -2582,6 +2915,7 @@ import "github.com/faciam-dev/goquent/orm/migration"
 - [func EnsureExecutable\(plan \*MigrationPlan\) error](<#EnsureExecutable>)
 - [func WriteJSON\(w io.Writer, plan \*MigrationPlan\) error](<#WriteJSON>)
 - [func WritePretty\(w io.Writer, plan \*MigrationPlan\) error](<#WritePretty>)
+- [type AppliedMigration](<#AppliedMigration>)
 - [type ColumnSchema](<#ColumnSchema>)
 - [type Executor](<#Executor>)
 - [type IndexSchema](<#IndexSchema>)
@@ -2602,6 +2936,15 @@ import "github.com/faciam-dev/goquent/orm/migration"
   - [func \(m \*Migrator\) Plan\(ctx context.Context\) \(\*MigrationPlan, error\)](<#Migrator.Plan>)
   - [func \(m \*Migrator\) RequireApproval\(reason string\) \*Migrator](<#Migrator.RequireApproval>)
 - [type Schema](<#Schema>)
+- [type Status](<#Status>)
+  - [func ReadStatus\(ctx context.Context, exec StatusExecutor, dialect driver.Dialect, desired \[\]string, opts ...StatusOption\) \(Status, error\)](<#ReadStatus>)
+- [type StatusExecutor](<#StatusExecutor>)
+- [type StatusOption](<#StatusOption>)
+  - [func WithStatusAppliedAtColumn\(column string\) StatusOption](<#WithStatusAppliedAtColumn>)
+  - [func WithStatusDirtyColumn\(column string\) StatusOption](<#WithStatusDirtyColumn>)
+  - [func WithStatusTable\(table string\) StatusOption](<#WithStatusTable>)
+  - [func WithStatusVersionColumn\(column string\) StatusOption](<#WithStatusVersionColumn>)
+- [type StatusOptions](<#StatusOptions>)
 - [type TableSchema](<#TableSchema>)
 
 
@@ -2650,6 +2993,19 @@ func WritePretty(w io.Writer, plan *MigrationPlan) error
 ```
 
 WritePretty writes a human\-readable migration plan.
+
+<a name="AppliedMigration"></a>
+## type AppliedMigration
+
+AppliedMigration is one row read from the migration status table.
+
+```go
+type AppliedMigration struct {
+    Version   string     `json:"version"`
+    AppliedAt *time.Time `json:"applied_at,omitempty"`
+    Dirty     bool       `json:"dirty,omitempty"`
+}
+```
 
 <a name="ColumnSchema"></a>
 ## type ColumnSchema
@@ -2899,6 +3255,103 @@ type Schema struct {
 }
 ```
 
+<a name="Status"></a>
+## type Status
+
+Status is a lightweight best\-effort view of migration table state.
+
+```go
+type Status struct {
+    Table         string             `json:"table"`
+    Exists        bool               `json:"exists"`
+    Applied       []AppliedMigration `json:"applied,omitempty"`
+    LatestApplied string             `json:"latest_applied,omitempty"`
+    Pending       []string           `json:"pending,omitempty"`
+    Dirty         bool               `json:"dirty,omitempty"`
+    Unknown       bool               `json:"unknown,omitempty"`
+    Warnings      []string           `json:"warnings,omitempty"`
+}
+```
+
+<a name="ReadStatus"></a>
+### func ReadStatus
+
+```go
+func ReadStatus(ctx context.Context, exec StatusExecutor, dialect driver.Dialect, desired []string, opts ...StatusOption) (Status, error)
+```
+
+ReadStatus reads the migration table state and compares it with desired versions supplied by the caller. It is intended for readiness checks, not as a complete schema drift detector.
+
+<a name="StatusExecutor"></a>
+## type StatusExecutor
+
+StatusExecutor is the read surface used by ReadStatus.
+
+```go
+type StatusExecutor interface {
+    QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+```
+
+<a name="StatusOption"></a>
+## type StatusOption
+
+StatusOption configures ReadStatus.
+
+```go
+type StatusOption func(*StatusOptions)
+```
+
+<a name="WithStatusAppliedAtColumn"></a>
+### func WithStatusAppliedAtColumn
+
+```go
+func WithStatusAppliedAtColumn(column string) StatusOption
+```
+
+WithStatusAppliedAtColumn reads an optional applied\-at timestamp column.
+
+<a name="WithStatusDirtyColumn"></a>
+### func WithStatusDirtyColumn
+
+```go
+func WithStatusDirtyColumn(column string) StatusOption
+```
+
+WithStatusDirtyColumn enables dirty\-state detection from column.
+
+<a name="WithStatusTable"></a>
+### func WithStatusTable
+
+```go
+func WithStatusTable(table string) StatusOption
+```
+
+WithStatusTable sets the migration table name. The default is schema\_migrations.
+
+<a name="WithStatusVersionColumn"></a>
+### func WithStatusVersionColumn
+
+```go
+func WithStatusVersionColumn(column string) StatusOption
+```
+
+WithStatusVersionColumn sets the version column. The default is version.
+
+<a name="StatusOptions"></a>
+## type StatusOptions
+
+StatusOptions configures the migration status table reader.
+
+```go
+type StatusOptions struct {
+    Table           string
+    VersionColumn   string
+    DirtyColumn     string
+    AppliedAtColumn string
+}
+```
+
 <a name="TableSchema"></a>
 ## type TableSchema
 
@@ -2982,6 +3435,7 @@ var (
     ErrForbiddenField          = errors.New("goquent operation: forbidden field")
     ErrInvalidFilter           = errors.New("goquent operation: invalid filter")
     ErrInvalidOrder            = errors.New("goquent operation: invalid order")
+    ErrValueRefMissing         = errors.New("goquent operation: value_ref missing")
     ErrRequiredFilterMissing   = errors.New("goquent operation: required filter missing")
     ErrPIIAccessReasonRequired = errors.New("goquent operation: PII access reason required")
     ErrStaleManifest           = errors.New("goquent operation: stale manifest")
@@ -3092,6 +3546,7 @@ import "github.com/faciam-dev/goquent/orm/query"
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [func AttachTableRiskMetadata\(plan \*QueryPlan, metadata \[\]TableRiskMetadata\)](<#AttachTableRiskMetadata>)
 - [func EnsurePlanExecutable\(plan \*QueryPlan\) error](<#EnsurePlanExecutable>)
 - [func RegisterTablePolicy\(policy TablePolicy\) error](<#RegisterTablePolicy>)
 - [func ResetPolicyRegistry\(\)](<#ResetPolicyRegistry>)
@@ -3100,7 +3555,11 @@ import "github.com/faciam-dev/goquent/orm/query"
 - [type ColumnRef](<#ColumnRef>)
 - [type CursorColumn](<#CursorColumn>)
   - [func CursorAsc\(name string\) CursorColumn](<#CursorAsc>)
+  - [func CursorAscAlias\(alias string\) CursorColumn](<#CursorAscAlias>)
+  - [func CursorAscExpr\(expr string\) CursorColumn](<#CursorAscExpr>)
   - [func CursorDesc\(name string\) CursorColumn](<#CursorDesc>)
+  - [func CursorDescAlias\(alias string\) CursorColumn](<#CursorDescAlias>)
+  - [func CursorDescExpr\(expr string\) CursorColumn](<#CursorDescExpr>)
 - [type Evidence](<#Evidence>)
 - [type JoinRef](<#JoinRef>)
 - [type OperationType](<#OperationType>)
@@ -3213,6 +3672,9 @@ import "github.com/faciam-dev/goquent/orm/query"
   - [func \(q \*Query\) WhereGroup\(fn func\(g \*Query\)\) \*Query](<#Query.WhereGroup>)
   - [func \(q \*Query\) WhereIn\(col string, vals any\) \*Query](<#Query.WhereIn>)
   - [func \(q \*Query\) WhereInSubQuery\(col string, sub \*Query\) \*Query](<#Query.WhereInSubQuery>)
+  - [func \(q \*Query\) WhereJSONHasKey\(column, key string\) \*Query](<#Query.WhereJSONHasKey>)
+  - [func \(q \*Query\) WhereJSONNotHasKey\(column, key string\) \*Query](<#Query.WhereJSONNotHasKey>)
+  - [func \(q \*Query\) WhereJSONText\(column, key string, value any\) \*Query](<#Query.WhereJSONText>)
   - [func \(q \*Query\) WhereMonth\(col, cond, month string\) \*Query](<#Query.WhereMonth>)
   - [func \(q \*Query\) WhereNot\(fn func\(g \*Query\)\) \*Query](<#Query.WhereNot>)
   - [func \(q \*Query\) WhereNotBetween\(col string, min, max any\) \*Query](<#Query.WhereNotBetween>)
@@ -3251,6 +3713,7 @@ import "github.com/faciam-dev/goquent/orm/query"
   - [func PolicyForTable\(table string\) \(TablePolicy, bool\)](<#PolicyForTable>)
   - [func RegisteredTablePolicies\(\) \[\]TablePolicy](<#RegisteredTablePolicies>)
 - [type TableRef](<#TableRef>)
+- [type TableRiskMetadata](<#TableRiskMetadata>)
 - [type Warning](<#Warning>)
 
 
@@ -3287,6 +3750,12 @@ const (
 )
 ```
 
+<a name="MetadataTableRisk"></a>MetadataTableRisk stores \[\]TableRiskMetadata in QueryPlan.Metadata.
+
+```go
+const MetadataTableRisk = "table_risk_metadata"
+```
+
 ## Variables
 
 <a name="ErrApprovalRequired"></a>
@@ -3299,6 +3768,15 @@ var (
     ErrBlockedOperation       = errors.New("goquent: blocked operation")
 )
 ```
+
+<a name="AttachTableRiskMetadata"></a>
+## func AttachTableRiskMetadata
+
+```go
+func AttachTableRiskMetadata(plan *QueryPlan, metadata []TableRiskMetadata)
+```
+
+AttachTableRiskMetadata attaches table key metadata used by risk checks.
 
 <a name="EnsurePlanExecutable"></a>
 ## func EnsurePlanExecutable
@@ -3387,6 +3865,7 @@ CursorColumn describes an ordered column used by keyset cursor predicates.
 type CursorColumn struct {
     Name      string
     Direction string
+    Raw       bool
 }
 ```
 
@@ -3399,6 +3878,24 @@ func CursorAsc(name string) CursorColumn
 
 CursorAsc returns an ascending keyset cursor column.
 
+<a name="CursorAscAlias"></a>
+### func CursorAscAlias
+
+```go
+func CursorAscAlias(alias string) CursorColumn
+```
+
+CursorAscAlias returns an ascending selected alias cursor column.
+
+<a name="CursorAscExpr"></a>
+### func CursorAscExpr
+
+```go
+func CursorAscExpr(expr string) CursorColumn
+```
+
+CursorAscExpr returns an ascending trusted SQL expression for keyset cursor predicates.
+
 <a name="CursorDesc"></a>
 ### func CursorDesc
 
@@ -3407,6 +3904,24 @@ func CursorDesc(name string) CursorColumn
 ```
 
 CursorDesc returns a descending keyset cursor column.
+
+<a name="CursorDescAlias"></a>
+### func CursorDescAlias
+
+```go
+func CursorDescAlias(alias string) CursorColumn
+```
+
+CursorDescAlias returns a descending selected alias cursor column.
+
+<a name="CursorDescExpr"></a>
+### func CursorDescExpr
+
+```go
+func CursorDescExpr(expr string) CursorColumn
+```
+
+CursorDescExpr returns a descending trusted SQL expression for keyset cursor predicates.
 
 <a name="Evidence"></a>
 ## type Evidence
@@ -4462,6 +4977,33 @@ func (q *Query) WhereInSubQuery(col string, sub *Query) *Query
 
 WhereInSubQuery adds WHERE IN \(subquery\) condition.
 
+<a name="Query.WhereJSONHasKey"></a>
+### func \(\*Query\) WhereJSONHasKey
+
+```go
+func (q *Query) WhereJSONHasKey(column, key string) *Query
+```
+
+WhereJSONHasKey adds a PostgreSQL JSONB key\-existence predicate: column ? key.
+
+<a name="Query.WhereJSONNotHasKey"></a>
+### func \(\*Query\) WhereJSONNotHasKey
+
+```go
+func (q *Query) WhereJSONNotHasKey(column, key string) *Query
+```
+
+WhereJSONNotHasKey adds a negated PostgreSQL JSONB key\-existence predicate: NOT \(column ? key\).
+
+<a name="Query.WhereJSONText"></a>
+### func \(\*Query\) WhereJSONText
+
+```go
+func (q *Query) WhereJSONText(column, key string, value any) *Query
+```
+
+WhereJSONText adds a PostgreSQL JSONB text equality predicate: column \-\>\> key = value.
+
 <a name="Query.WhereMonth"></a>
 ### func \(\*Query\) WhereMonth
 
@@ -4891,6 +5433,22 @@ type TableRef struct {
 }
 ```
 
+<a name="TableRiskMetadata"></a>
+## type TableRiskMetadata
+
+TableRiskMetadata gives the risk engine table key context without depending on the manifest package.
+
+```go
+type TableRiskMetadata struct {
+    Table                 string     `json:"table"`
+    PrimaryKeyColumns     []string   `json:"primary_key_columns,omitempty"`
+    UniqueIndexes         [][]string `json:"unique_indexes,omitempty"`
+    TenantColumn          string     `json:"tenant_column,omitempty"`
+    SoftDeleteColumn      string     `json:"soft_delete_column,omitempty"`
+    RequiredFilterColumns []string   `json:"required_filter_columns,omitempty"`
+}
+```
+
 <a name="Warning"></a>
 ## type Warning
 
@@ -4918,10 +5476,15 @@ import "github.com/faciam-dev/goquent/orm/review"
 ## Index
 
 - [func HasFindingsAtOrAbove\(report ReviewReport, threshold query.RiskLevel\) bool](<#HasFindingsAtOrAbove>)
+- [func HasFindingsAtOrAbovePrecision\(report ReviewReport, threshold query.AnalysisPrecision\) bool](<#HasFindingsAtOrAbovePrecision>)
+- [func ParseAnalysisPrecision\(s string\) \(query.AnalysisPrecision, error\)](<#ParseAnalysisPrecision>)
 - [func ParseRiskLevel\(s string\) \(query.RiskLevel, error\)](<#ParseRiskLevel>)
 - [func WriteGitHub\(w io.Writer, report ReviewReport\) error](<#WriteGitHub>)
 - [func WriteJSON\(w io.Writer, report ReviewReport\) error](<#WriteJSON>)
 - [func WritePretty\(w io.Writer, report ReviewReport\) error](<#WritePretty>)
+- [type Config](<#Config>)
+  - [func LoadConfig\(path string\) \(Config, error\)](<#LoadConfig>)
+- [type ConfigSuppression](<#ConfigSuppression>)
 - [type Finding](<#Finding>)
 - [type ManifestStatus](<#ManifestStatus>)
 - [type Options](<#Options>)
@@ -4938,6 +5501,24 @@ func HasFindingsAtOrAbove(report ReviewReport, threshold query.RiskLevel) bool
 ```
 
 HasFindingsAtOrAbove reports whether report should fail CI at threshold.
+
+<a name="HasFindingsAtOrAbovePrecision"></a>
+## func HasFindingsAtOrAbovePrecision
+
+```go
+func HasFindingsAtOrAbovePrecision(report ReviewReport, threshold query.AnalysisPrecision) bool
+```
+
+HasFindingsAtOrAbovePrecision reports whether findings meet a precision threshold.
+
+<a name="ParseAnalysisPrecision"></a>
+## func ParseAnalysisPrecision
+
+```go
+func ParseAnalysisPrecision(s string) (query.AnalysisPrecision, error)
+```
+
+ParseAnalysisPrecision parses a CLI precision threshold.
 
 <a name="ParseRiskLevel"></a>
 ## func ParseRiskLevel
@@ -4975,6 +5556,51 @@ func WritePretty(w io.Writer, report ReviewReport) error
 
 WritePretty writes a human\-readable review report.
 
+<a name="Config"></a>
+## type Config
+
+Config is the JSON configuration accepted by goquent review \-\-config.
+
+```go
+type Config struct {
+    Manifest             string                          `json:"manifest,omitempty"`
+    Schema               string                          `json:"schema,omitempty"`
+    Policy               string                          `json:"policy,omitempty"`
+    DatabaseSchema       string                          `json:"database_schema,omitempty"`
+    Code                 []string                        `json:"code,omitempty"`
+    RequireFreshManifest bool                            `json:"require_fresh_manifest,omitempty"`
+    FailOn               string                          `json:"fail_on,omitempty"`
+    FailOnPrecision      string                          `json:"fail_on_precision,omitempty"`
+    ShowSuppressed       bool                            `json:"show_suppressed,omitempty"`
+    Rules                map[string]query.RiskRuleConfig `json:"rules,omitempty"`
+    Suppressions         []ConfigSuppression             `json:"suppressions,omitempty"`
+}
+```
+
+<a name="LoadConfig"></a>
+### func LoadConfig
+
+```go
+func LoadConfig(path string) (Config, error)
+```
+
+LoadConfig reads a JSON review config file.
+
+<a name="ConfigSuppression"></a>
+## type ConfigSuppression
+
+ConfigSuppression suppresses a finding for paths matched by Path.
+
+```go
+type ConfigSuppression struct {
+    Code    string `json:"code"`
+    Path    string `json:"path,omitempty"`
+    Reason  string `json:"reason"`
+    Owner   string `json:"owner,omitempty"`
+    Expires string `json:"expires,omitempty"`
+}
+```
+
 <a name="Finding"></a>
 ## type Finding
 
@@ -5001,8 +5627,10 @@ ManifestStatus is reserved for Phase 6 stale manifest integration.
 
 ```go
 type ManifestStatus struct {
-    Fresh bool   `json:"fresh"`
-    Path  string `json:"path,omitempty"`
+    Fresh    bool   `json:"fresh"`
+    Verified bool   `json:"verified,omitempty"`
+    State    string `json:"state,omitempty"`
+    Path     string `json:"path,omitempty"`
 }
 ```
 
@@ -5017,6 +5645,10 @@ type Options struct {
     ShowSuppressed       bool
     ManifestPath         string
     RequireFreshManifest bool
+    CurrentManifest      *manifest.Manifest
+    ManifestInputs       bool
+    Rules                map[string]query.RiskRuleConfig
+    ConfigSuppressions   []ConfigSuppression
 }
 ```
 
