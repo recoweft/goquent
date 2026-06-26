@@ -8,10 +8,16 @@ The generic API is the small set of helpers around:
 - `InsertMany[T]`
 - `Update[T]`
 - `Upsert[T]`
+- `UpsertMany[T]`
 - `InsertReturning[T]`
 - `InsertManyReturning[T]`
 - `UpdateReturning[T]`
 - `UpsertReturning[T]`
+- `UpsertManyReturning[T]`
+- `ReplaceNestedCollection[T]`
+- `ReplaceNestedCollectionTx[T]`
+- `RunIdempotentCommand[T]`
+- `ProjectParentChildren[T]`
 
 Use these helpers when you want a compact typed call and the operation is simple enough to fit their model. Use the query-builder API when you want to build SQL fluently with `db.Model(...).Where(...).Get(...)`, `db.Table(...).Where(...).FirstMap(...)`, joins, non-primary-key updates, or other builder features.
 
@@ -57,6 +63,10 @@ _, err = orm.Update(ctx, db, User{ID: 1, Name: "sam"}, orm.Columns("name"), orm.
 _, err = orm.Upsert(ctx, db, User{ID: 1, Name: "sam", Age: 18}, orm.WherePK())
 created, err := orm.InsertReturning[User](ctx, db, User{Name: "sam", Age: 18})
 ```
+
+For parent rows with ordered child collections, use `ReplaceNestedCollection`
+inside an existing transaction or `ReplaceNestedCollectionTx` to open the
+transaction for the whole replacement.
 
 For anything more complex than "write this row to this table", prefer
 `db.Table(...).Where(...).Update(...)` so Goquent can still plan and review the operation. Use raw
@@ -183,7 +193,8 @@ For map destinations:
 
 Drivers do not all return SQL `numeric`/`decimal` values as the same Go type when scanning through `any`. PostgreSQL drivers commonly expose exact numeric values as text-like data. For portable DTOs, prefer one of these shapes:
 
-- Use `string` or `sql.NullString` in persistence rows when you need exact decimal text, then parse or round in your domain layer.
+- Use `NumericString` when you need exact decimal text with `sql.Scanner` and `driver.Valuer` behavior.
+- Use `string` or `sql.NullString` in persistence rows when your driver already returns assignable text values, then parse or round in your domain layer.
 - Use a custom type that implements `sql.Scanner` when the column has business-specific decimal semantics.
 - Use `float64` only when precision loss is acceptable and your driver returns a value convertible to `float64`.
 
@@ -191,9 +202,11 @@ Example:
 
 ```go
 type ScoreRow struct {
-    ID         string `db:"id"`
-    Confidence string `db:"confidence"` // numeric(4,3)
+    ID         string            `db:"id"`
+    Confidence orm.NumericString `db:"confidence"` // numeric(4,3)
 }
+
+confidence := row.Confidence.OrDefault("0")
 ```
 
 ## Write API
@@ -305,8 +318,8 @@ _, err := orm.InsertMany(
 ```
 
 `InsertMany` does not support assignment or conflict/upsert options. Use
-`Upsert` for single-row conflict handling; a future bulk upsert can keep its
-own semantics instead of overloading insert.
+`Upsert` for single-row conflict handling and `UpsertMany` for bulk conflict
+handling.
 
 ### `Update[T]`
 
@@ -435,12 +448,147 @@ _, err := orm.Upsert(
 )
 ```
 
+### `UpsertMany[T]`
+
+`UpsertMany` builds one multi-row upsert statement. It supports the same
+conflict-target options as `Upsert`, including `WherePK()`,
+`ConflictColumns(...)`, `ConflictWhere(...)`, `ConflictConstraint(...)`,
+`ConflictTargetRaw(...)`, `UpdateColumns(...)`, assignment options, and
+`ConflictDoNothing()`.
+
+As with `InsertMany`, all rows must resolve to the same insert column set.
+Primary-key columns used by `WherePK()` and columns named by
+`ConflictColumns(...)` stay in the insert side even when `Columns(...)`,
+`Omit(...)`, or `omitempty` would otherwise remove them.
+
+```go
+_, err := orm.UpsertMany(
+    ctx,
+    db,
+    []map[string]any{
+        {
+            "tenant_id":  tenantID,
+            "field_key":  "weekly_hours",
+            "value_json": valueJSON,
+            "updated_at": now,
+        },
+        {
+            "tenant_id":  tenantID,
+            "field_key":  "overtime_hours",
+            "value_json": overtimeJSON,
+            "updated_at": now,
+        },
+    },
+    orm.Table("profile_values"),
+    orm.ConflictColumns("tenant_id", "field_key"),
+    orm.UpdateColumns("value_json", "updated_at"),
+)
+```
+
+For append-only batches, combine `UpsertMany` with `ConflictDoNothing()`:
+
+```go
+_, err := orm.UpsertMany(
+    ctx,
+    db,
+    events,
+    orm.Table("audit_events"),
+    orm.ConflictColumns("tenant_id", "idempotency_key"),
+    orm.ConflictDoNothing(),
+)
+```
+
+### Nested collection replacement
+
+`ReplaceNestedCollection` is a transaction-friendly recipe for replacing an
+ordered child collection and writing grandchildren that need the generated child
+IDs. It is intended for shapes like document tables, rows, and cells:
+
+1. Upsert or insert the parent row.
+2. Delete existing grandchildren and children with explicit tenant/table scopes.
+3. Insert the new ordered children and collect generated child IDs.
+4. Build grandchildren from each child and generated ID.
+5. Insert or upsert the grandchildren in one batch.
+
+Use `ReplaceNestedCollectionTx` when the helper should open the transaction.
+Use `ReplaceNestedCollection` when you already have a transaction-scoped `*DB`.
+
+```go
+tableID := int64(100)
+tenantID := "tenant-1"
+
+result, err := orm.ReplaceNestedCollectionTx(
+    ctx,
+    db,
+    orm.NestedCollectionReplace[DocumentTableRow, DocumentTableLine, DocumentTableCell]{
+        Parent: DocumentTableRow{
+            ID:       tableID,
+            TenantID: tenantID,
+            Title:    "Work history",
+            Revision: 8,
+        },
+        ParentOpts: []orm.WriteOpt{
+            orm.WherePK(),
+            orm.UpdateColumns("tenant_id", "title", "revision"),
+        },
+        DeleteBefore: []orm.NestedDelete{
+            {
+                Table:  "document_table_cells",
+                Scopes: []orm.Scope{orm.TenantScope(tenantID), tableIDScope(tableID)},
+            },
+            {
+                Table:  "document_table_rows",
+                Scopes: []orm.Scope{orm.TenantScope(tenantID), tableIDScope(tableID)},
+            },
+        },
+        Children: []DocumentTableLine{
+            {TenantID: tenantID, TableID: tableID, StableRowKey: "row-1", Position: 0},
+            {TenantID: tenantID, TableID: tableID, StableRowKey: "row-2", Position: 1},
+        },
+        ChildIDColumn: "id",
+        Grandchildren: func(_ int, row DocumentTableLine, rowID int64) ([]DocumentTableCell, error) {
+            return []DocumentTableCell{
+                {
+                    TenantID:      row.TenantID,
+                    TableID:       row.TableID,
+                    RowID:         rowID,
+                    StableCellKey: row.StableRowKey + ":c1",
+                    ValueJSON:     row.ValueJSON,
+                },
+            }, nil
+        },
+        GrandchildMode: orm.NestedWriteUpsert,
+        GrandchildOpts: []orm.WriteOpt{
+            orm.ConflictColumns("tenant_id", "table_id", "stable_cell_key"),
+            orm.UpdateColumns("row_id", "value_json"),
+        },
+    },
+)
+_ = result.ChildIDs
+```
+
+The helper intentionally keeps tenant/table predicates explicit. Define scopes
+near the repository method so the replacement boundary is easy to review:
+
+```go
+func tableIDScope(tableID int64) orm.Scope {
+    return func(q *query.Query) *query.Query {
+        return q.Where("table_id", tableID)
+    }
+}
+```
+
+Generated child IDs are collected only for child insert writes. MySQL uses the
+first `LastInsertId` from the multi-row insert and assigns consecutive IDs;
+PostgreSQL uses `RETURNING "id"`. If children are upserted, use stable keys and
+an explicit lookup instead of generated-ID collection.
+
 ### Typed returning helpers
 
-`InsertReturning[T]`, `InsertManyReturning[T]`, `UpdateReturning[T]`, and
-`UpsertReturning[T]` execute the same generated write statements as `Insert`,
-`InsertMany`, `Update`, and `Upsert`, but scan PostgreSQL `RETURNING` rows into
-typed values.
+`InsertReturning[T]`, `InsertManyReturning[T]`, `UpdateReturning[T]`,
+`UpsertReturning[T]`, and `UpsertManyReturning[T]` execute the same generated
+write statements as `Insert`, `InsertMany`, `Update`, `Upsert`, and
+`UpsertMany`, but scan PostgreSQL `RETURNING` rows into typed values.
 
 If you do not pass `Returning(...)`, goquent infers the returning column list from the destination struct tags.
 
@@ -464,6 +612,20 @@ nodes, err := orm.InsertManyReturning[DocumentNodeRow](
     },
     orm.Table("document_nodes"),
     orm.Returning("document_id", "node_id", "body", "created_at"),
+)
+```
+
+Bulk upsert returning scans every inserted or updated row returned by
+PostgreSQL:
+
+```go
+values, err := orm.UpsertManyReturning[ProfileValueRow](
+    ctx,
+    db,
+    patches,
+    orm.Table("profile_values"),
+    orm.ConflictColumns("tenant_id", "field_key"),
+    orm.UpdateColumns("value_json", "updated_at"),
 )
 ```
 
@@ -512,6 +674,65 @@ _ = attempt
 
 For expression-only raw conflict targets, also provide `ConflictColumns(...)`
 or `WherePK()` when you need the existing-row lookup.
+
+### Idempotent command recipe
+
+Use `RunIdempotentCommand` when an application command has an idempotency key
+but writes several rows before returning a hydrated aggregate. The helper keeps
+the repository-specific SQL and scopes explicit while standardizing the control
+flow:
+
+1. Look up an existing result by idempotency key.
+2. If found, return it with `Applied=false`.
+3. If not found, run the write body inside a transaction.
+4. If the write body reports `ErrConflict`, look up the existing result again.
+
+```go
+result, err := orm.RunIdempotentCommand(
+    ctx,
+    db,
+    orm.IdempotentCommandSpec[DocumentTableAggregate]{
+        LookupExisting: func(ctx context.Context, db *orm.DB) (DocumentTableAggregate, error) {
+            return repo.FindTableByPatchKey(ctx, db, tenantID, idempotencyKey)
+        },
+        Apply: func(ctx context.Context, tx orm.Tx) (DocumentTableAggregate, error) {
+            if _, err := orm.UpdateBy(
+                ctx,
+                tx.DB.Table("document_tables"),
+                map[string]any{"revision": nextRevision},
+                orm.TenantScope(tenantID),
+                tableIDScope(tableID),
+            ); err != nil {
+                return DocumentTableAggregate{}, err
+            }
+            if _, err := orm.Insert(
+                ctx,
+                tx.DB,
+                DocumentTablePatchRow{
+                    TenantID:       tenantID,
+                    TableID:        tableID,
+                    IdempotencyKey: idempotencyKey,
+                    PayloadJSON:    orm.JSONOf(patchPayload),
+                },
+            ); err != nil {
+                return DocumentTableAggregate{}, err
+            }
+            if _, err := orm.Insert(ctx, tx.DB, eventRow); err != nil {
+                return DocumentTableAggregate{}, err
+            }
+            return repo.LoadTableAggregate(ctx, tx.DB, tenantID, tableID)
+        },
+    },
+)
+if !result.Applied {
+    return result.Value, nil
+}
+```
+
+The write body should return `ErrConflict` when an optimistic-concurrency guard
+or unique idempotency key detects a concurrent replay. In that case the helper
+re-runs `LookupExisting` or `LookupAfterConflict` and returns the existing
+aggregate when it is visible.
 
 ## Write options
 
@@ -770,6 +991,38 @@ err := db.TransactionContext(ctx, func(tx orm.Tx) error {
 })
 ```
 
+### `RunTransactionWithHooks(...)`
+
+Use `RunTransactionWithHooks` when an aggregate write must atomically append
+audit rows or outbox messages. The main `Apply` body runs first; hooks run after
+it and before commit. Any hook error rolls back the transaction.
+
+```go
+result, err := orm.RunTransactionWithHooks(
+    ctx,
+    db,
+    orm.TransactionWithHooksSpec[DocumentTableAggregate]{
+        Apply: func(ctx context.Context, tx orm.Tx) (DocumentTableAggregate, error) {
+            if _, err := orm.UpdateBy(
+                ctx,
+                tx.DB.Table("document_tables"),
+                map[string]any{"revision": nextRevision},
+                orm.TenantScope(tenantID),
+                tableIDScope(tableID),
+            ); err != nil {
+                return DocumentTableAggregate{}, err
+            }
+            return repo.LoadTableAggregate(ctx, tx.DB, tenantID, tableID)
+        },
+        Hooks: []orm.TransactionHook{
+            orm.InsertHook("audit", auditEventRow),
+            orm.InsertHook("outbox", outboxMessageRow),
+        },
+    },
+)
+_ = result
+```
+
 ### Manual `Begin()` / `BeginTx(...)`
 
 ```go
@@ -830,11 +1083,255 @@ summary, err := orm.DecodeJSON(rawPayload, ValidationSummary{Status: "unknown"})
 _, _ = payload, summary
 ```
 
+For JSON path updates, use `JSONPath` to build the update-map key instead of
+hand-writing the `column->path` convention:
+
+```go
+statusKey, err := orm.JSONPath("payload", "status")
+if err != nil {
+    return err
+}
+_, err = orm.UpdateBy(
+    ctx,
+    db.Table("audit_events"),
+    map[string]any{statusKey: `{"value":"ok"}`},
+    orm.TenantScope(tenantID),
+    func(q *query.Query) *query.Query {
+        return q.Where("id", eventID)
+    },
+)
+```
+
+MySQL renders this as `JSON_SET`; PostgreSQL renders `jsonb_set`.
+
 Wide read projections should use explicit select aliases and dedicated row
-structs. For nested JSON aggregate snapshots, keep the raw SQL in a small
-repository method, require raw approval, and scan into a typed row containing
+structs. For parent rows with ordered children, select a flat joined row and
+fold it with `ProjectParentChildren`. The helper preserves the order returned by
+the query, so keep the child ordering in SQL.
+
+For one-row joined projections, alias columns with a stable prefix and scan into
+nested structs tagged with `db:"<prefix>,prefix"`. Pointer nested structs are
+useful for LEFT JOINs because they stay nil when every prefixed column is NULL.
+
+```go
+type UserRow struct {
+    ID   int64  `db:"id,pk"`
+    Name string `db:"name"`
+}
+
+type ProfileRow struct {
+    ID  int64          `db:"id"`
+    Bio sql.NullString `db:"bio"`
+}
+
+type UserProfileRow struct {
+    User    UserRow     `db:"user,prefix"`
+    Profile *ProfileRow `db:"profile,prefix"`
+}
+
+rows, err := orm.SelectAllBy[UserProfileRow](
+    ctx,
+    db,
+    db.Table("users").
+        SelectRaw("users.id AS user_id").
+        SelectRaw("users.name AS user_name").
+        SelectRaw("profiles.id AS profile_id").
+        SelectRaw("profiles.bio AS profile_bio").
+        LeftJoin("profiles", "users.id", "=", "profiles.user_id"),
+    orm.TenantScope(tenantID, "users.tenant_id"),
+)
+```
+
+Use the prefixed scan form for one-to-one or optional joined rows. For
+one-to-many rows, keep the flat row scan and fold with `ProjectParentChildren`.
+
+```go
+type TableCellJoinRow struct {
+    RowID     int64  `db:"row_id"`
+    RowKey    string `db:"row_key"`
+    CellKey   string `db:"cell_key"`
+    ValueJSON string `db:"value_json"`
+}
+
+flatRows, err := orm.SelectAll[TableCellJoinRow](
+    ctx,
+    db.RequireRawApproval("reviewed table row/cell projection").
+        TouchedTables("document_table_rows", "document_table_cells"),
+    sqlText,
+    tenantID,
+    tableID,
+)
+rows, err := orm.ProjectParentChildren(
+    flatRows,
+    orm.ParentChildProjection[TableCellJoinRow, TableRowDTO, TableCellDTO, int64]{
+        ParentKey: func(row TableCellJoinRow) int64 {
+            return row.RowID
+        },
+        Parent: func(row TableCellJoinRow) TableRowDTO {
+            return TableRowDTO{ID: row.RowID, StableKey: row.RowKey}
+        },
+        Child: func(row TableCellJoinRow) (TableCellDTO, bool) {
+            if row.CellKey == "" {
+                return TableCellDTO{}, false
+            }
+            return TableCellDTO{StableKey: row.CellKey, ValueJSON: row.ValueJSON}, true
+        },
+        AppendChild: func(parent *TableRowDTO, child TableCellDTO) {
+            parent.Cells = append(parent.Cells, child)
+        },
+    },
+)
+```
+
+For "group by key, count rows, keep a representative row" projections, use
+`GroupRepresentativeRows` after the repository query has applied the desired
+filtering and ordering:
+
+```go
+groups, err := orm.GroupRepresentativeRows(
+    workRows,
+    func(row WorkItemRow) string {
+        return row.ClientCompanyID
+    },
+)
+for _, group := range groups {
+    dto := WorkGroupDTO{
+        ClientCompanyID: group.Key,
+        Count:           group.Count,
+        Representative:  group.Representative,
+    }
+    _ = dto
+}
+```
+
+For aggregate rollups fetched in a separate query, use `HydrateAggregates` to
+attach one grouped row to each parent without hand-rolling a lookup map in every
+repository method:
+
+```go
+type WorkItemDTO struct {
+    ID          int64
+    Title       string
+    OpenIssues  int
+    NoticeCount int
+}
+
+type WorkItemAggregateRow struct {
+    WorkItemID  int64 `db:"work_item_id"`
+    OpenIssues  int   `db:"open_issues"`
+    NoticeCount int   `db:"notice_count"`
+}
+
+items, err := orm.SelectAllBy[WorkItemDTO](ctx, db, itemQuery)
+aggregates, err := orm.SelectAllBy[WorkItemAggregateRow](ctx, db, aggregateQuery)
+items, err = orm.HydrateAggregates(
+    items,
+    aggregates,
+    orm.AggregateHydration[WorkItemDTO, WorkItemAggregateRow, int64]{
+        ParentKey: func(item WorkItemDTO) int64 {
+            return item.ID
+        },
+        AggregateKey: func(row WorkItemAggregateRow) int64 {
+            return row.WorkItemID
+        },
+        Apply: func(item *WorkItemDTO, row WorkItemAggregateRow) {
+            item.OpenIssues = row.OpenIssues
+            item.NoticeCount = row.NoticeCount
+        },
+    },
+)
+```
+
+The helper preserves parent order, leaves parents with no aggregate row
+unchanged, and returns an error if the aggregate query returns duplicate rows
+for the same parent key.
+
+For union-style read models, use `ApplyProjection[T]` to keep every branch
+aligned to one DTO shape. Columns missing from a branch are selected as `NULL`,
+so each branch only declares the fields it can naturally provide:
+
+```go
+type WorkItemRow struct {
+    ResourceType string `db:"resource_type"`
+    ResourceID   string `db:"resource_id"`
+    Title        string `db:"title"`
+    NoticeCount  *int   `db:"notice_count"`
+}
+
+clientBase := orm.ApplyScopes(
+    db.Table("client_companies"),
+    orm.TenantScope(tenantID),
+)
+noticeBase := orm.ApplyScopes(
+    db.Table("notices"),
+    orm.TenantScope(tenantID),
+)
+
+clientBranch, err := orm.ApplyProjection[WorkItemRow](
+    clientBase,
+    map[string]orm.ProjectionExpression{
+        "resource_type": orm.ProjectionSQL("'client'"),
+        "resource_id":   orm.ProjectionSQL("client_companies.id"),
+        "title":         orm.ProjectionSQL("client_companies.name"),
+    },
+)
+noticeBranch, err := orm.ApplyProjection[WorkItemRow](
+    noticeBase,
+    map[string]orm.ProjectionExpression{
+        "resource_type": orm.ProjectionSQL("'notice'"),
+        "resource_id":   orm.ProjectionSQL("notices.id"),
+        "title":         orm.ProjectionSQL("notices.subject"),
+        "notice_count":  orm.ProjectionSQL("1"),
+    },
+)
+items, err := orm.SelectAllBy[WorkItemRow](
+    ctx,
+    db,
+    clientBranch.UnionAll(noticeBranch),
+)
+```
+
+Apply tenant and required-filter scopes to each branch before unioning; do not
+rely on a single outer predicate to scope every branch.
+
+For nested JSON aggregate snapshots, keep the raw SQL in a small repository
+method, require raw approval, and scan into a typed row containing
 `JSONField[T]` fields. That preserves the SQL review boundary without forcing
 nested aggregate SQL into the structured builder.
+
+Use `JSONBuildObject` and `JSONAggregateArray` for the dialect-specific JSON
+aggregate expression when the rest of the query is still reviewed SQL or a
+small projection query:
+
+```go
+cellObject, err := orm.JSONBuildObject(db.Dialect(), map[string]string{
+    "key":      "document_table_cells.stable_cell_key",
+    "value":    "document_table_cells.value_json",
+    "position": "document_table_cells.position",
+})
+cellsJSON, err := orm.JSONAggregateArray(
+    db.Dialect(),
+    cellObject,
+    orm.JSONAggOrderBy("document_table_cells.position ASC"),
+    orm.JSONAggFilter("document_table_cells.id IS NOT NULL"), // PostgreSQL only
+)
+
+rows, err := orm.SelectAllBy[TableRowSnapshot](
+    ctx,
+    db,
+    db.Table("document_table_rows").
+        Select("document_table_rows.id").
+        SelectRaw(cellsJSON.SQL+" AS cells_json", cellsJSON.Args...).
+        LeftJoin("document_table_cells", "document_table_rows.id", "=", "document_table_cells.row_id").
+        GroupBy("document_table_rows.id"),
+    orm.TenantScope(tenantID, "document_table_rows.tenant_id"),
+)
+```
+
+The helper returns `jsonb_build_object/jsonb_agg` for PostgreSQL and
+`JSON_OBJECT/JSON_ARRAYAGG` for MySQL. MySQL has no aggregate `FILTER`, so use a
+WHERE clause or a separate aggregate query when you need to omit left-join
+misses.
 
 For reviewed raw projections, carry both the approval reason and the touched
 table list on the DB copy:
@@ -913,6 +1410,57 @@ tenantDocs := orm.ComposeScopes(
 scopeBindings := orm.TenantScope(tenantID, "scope_tenant_id")
 ```
 
+Use `RequireTenantScope` or `RequirePredicates` when a repository method should
+fail before execution if a required scope was not applied. This is useful for
+tenant-scoped projections where the method accepts optional filtering scopes and
+you want a local guard in addition to global policy metadata.
+
+```go
+users, err := orm.SelectAllBy[User](
+    ctx,
+    db,
+    db.Table("users"),
+    orm.RequireTenantScope("users"),
+    orm.TenantScope(tenantID),
+)
+```
+
+For parent scopes, require each boundary column explicitly:
+
+```go
+cases, err := orm.SelectAllBy[FilingCaseRow](
+    ctx,
+    db,
+    db.Table("filing_cases"),
+    orm.RequirePredicates(
+        orm.RequirePredicate("filing_cases", "tenant_id"),
+        orm.RequirePredicate("filing_cases", "client_company_id"),
+        orm.RequirePredicate("filing_cases", "workplace_id"),
+    ),
+    orm.TenantScope(tenantID),
+    func(q *query.Query) *query.Query {
+        return q.Where("client_company_id", clientCompanyID).
+            Where("workplace_id", workplaceID)
+    },
+)
+```
+
+In joined queries, qualify the guarded predicates by table or alias so the plan
+can prove each table is scoped:
+
+```go
+err := db.Table("users").
+    Select("users.id", "memberships.role").
+    Join("memberships", "users.id", "=", "memberships.user_id").
+    RequirePredicates(
+        orm.RequirePredicate("users", "tenant_id"),
+        orm.RequirePredicate("memberships", "tenant_id"),
+    ).
+    Where("users.tenant_id", tenantID).
+    Where("memberships.tenant_id", tenantID).
+    GetMaps(&rows)
+```
+
 For joined queries with registered tenant policies on multiple tables, prefer qualified columns so
 the `QueryPlan` can prove each table is scoped:
 
@@ -925,6 +1473,29 @@ err := db.Table("users").
     Where("memberships.tenant_id", tenantID).
     Limit(50).
     GetMaps(&out)
+```
+
+### `TextSearch(...)`
+
+`TextSearch` adds a grouped substring search across several text columns without
+hand-writing repeated `ILIKE`/`LIKE` predicates. PostgreSQL uses `ILIKE`; MySQL
+uses `LIKE` and follows the database collation. Search terms are escaped before
+wildcards are added, so `%` and `_` in user input are treated literally.
+
+```go
+rows, err := orm.SelectAllBy[CorpusUnitRow](
+    ctx,
+    db,
+    db.Table("corpus_units").
+        Select("id", "title", "article_no").
+        OrderBy("article_no", "asc").
+        Limit(50),
+    orm.TenantScope(tenantID),
+    orm.TextSearch(
+        []string{"title", "normalized_text", "article_no"},
+        searchText,
+    ),
+)
 ```
 
 ### `CursorAfter(...)` and `CursorBefore(...)`
@@ -974,6 +1545,24 @@ user, err := orm.SelectOneBy[User](ctx, db, db.Model(&User{}), WithProfile(), Bi
 users, err := orm.SelectAllBy[User](ctx, db, db.Model(&User{}), WithProfile())
 ```
 
+Use `PlanSelectBy` in repository tests when you want to snapshot the scoped SQL
+or assert policy warnings without touching the database:
+
+```go
+plan, err := orm.PlanSelectBy(
+    ctx,
+    db.Table("users"),
+    orm.RequireTenantScope("users"),
+    orm.TenantScope(tenantID),
+)
+if err != nil {
+    return err
+}
+if orm.PlanHasPredicateColumn(plan, "users", "tenant_id") {
+    // scoped as expected
+}
+```
+
 ### `UpdateBy(...)`
 
 `UpdateBy` applies scopes to a base query and then calls the query-builder `Update`.
@@ -1011,12 +1600,41 @@ if orm.IsConflict(err) {
 _ = updated
 ```
 
+Use `PlanUpdateBy` to test guarded update plans without executing them:
+
+```go
+plan, err := orm.PlanUpdateBy(
+    ctx,
+    db.Table("edit_sessions"),
+    map[string]any{"status": "closed"},
+    orm.RequireTenantScope("edit_sessions"),
+    orm.TenantScope(tenantID),
+    func(q *query.Query) *query.Query {
+        return q.Where("id", sessionID)
+    },
+)
+```
+
 ### `DeleteBy(...)`
 
 `DeleteBy` does the same for `DELETE`.
 
 ```go
 _, err := orm.DeleteBy(ctx, db.Table("users"), WithProfile(), BioLike("%python%"))
+```
+
+Use `PlanDeleteBy` for delete plan snapshots:
+
+```go
+plan, err := orm.PlanDeleteBy(
+    ctx,
+    db.Table("document_locks"),
+    orm.RequireTenantScope("document_locks"),
+    orm.TenantScope(tenantID),
+    func(q *query.Query) *query.Query {
+        return q.Where("document_id", documentID)
+    },
+)
 ```
 
 ## Dialect notes
@@ -1032,10 +1650,16 @@ _, err := orm.DeleteBy(ctx, db.Table("users"), WithProfile(), BioLike("%python%"
 ## Limitations and caveats
 
 - Reads only support struct destinations and `map[string]any`. Pointer destinations are not supported.
-- Writes only support non-pointer struct values and `map[string]any`; `InsertMany` supports slices of those shapes.
+- Writes only support non-pointer struct values and `map[string]any`; `InsertMany` and `UpsertMany` support slices of those shapes.
 - Generic `Update` only supports primary-key-based updates through `WherePK()`. For arbitrary predicates, use `UpdateBy` or `UpdateByReturning`.
-- Generic `Upsert` can use `WherePK()`, `ConflictColumns(...)`, `ConflictConstraint(...)`, or `ConflictTargetRaw(...)`.
+- Generic `Upsert` and `UpsertMany` can use `WherePK()`, `ConflictColumns(...)`, `ConflictConstraint(...)`, or `ConflictTargetRaw(...)`.
 - Generic `InsertMany` is insert-only and rejects conflict/upsert and assignment options.
+- `ReplaceNestedCollection` supports one ordered child level plus one generated grandchild batch. It does not infer tenant or table scopes; pass them explicitly through `NestedDelete.Scopes`.
+- Generated child IDs are collected only for child insert writes, not child upsert writes.
+- `RunIdempotentCommand` standardizes the transaction/replay flow, but it does not infer idempotency keys or unique constraints. Keep the lookup and conflict mapping explicit in the repository.
+- `ProjectParentChildren` folds already-selected flat rows. It does not issue SQL or infer ordering; the query must select and order the rows explicitly.
+- `RequirePredicates` and `RequireTenantScope` validate QueryPlan predicates before execution. In multi-table plans, use qualified predicates such as `users.tenant_id` and `memberships.tenant_id`.
+- `PlanSelectBy`, `PlanUpdateBy`, and `PlanDeleteBy` return plans for scoped repository tests. They do not execute SQL and do not call `EnsurePlanExecutable`; inspect `plan.Blocked`, `plan.Warnings`, or call `EnsurePlanExecutable` yourself.
 - Scoped helpers are the recommended bridge when you want arbitrary predicates, joins, or `DELETE` while still keeping generic read/write helpers as the main public API.
 - Struct `Update` and `Upsert` depend on `db:"...,pk"` tags. Without them, `WherePK()` has no primary-key columns to use.
 - Since generic writes take struct values, a `TableName() string` override must be available on the value type. A pointer-receiver-only `TableName` method is not picked up here.

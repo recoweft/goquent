@@ -3,7 +3,7 @@
 # scanner
 
 ```go
-import "github.com/faciam-dev/goquent/orm/scanner"
+import "github.com/recoweft/goquent/orm/scanner"
 ```
 
 ## Index
@@ -15,7 +15,7 @@ import "github.com/faciam-dev/goquent/orm/scanner"
 
 
 <a name="Map"></a>
-## func [Map](<https://github.com/faciam-dev/goquent/blob/main/orm/scanner/scanner.go#L95>)
+## func [Map](<https://github.com/recoweft/goquent/blob/main/orm/scanner/scanner.go#L95>)
 
 ```go
 func Map(rows *sql.Rows) (map[string]any, error)
@@ -24,7 +24,7 @@ func Map(rows *sql.Rows) (map[string]any, error)
 Map scans the current row into a map.
 
 <a name="Maps"></a>
-## func [Maps](<https://github.com/faciam-dev/goquent/blob/main/orm/scanner/scanner.go#L123>)
+## func [Maps](<https://github.com/recoweft/goquent/blob/main/orm/scanner/scanner.go#L123>)
 
 ```go
 func Maps(rows *sql.Rows) ([]map[string]any, error)
@@ -33,7 +33,7 @@ func Maps(rows *sql.Rows) ([]map[string]any, error)
 Maps scans all remaining rows into slice of maps.
 
 <a name="Struct"></a>
-## func [Struct](<https://github.com/faciam-dev/goquent/blob/main/orm/scanner/scanner.go#L14>)
+## func [Struct](<https://github.com/recoweft/goquent/blob/main/orm/scanner/scanner.go#L14>)
 
 ```go
 func Struct(dest any, rows *sql.Rows) error
@@ -42,7 +42,7 @@ func Struct(dest any, rows *sql.Rows) error
 Struct scans current row into dest struct using column mapping.
 
 <a name="Structs"></a>
-## func [Structs](<https://github.com/faciam-dev/goquent/blob/main/orm/scanner/scanner.go#L153>)
+## func [Structs](<https://github.com/recoweft/goquent/blob/main/orm/scanner/scanner.go#L153>)
 
 ```go
 func Structs(dest any, rows *sql.Rows) error

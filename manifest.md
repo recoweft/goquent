@@ -72,4 +72,21 @@ Use the manifest with:
 - `goquent operation compile --manifest goquent.manifest.json --spec operation.json`
 - `goquent mcp --manifest goquent.manifest.json`
 
+Generate a repository skeleton for one manifest table:
+
+```bash
+go run ./cmd/goquent manifest repository \
+  --manifest goquent.manifest.json \
+  --table users \
+  --package infra
+```
+
+The generated skeleton includes:
+
+- a row struct with `db` tags derived from manifest columns.
+- `BaseQuery` and `PlanBaseQuery` methods for repository-level `QueryPlan` tests.
+- required predicate guards from tenant and required-filter manifest metadata.
+- small scope helpers such as `UserTenantIDScope(...)`.
+- basic `SelectAll`, `Insert`, and primary-key `FindByID` / `UpdateByID` / `DeleteByID` methods when a single primary column is known.
+
 Regenerate the manifest whenever schema, policy, generated ORM code, or database state changes.

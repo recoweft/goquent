@@ -82,3 +82,17 @@ jobs:
 Review output should be copied into PR comments for database-affecting changes, especially
 findings with `partial` or `unsupported` precision. Those precision levels are review limitations,
 not proof that the database operation is safe.
+
+Pretty and GitHub output include finding evidence when available, such as manifest freshness
+checks, touched tables, or suppression metadata. JSON output keeps the same details in the
+`evidence` field.
+
+`goquent review` also lints config suppressions. It reports medium-severity findings for:
+
+- `SUPPRESSION_UNUSED`: a config suppression did not suppress any finding, or its path matched no
+  reviewed file.
+- `SUPPRESSION_OVERBROAD`: the suppression path is global or too broad.
+- `SUPPRESSION_OWNER_MISSING`: no owner was recorded.
+- `SUPPRESSION_REASON_WEAK`: the reason is too short or generic.
+- `SUPPRESSION_CONFIG_INVALID`: the config suppression is malformed.
+- `SUPPRESSION_EXPIRED` and `SUPPRESSION_NOT_ALLOWED`: existing suppression safety checks.

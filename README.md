@@ -3,18 +3,21 @@
 # orm
 
 ```go
-import "github.com/faciam-dev/goquent/orm"
+import "github.com/recoweft/goquent/orm"
 ```
 
 ## Index
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [func ApplyProjection\[T any\]\(q \*query.Query, expressions map\[string\]ProjectionExpression\) \(\*query.Query, error\)](<#ApplyProjection>)
 - [func ApplyScopes\(q \*query.Query, scopes ...Scope\) \*query.Query](<#ApplyScopes>)
 - [func DecodeJSON\[T any\]\(src any, fallback T\) \(T, error\)](<#DecodeJSON>)
 - [func DeleteBy\(ctx context.Context, base \*query.Query, scopes ...Scope\) \(sql.Result, error\)](<#DeleteBy>)
 - [func EncodeJSON\(v any\) \(string, error\)](<#EncodeJSON>)
+- [func EnsurePlanExecutable\(plan \*QueryPlan\) error](<#EnsurePlanExecutable>)
 - [func GetDriver\(name string\) \(sqldriver.Driver, bool\)](<#GetDriver>)
+- [func HydrateAggregates\[P any, A any, K comparable\]\(parents \[\]P, aggregates \[\]A, spec AggregateHydration\[P, A, K\]\) \(\[\]P, error\)](<#HydrateAggregates>)
 - [func Insert\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(sql.Result, error\)](<#Insert>)
 - [func InsertMany\[T any\]\(ctx context.Context, db \*DB, values \[\]T, opts ...WriteOpt\) \(sql.Result, error\)](<#InsertMany>)
 - [func InsertManyReturning\[R any, T any\]\(ctx context.Context, db \*DB, values \[\]T, opts ...WriteOpt\) \(\[\]R, error\)](<#InsertManyReturning>)
@@ -22,17 +25,21 @@ import "github.com/faciam-dev/goquent/orm"
 - [func InsertReturning\[T any, V any\]\(ctx context.Context, db \*DB, v V, opts ...WriteOpt\) \(T, error\)](<#InsertReturning>)
 - [func IsConflict\(err error\) bool](<#IsConflict>)
 - [func IsNotFound\(err error\) bool](<#IsNotFound>)
+- [func JSONPath\(column string, path ...string\) \(string, error\)](<#JSONPath>)
 - [func ManifestJSONSchema\(\) \(\[\]byte, error\)](<#ManifestJSONSchema>)
 - [func NullString\(value string\) sql.NullString](<#NullString>)
 - [func NullStringEmpty\(value string\) sql.NullString](<#NullStringEmpty>)
 - [func NullStringPtr\(value \*string\) sql.NullString](<#NullStringPtr>)
 - [func OperationSpecJSONSchema\(\) \(\[\]byte, error\)](<#OperationSpecJSONSchema>)
+- [func PlanHasPredicateColumn\(plan \*QueryPlan, table, column string\) bool](<#PlanHasPredicateColumn>)
+- [func ProjectParentChildren\[R any, P any, C any, K comparable\]\(rows \[\]R, spec ParentChildProjection\[R, P, C, K\]\) \(\[\]P, error\)](<#ProjectParentChildren>)
 - [func RegisterDialect\(name string, d driver.Dialect\)](<#RegisterDialect>)
 - [func RegisterDriver\(name string, d sqldriver.Driver\)](<#RegisterDriver>)
 - [func RegisterDriverWithDialect\(name string, d sqldriver.Driver, dialect driver.Dialect\)](<#RegisterDriverWithDialect>)
 - [func RegisterTablePolicy\(policy TablePolicy\) error](<#RegisterTablePolicy>)
 - [func ResetMetaCache\(\)](<#ResetMetaCache>)
 - [func ResetModelPolicies\(\)](<#ResetModelPolicies>)
+- [func RunTransactionWithHooks\[T any\]\(ctx context.Context, db \*DB, spec TransactionWithHooksSpec\[T\]\) \(T, error\)](<#RunTransactionWithHooks>)
 - [func SelectAll\[T any\]\(ctx context.Context, db \*DB, q string, args ...any\) \(\[\]T, error\)](<#SelectAll>)
 - [func SelectAllBy\[T any\]\(ctx context.Context, db \*DB, base \*query.Query, scopes ...Scope\) \(\[\]T, error\)](<#SelectAllBy>)
 - [func SelectOne\[T any\]\(ctx context.Context, db \*DB, q string, args ...any\) \(T, error\)](<#SelectOne>)
@@ -45,8 +52,11 @@ import "github.com/faciam-dev/goquent/orm"
 - [func UpdateByReturningWithOptions\[T any\]\(ctx context.Context, db \*DB, base \*query.Query, data any, opts \[\]WriteOpt, scopes ...Scope\) \(T, error\)](<#UpdateByReturningWithOptions>)
 - [func UpdateReturning\[T any, V any\]\(ctx context.Context, db \*DB, v V, opts ...WriteOpt\) \(T, error\)](<#UpdateReturning>)
 - [func Upsert\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(sql.Result, error\)](<#Upsert>)
+- [func UpsertMany\[T any\]\(ctx context.Context, db \*DB, values \[\]T, opts ...WriteOpt\) \(sql.Result, error\)](<#UpsertMany>)
+- [func UpsertManyReturning\[R any, T any\]\(ctx context.Context, db \*DB, values \[\]T, opts ...WriteOpt\) \(\[\]R, error\)](<#UpsertManyReturning>)
 - [func UpsertReturning\[T any, V any\]\(ctx context.Context, db \*DB, v V, opts ...WriteOpt\) \(T, error\)](<#UpsertReturning>)
 - [func ValidateManifest\(m \*Manifest\) error](<#ValidateManifest>)
+- [type AggregateHydration](<#AggregateHydration>)
 - [type AnalysisPrecision](<#AnalysisPrecision>)
 - [type Approval](<#Approval>)
 - [type BoolScanPolicy](<#BoolScanPolicy>)
@@ -70,6 +80,7 @@ import "github.com/faciam-dev/goquent/orm"
   - [func \(db \*DB\) Begin\(\) \(Tx, error\)](<#DB.Begin>)
   - [func \(db \*DB\) BeginTx\(ctx context.Context, opts \*sql.TxOptions\) \(Tx, error\)](<#DB.BeginTx>)
   - [func \(db \*DB\) Close\(\) error](<#DB.Close>)
+  - [func \(db \*DB\) Dialect\(\) driver.Dialect](<#DB.Dialect>)
   - [func \(db \*DB\) Exec\(q string, args ...any\) \(sql.Result, error\)](<#DB.Exec>)
   - [func \(db \*DB\) ExecContext\(ctx context.Context, q string, args ...any\) \(sql.Result, error\)](<#DB.ExecContext>)
   - [func \(db \*DB\) Model\(v any\) \*query.Query](<#DB.Model>)
@@ -94,7 +105,13 @@ import "github.com/faciam-dev/goquent/orm"
 - [type Evidence](<#Evidence>)
 - [type Executor](<#Executor>)
 - [type FilterSpec](<#FilterSpec>)
+- [type IdempotentCommandResult](<#IdempotentCommandResult>)
+  - [func RunIdempotentCommand\[T any\]\(ctx context.Context, db \*DB, spec IdempotentCommandSpec\[T\]\) \(IdempotentCommandResult\[T\], error\)](<#RunIdempotentCommand>)
+- [type IdempotentCommandSpec](<#IdempotentCommandSpec>)
 - [type IndexSchema](<#IndexSchema>)
+- [type JSONAggOption](<#JSONAggOption>)
+  - [func JSONAggFilter\(predicate string\) JSONAggOption](<#JSONAggFilter>)
+  - [func JSONAggOrderBy\(orderBy ...string\) JSONAggOption](<#JSONAggOrderBy>)
 - [type JSONField](<#JSONField>)
   - [func JSONNull\[T any\]\(\) JSONField\[T\]](<#JSONNull>)
   - [func JSONOf\[T any\]\(v T\) JSONField\[T\]](<#JSONOf>)
@@ -135,16 +152,41 @@ import "github.com/faciam-dev/goquent/orm"
   - [func \(b \*ModelPolicyBuilder\) SoftDelete\(column string, mode ...PolicyMode\) \*ModelPolicyBuilder](<#ModelPolicyBuilder.SoftDelete>)
   - [func \(b \*ModelPolicyBuilder\) Table\(name string\) \*ModelPolicyBuilder](<#ModelPolicyBuilder.Table>)
   - [func \(b \*ModelPolicyBuilder\) TenantScoped\(column string, mode ...PolicyMode\) \*ModelPolicyBuilder](<#ModelPolicyBuilder.TenantScoped>)
+- [type NestedCollectionReplace](<#NestedCollectionReplace>)
+- [type NestedCollectionWriteResult](<#NestedCollectionWriteResult>)
+  - [func ReplaceNestedCollection\[P any, C any, G any\]\(ctx context.Context, db \*DB, spec NestedCollectionReplace\[P, C, G\]\) \(NestedCollectionWriteResult, error\)](<#ReplaceNestedCollection>)
+  - [func ReplaceNestedCollectionTx\[P any, C any, G any\]\(ctx context.Context, db \*DB, spec NestedCollectionReplace\[P, C, G\]\) \(NestedCollectionWriteResult, error\)](<#ReplaceNestedCollectionTx>)
+- [type NestedDelete](<#NestedDelete>)
+- [type NestedWriteMode](<#NestedWriteMode>)
+- [type NumericString](<#NumericString>)
+  - [func NumericStringNull\(\) NumericString](<#NumericStringNull>)
+  - [func NumericStringOf\(value string\) NumericString](<#NumericStringOf>)
+  - [func \(n NumericString\) OrDefault\(def string\) string](<#NumericString.OrDefault>)
+  - [func \(n \*NumericString\) Scan\(src any\) error](<#NumericString.Scan>)
+  - [func \(n NumericString\) Value\(\) \(driver.Value, error\)](<#NumericString.Value>)
 - [type OperationOptions](<#OperationOptions>)
 - [type OperationSpec](<#OperationSpec>)
 - [type OperationType](<#OperationType>)
 - [type Option](<#Option>)
   - [func WithBoolScanPolicy\(p BoolScanPolicy\) Option](<#WithBoolScanPolicy>)
 - [type OrderSpec](<#OrderSpec>)
+- [type ParentChildProjection](<#ParentChildProjection>)
 - [type PolicyMode](<#PolicyMode>)
 - [type PredicateRef](<#PredicateRef>)
+- [type ProjectionExpression](<#ProjectionExpression>)
+  - [func JSONAggregateArray\(d ormdriver.Dialect, expr ProjectionExpression, opts ...JSONAggOption\) \(ProjectionExpression, error\)](<#JSONAggregateArray>)
+  - [func JSONBuildObject\(d ormdriver.Dialect, fields map\[string\]string\) \(ProjectionExpression, error\)](<#JSONBuildObject>)
+  - [func ProjectionSQL\(sql string, args ...any\) ProjectionExpression](<#ProjectionSQL>)
 - [type QueryPlan](<#QueryPlan>)
   - [func CompileOperationSpec\(ctx context.Context, spec OperationSpec, opts OperationOptions\) \(\*QueryPlan, error\)](<#CompileOperationSpec>)
+  - [func PlanDeleteBy\(ctx context.Context, base \*query.Query, scopes ...Scope\) \(\*QueryPlan, error\)](<#PlanDeleteBy>)
+  - [func PlanSelectBy\(ctx context.Context, base \*query.Query, scopes ...Scope\) \(\*QueryPlan, error\)](<#PlanSelectBy>)
+  - [func PlanUpdateBy\(ctx context.Context, base \*query.Query, data any, scopes ...Scope\) \(\*QueryPlan, error\)](<#PlanUpdateBy>)
+- [type RepresentativeGroup](<#RepresentativeGroup>)
+  - [func GroupRepresentativeRows\[R any, K comparable\]\(rows \[\]R, key func\(R\) K\) \(\[\]RepresentativeGroup\[R, K\], error\)](<#GroupRepresentativeRows>)
+- [type RequiredPredicate](<#RequiredPredicate>)
+  - [func MissingRequiredPredicates\(plan \*QueryPlan, required \[\]RequiredPredicate\) \[\]RequiredPredicate](<#MissingRequiredPredicates>)
+  - [func RequirePredicate\(table, column string\) RequiredPredicate](<#RequirePredicate>)
 - [type RiskConfig](<#RiskConfig>)
 - [type RiskEngine](<#RiskEngine>)
   - [func NewRiskEngine\(config RiskConfig\) RiskEngine](<#NewRiskEngine>)
@@ -161,7 +203,10 @@ import "github.com/faciam-dev/goquent/orm"
   - [func ComposeScopes\(scopes ...Scope\) Scope](<#ComposeScopes>)
   - [func CursorAfter\(columns \[\]CursorColumn, values ...any\) Scope](<#CursorAfter>)
   - [func CursorBefore\(columns \[\]CursorColumn, values ...any\) Scope](<#CursorBefore>)
+  - [func RequirePredicates\(required ...RequiredPredicate\) Scope](<#RequirePredicates>)
+  - [func RequireTenantScope\(table string, column ...string\) Scope](<#RequireTenantScope>)
   - [func TenantScope\(tenantID any, column ...string\) Scope](<#TenantScope>)
+  - [func TextSearch\(columns \[\]string, term string\) Scope](<#TextSearch>)
 - [type SourceLocation](<#SourceLocation>)
 - [type Suppression](<#Suppression>)
   - [func NewSuppression\(code, reason string, opts ...SuppressionOption\) \(Suppression, error\)](<#NewSuppression>)
@@ -174,6 +219,11 @@ import "github.com/faciam-dev/goquent/orm"
   - [func RegisteredTablePolicies\(\) \[\]TablePolicy](<#RegisteredTablePolicies>)
 - [type TableRef](<#TableRef>)
 - [type TableSchema](<#TableSchema>)
+- [type TransactionHook](<#TransactionHook>)
+  - [func InsertHook\[T any\]\(name string, value T, opts ...WriteOpt\) TransactionHook](<#InsertHook>)
+  - [func InsertManyHook\[T any\]\(name string, values \[\]T, opts ...WriteOpt\) TransactionHook](<#InsertManyHook>)
+  - [func NewTransactionHook\(name string, run func\(context.Context, Tx\) error\) TransactionHook](<#NewTransactionHook>)
+- [type TransactionWithHooksSpec](<#TransactionWithHooksSpec>)
 - [type Tx](<#Tx>)
 - [type Warning](<#Warning>)
   - [func ValidateOperationSpec\(spec OperationSpec, opts OperationOptions\) \(\[\]Warning, error\)](<#ValidateOperationSpec>)
@@ -281,23 +331,24 @@ const (
     AnalysisPartial     = query.AnalysisPartial
     AnalysisUnsupported = query.AnalysisUnsupported
 
-    WarningRawSQLUsed              = query.WarningRawSQLUsed
-    WarningUpdateWithoutWhere      = query.WarningUpdateWithoutWhere
-    WarningDeleteWithoutWhere      = query.WarningDeleteWithoutWhere
-    WarningSelectStarUsed          = query.WarningSelectStarUsed
-    WarningLimitMissing            = query.WarningLimitMissing
-    WarningBulkUpdateDetected      = query.WarningBulkUpdateDetected
-    WarningBulkDeleteDetected      = query.WarningBulkDeleteDetected
-    WarningDestructiveSQL          = query.WarningDestructiveSQL
-    WarningWeakPredicate           = query.WarningWeakPredicate
-    WarningSuppressionExpired      = query.WarningSuppressionExpired
-    WarningSuppressionNotAllowed   = query.WarningSuppressionNotAllowed
-    WarningStaticReviewPartial     = query.WarningStaticReviewPartial
-    WarningStaticReviewUnsupported = query.WarningStaticReviewUnsupported
-    WarningTenantFilterMissing     = query.WarningTenantFilterMissing
-    WarningSoftDeleteFilterMissing = query.WarningSoftDeleteFilterMissing
-    WarningPIIColumnSelected       = query.WarningPIIColumnSelected
-    WarningRequiredFilterMissing   = query.WarningRequiredFilterMissing
+    WarningRawSQLUsed               = query.WarningRawSQLUsed
+    WarningUpdateWithoutWhere       = query.WarningUpdateWithoutWhere
+    WarningDeleteWithoutWhere       = query.WarningDeleteWithoutWhere
+    WarningSelectStarUsed           = query.WarningSelectStarUsed
+    WarningLimitMissing             = query.WarningLimitMissing
+    WarningBulkUpdateDetected       = query.WarningBulkUpdateDetected
+    WarningBulkDeleteDetected       = query.WarningBulkDeleteDetected
+    WarningDestructiveSQL           = query.WarningDestructiveSQL
+    WarningWeakPredicate            = query.WarningWeakPredicate
+    WarningSuppressionExpired       = query.WarningSuppressionExpired
+    WarningSuppressionNotAllowed    = query.WarningSuppressionNotAllowed
+    WarningStaticReviewPartial      = query.WarningStaticReviewPartial
+    WarningStaticReviewUnsupported  = query.WarningStaticReviewUnsupported
+    WarningRequiredPredicateMissing = query.WarningRequiredPredicateMissing
+    WarningTenantFilterMissing      = query.WarningTenantFilterMissing
+    WarningSoftDeleteFilterMissing  = query.WarningSoftDeleteFilterMissing
+    WarningPIIColumnSelected        = query.WarningPIIColumnSelected
+    WarningRequiredFilterMissing    = query.WarningRequiredFilterMissing
 
     SuppressionScopeQuery  = query.SuppressionScopeQuery
     SuppressionScopeInline = query.SuppressionScopeInline
@@ -362,6 +413,17 @@ var ErrNotFound = sql.ErrNoRows
 var ErrRowsAffected = errors.New("goquent: unexpected rows affected")
 ```
 
+<a name="ApplyProjection"></a>
+## func ApplyProjection
+
+```go
+func ApplyProjection[T any](q *query.Query, expressions map[string]ProjectionExpression) (*query.Query, error)
+```
+
+ApplyProjection selects every db\-tagged column in T from q.
+
+Expressions maps destination column names to SELECT expressions. Missing columns are selected as NULL, which keeps UNION branches aligned without repeating all nullable/default columns in every branch.
+
 <a name="ApplyScopes"></a>
 ## func ApplyScopes
 
@@ -398,6 +460,15 @@ func EncodeJSON(v any) (string, error)
 
 EncodeJSON marshals v for JSON/JSONB or text\-JSON columns.
 
+<a name="EnsurePlanExecutable"></a>
+## func EnsurePlanExecutable
+
+```go
+func EnsurePlanExecutable(plan *QueryPlan) error
+```
+
+
+
 <a name="GetDriver"></a>
 ## func GetDriver
 
@@ -406,6 +477,17 @@ func GetDriver(name string) (sqldriver.Driver, bool)
 ```
 
 GetDriver retrieves a registered driver.
+
+<a name="HydrateAggregates"></a>
+## func HydrateAggregates
+
+```go
+func HydrateAggregates[P any, A any, K comparable](parents []P, aggregates []A, spec AggregateHydration[P, A, K]) ([]P, error)
+```
+
+HydrateAggregates attaches grouped aggregate rows to parent records.
+
+Parent order is preserved. Parents without aggregate rows are left unchanged. Duplicate aggregate rows for the same key return an error because grouped aggregate queries should produce a single row per parent.
 
 <a name="Insert"></a>
 ## func Insert
@@ -474,6 +556,17 @@ func IsNotFound(err error) bool
 
 IsNotFound reports whether err represents a no\-row result.
 
+<a name="JSONPath"></a>
+## func JSONPath
+
+```go
+func JSONPath(column string, path ...string) (string, error)
+```
+
+JSONPath builds the update\-map key used for JSON path updates.
+
+Query\-builder updates interpret keys such as "payload\-\>status" as a JSON path update. MySQL renders JSON\_SET and PostgreSQL renders jsonb\_set.
+
 <a name="ManifestJSONSchema"></a>
 ## func ManifestJSONSchema
 
@@ -518,6 +611,26 @@ func OperationSpecJSONSchema() ([]byte, error)
 ```
 
 
+
+<a name="PlanHasPredicateColumn"></a>
+## func PlanHasPredicateColumn
+
+```go
+func PlanHasPredicateColumn(plan *QueryPlan, table, column string) bool
+```
+
+
+
+<a name="ProjectParentChildren"></a>
+## func ProjectParentChildren
+
+```go
+func ProjectParentChildren[R any, P any, C any, K comparable](rows []R, spec ParentChildProjection[R, P, C, K]) ([]P, error)
+```
+
+ProjectParentChildren folds flat rows into parents with ordered children.
+
+Parent order follows first appearance in rows. Child order follows row order, so callers should put the desired child order in the SELECT query.
 
 <a name="RegisterDialect"></a>
 ## func RegisterDialect
@@ -572,6 +685,17 @@ func ResetModelPolicies()
 ```
 
 ResetModelPolicies clears registered model policies. Intended for tests.
+
+<a name="RunTransactionWithHooks"></a>
+## func RunTransactionWithHooks
+
+```go
+func RunTransactionWithHooks[T any](ctx context.Context, db *DB, spec TransactionWithHooksSpec[T]) (T, error)
+```
+
+RunTransactionWithHooks runs Apply, then hooks, inside one transaction.
+
+Hooks run only if Apply succeeds. Any hook error rolls the transaction back.
 
 <a name="SelectAll"></a>
 ## func SelectAll
@@ -681,6 +805,26 @@ func Upsert[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (sql.Resu
 
 Upsert inserts or updates v using primary keys.
 
+<a name="UpsertMany"></a>
+## func UpsertMany
+
+```go
+func UpsertMany[T any](ctx context.Context, db *DB, values []T, opts ...WriteOpt) (sql.Result, error)
+```
+
+UpsertMany inserts or updates all values in one bulk UPSERT statement.
+
+It supports the same conflict\-target options as Upsert. Empty slices return an error instead of a no\-op result. Map writes require Table, and every row must provide the selected column set.
+
+<a name="UpsertManyReturning"></a>
+## func UpsertManyReturning
+
+```go
+func UpsertManyReturning[R any, T any](ctx context.Context, db *DB, values []T, opts ...WriteOpt) ([]R, error)
+```
+
+UpsertManyReturning upserts all values and scans PostgreSQL RETURNING rows.
+
 <a name="UpsertReturning"></a>
 ## func UpsertReturning
 
@@ -698,6 +842,22 @@ func ValidateManifest(m *Manifest) error
 ```
 
 
+
+<a name="AggregateHydration"></a>
+## type AggregateHydration
+
+AggregateHydration describes how to attach one grouped aggregate row to a parent record. Aggregate queries should return at most one row per parent key.
+
+```go
+type AggregateHydration[P any, A any, K comparable] struct {
+    // ParentKey returns the stable parent key.
+    ParentKey func(P) K
+    // AggregateKey returns the parent key represented by one aggregate row.
+    AggregateKey func(A) K
+    // Apply copies aggregate values onto parent.
+    Apply func(parent *P, aggregate A)
+}
+```
 
 <a name="AnalysisPrecision"></a>
 ## type AnalysisPrecision
@@ -917,6 +1077,15 @@ func (db *DB) Close() error
 ```
 
 Close closes the owned underlying DB. DB values created around an external executor or transaction do not own a sql.DB, so Close is a no\-op for them.
+
+<a name="DB.Dialect"></a>
+### func \(\*DB\) Dialect
+
+```go
+func (db *DB) Dialect() driver.Dialect
+```
+
+Dialect returns the SQL dialect configured for db.
 
 <a name="DB.Exec"></a>
 ### func \(\*DB\) Exec
@@ -1155,6 +1324,47 @@ type Executor interface {
 type FilterSpec = operation.FilterSpec
 ```
 
+<a name="IdempotentCommandResult"></a>
+## type IdempotentCommandResult
+
+IdempotentCommandResult is returned by RunIdempotentCommand.
+
+```go
+type IdempotentCommandResult[T any] struct {
+    Value   T
+    Applied bool
+}
+```
+
+<a name="RunIdempotentCommand"></a>
+### func RunIdempotentCommand
+
+```go
+func RunIdempotentCommand[T any](ctx context.Context, db *DB, spec IdempotentCommandSpec[T]) (IdempotentCommandResult[T], error)
+```
+
+RunIdempotentCommand runs an idempotent command recipe.
+
+It first looks up an existing result by idempotency key. If found, the result is returned with Applied=false and no transaction is opened. If not found, it runs Apply inside a transaction and returns Applied=true. If Apply reports ErrConflict, the helper re\-runs the lookup and returns the existing value when the conflict row is now visible.
+
+<a name="IdempotentCommandSpec"></a>
+## type IdempotentCommandSpec
+
+IdempotentCommandSpec describes a read\-before\-write idempotent command.
+
+LookupExisting should return ErrNotFound/sql.ErrNoRows when the idempotency key has not been applied. Apply runs inside a transaction and should perform the aggregate update, patch/audit insert, event append, and final hydration. If Apply returns ErrConflict, RunIdempotentCommand performs a second lookup and returns the existing value when available.
+
+```go
+type IdempotentCommandSpec[T any] struct {
+    LookupExisting func(context.Context, *DB) (T, error)
+    Apply          func(context.Context, Tx) (T, error)
+
+    // LookupAfterConflict overrides LookupExisting for the race path where Apply
+    // detects a uniqueness or optimistic-concurrency conflict.
+    LookupAfterConflict func(context.Context, *DB) (T, error)
+}
+```
+
 <a name="IndexSchema"></a>
 ## type IndexSchema
 
@@ -1163,6 +1373,35 @@ type FilterSpec = operation.FilterSpec
 ```go
 type IndexSchema = migration.IndexSchema
 ```
+
+<a name="JSONAggOption"></a>
+## type JSONAggOption
+
+JSONAggOption configures JSONAggregateArray.
+
+```go
+type JSONAggOption func(*jsonAggOptions)
+```
+
+<a name="JSONAggFilter"></a>
+### func JSONAggFilter
+
+```go
+func JSONAggFilter(predicate string) JSONAggOption
+```
+
+JSONAggFilter adds a PostgreSQL FILTER predicate to JSONAggregateArray.
+
+MySQL does not have SQL\-standard aggregate FILTER support, so this option returns an error with MySQL dialects.
+
+<a name="JSONAggOrderBy"></a>
+### func JSONAggOrderBy
+
+```go
+func JSONAggOrderBy(orderBy ...string) JSONAggOption
+```
+
+JSONAggOrderBy adds deterministic ordering inside JSONAggregateArray.
 
 <a name="JSONField"></a>
 ## type JSONField
@@ -1531,6 +1770,159 @@ func (b *ModelPolicyBuilder) TenantScoped(column string, mode ...PolicyMode) *Mo
 
 TenantScoped marks column as the tenant scope column.
 
+<a name="NestedCollectionReplace"></a>
+## type NestedCollectionReplace
+
+NestedCollectionReplace describes a parent \+ ordered child \+ grandchild write.
+
+ParentMode defaults to NestedWriteUpsert. ChildMode and GrandchildMode default to NestedWriteInsert. Use DeleteBefore to delete grandchildren before children when replacing a collection.
+
+```go
+type NestedCollectionReplace[P any, C any, G any] struct {
+    SkipParent bool
+    Parent     P
+    ParentMode NestedWriteMode
+    ParentOpts []WriteOpt
+
+    DeleteBefore []NestedDelete
+
+    Children      []C
+    ChildMode     NestedWriteMode
+    ChildOpts     []WriteOpt
+    ChildIDColumn string
+    AssignChildID func(index int, id int64)
+
+    Grandchildren  func(childIndex int, child C, childID int64) ([]G, error)
+    GrandchildMode NestedWriteMode
+    GrandchildOpts []WriteOpt
+}
+```
+
+<a name="NestedCollectionWriteResult"></a>
+## type NestedCollectionWriteResult
+
+NestedCollectionWriteResult reports generated IDs and row counts from a nested write.
+
+```go
+type NestedCollectionWriteResult struct {
+    ChildIDs        []int64
+    GrandchildCount int
+}
+```
+
+<a name="ReplaceNestedCollection"></a>
+### func ReplaceNestedCollection
+
+```go
+func ReplaceNestedCollection[P any, C any, G any](ctx context.Context, db *DB, spec NestedCollectionReplace[P, C, G]) (NestedCollectionWriteResult, error)
+```
+
+ReplaceNestedCollection executes a parent \+ child collection replacement on db.
+
+The caller controls transaction boundaries. Use ReplaceNestedCollectionTx when the whole sequence should run in a new transaction.
+
+<a name="ReplaceNestedCollectionTx"></a>
+### func ReplaceNestedCollectionTx
+
+```go
+func ReplaceNestedCollectionTx[P any, C any, G any](ctx context.Context, db *DB, spec NestedCollectionReplace[P, C, G]) (NestedCollectionWriteResult, error)
+```
+
+ReplaceNestedCollectionTx runs ReplaceNestedCollection inside a transaction.
+
+<a name="NestedDelete"></a>
+## type NestedDelete
+
+NestedDelete describes one child\-table cleanup step.
+
+```go
+type NestedDelete struct {
+    Table  string
+    Scopes []Scope
+}
+```
+
+<a name="NestedWriteMode"></a>
+## type NestedWriteMode
+
+NestedWriteMode selects how a nested write step persists its rows.
+
+```go
+type NestedWriteMode int
+```
+
+<a name="NestedWriteDefault"></a>
+
+```go
+const (
+    // NestedWriteDefault lets the helper choose the step default.
+    NestedWriteDefault NestedWriteMode = iota
+    // NestedWriteInsert inserts rows.
+    NestedWriteInsert
+    // NestedWriteUpsert upserts rows using the provided WriteOpt conflict target.
+    NestedWriteUpsert
+)
+```
+
+<a name="NumericString"></a>
+## type NumericString
+
+NumericString scans SQL numeric/decimal values as exact text.
+
+Use this for persistence rows where rounding belongs in the domain layer.
+
+```go
+type NumericString struct {
+    String string
+    Valid  bool
+}
+```
+
+<a name="NumericStringNull"></a>
+### func NumericStringNull
+
+```go
+func NumericStringNull() NumericString
+```
+
+NumericStringNull returns an invalid NumericString that stores as SQL NULL.
+
+<a name="NumericStringOf"></a>
+### func NumericStringOf
+
+```go
+func NumericStringOf(value string) NumericString
+```
+
+NumericStringOf returns a valid NumericString.
+
+<a name="NumericString.OrDefault"></a>
+### func \(NumericString\) OrDefault
+
+```go
+func (n NumericString) OrDefault(def string) string
+```
+
+OrDefault returns String when valid, otherwise def.
+
+<a name="NumericString.Scan"></a>
+### func \(\*NumericString\) Scan
+
+```go
+func (n *NumericString) Scan(src any) error
+```
+
+Scan implements sql.Scanner.
+
+<a name="NumericString.Value"></a>
+### func \(NumericString\) Value
+
+```go
+func (n NumericString) Value() (driver.Value, error)
+```
+
+Value implements driver.Valuer.
+
 <a name="OperationOptions"></a>
 ## type OperationOptions
 
@@ -1585,6 +1977,24 @@ WithBoolScanPolicy sets the bool scanning policy.
 type OrderSpec = operation.OrderSpec
 ```
 
+<a name="ParentChildProjection"></a>
+## type ParentChildProjection
+
+ParentChildProjection describes how to fold flat joined rows into parent records with ordered child collections.
+
+```go
+type ParentChildProjection[R any, P any, C any, K comparable] struct {
+    // ParentKey returns the stable parent key for one flat row.
+    ParentKey func(R) K
+    // Parent builds a parent value from the first row for a key.
+    Parent func(R) P
+    // Child builds a child value. Return ok=false for LEFT JOIN rows without a child.
+    Child func(R) (child C, ok bool)
+    // AppendChild appends child to parent.
+    AppendChild func(parent *P, child C)
+}
+```
+
 <a name="PolicyMode"></a>
 ## type PolicyMode
 
@@ -1603,6 +2013,49 @@ type PolicyMode = query.PolicyMode
 type PredicateRef = query.PredicateRef
 ```
 
+<a name="ProjectionExpression"></a>
+## type ProjectionExpression
+
+ProjectionExpression is one SELECT expression for a typed projection column.
+
+```go
+type ProjectionExpression struct {
+    SQL  string
+    Args []any
+}
+```
+
+<a name="JSONAggregateArray"></a>
+### func JSONAggregateArray
+
+```go
+func JSONAggregateArray(d ormdriver.Dialect, expr ProjectionExpression, opts ...JSONAggOption) (ProjectionExpression, error)
+```
+
+JSONAggregateArray builds a trusted JSON array aggregate expression.
+
+Use JSONBuildObject for the element expression when aggregating object rows.
+
+<a name="JSONBuildObject"></a>
+### func JSONBuildObject
+
+```go
+func JSONBuildObject(d ormdriver.Dialect, fields map[string]string) (ProjectionExpression, error)
+```
+
+JSONBuildObject builds a trusted JSON object SQL expression for the dialect.
+
+Field values are trusted SQL expressions. Keys are emitted as SQL string literals and sorted for stable output.
+
+<a name="ProjectionSQL"></a>
+### func ProjectionSQL
+
+```go
+func ProjectionSQL(sql string, args ...any) ProjectionExpression
+```
+
+ProjectionSQL builds a trusted SELECT expression for ApplyProjection.
+
 <a name="QueryPlan"></a>
 ## type QueryPlan
 
@@ -1620,6 +2073,84 @@ func CompileOperationSpec(ctx context.Context, spec OperationSpec, opts Operatio
 ```
 
 
+
+<a name="PlanDeleteBy"></a>
+### func PlanDeleteBy
+
+```go
+func PlanDeleteBy(ctx context.Context, base *query.Query, scopes ...Scope) (*QueryPlan, error)
+```
+
+PlanDeleteBy applies scopes to base and returns a DELETE QueryPlan without executing it.
+
+<a name="PlanSelectBy"></a>
+### func PlanSelectBy
+
+```go
+func PlanSelectBy(ctx context.Context, base *query.Query, scopes ...Scope) (*QueryPlan, error)
+```
+
+PlanSelectBy applies scopes to base and returns a SELECT QueryPlan without executing it.
+
+<a name="PlanUpdateBy"></a>
+### func PlanUpdateBy
+
+```go
+func PlanUpdateBy(ctx context.Context, base *query.Query, data any, scopes ...Scope) (*QueryPlan, error)
+```
+
+PlanUpdateBy applies scopes to base and returns an UPDATE QueryPlan without executing it.
+
+<a name="RepresentativeGroup"></a>
+## type RepresentativeGroup
+
+RepresentativeGroup is one grouped projection with the first row for the key and the number of rows that shared that key.
+
+```go
+type RepresentativeGroup[R any, K comparable] struct {
+    Key            K
+    Representative R
+    Count          int
+}
+```
+
+<a name="GroupRepresentativeRows"></a>
+### func GroupRepresentativeRows
+
+```go
+func GroupRepresentativeRows[R any, K comparable](rows []R, key func(R) K) ([]RepresentativeGroup[R, K], error)
+```
+
+GroupRepresentativeRows groups rows by key, preserving first\-seen group order.
+
+Representative is the first row encountered for the group. Put the desired representative ordering in SQL before calling this helper.
+
+<a name="RequiredPredicate"></a>
+## type RequiredPredicate
+
+RequiredPredicate describes a repository\-level predicate guard.
+
+```go
+type RequiredPredicate = query.RequiredPredicate
+```
+
+<a name="MissingRequiredPredicates"></a>
+### func MissingRequiredPredicates
+
+```go
+func MissingRequiredPredicates(plan *QueryPlan, required []RequiredPredicate) []RequiredPredicate
+```
+
+
+
+<a name="RequirePredicate"></a>
+### func RequirePredicate
+
+```go
+func RequirePredicate(table, column string) RequiredPredicate
+```
+
+RequirePredicate builds a predicate guard for table.column.
 
 <a name="RiskConfig"></a>
 ## type RiskConfig
@@ -1771,6 +2302,24 @@ func CursorBefore(columns []CursorColumn, values ...any) Scope
 
 CursorBefore adds a keyset pagination predicate before the given cursor.
 
+<a name="RequirePredicates"></a>
+### func RequirePredicates
+
+```go
+func RequirePredicates(required ...RequiredPredicate) Scope
+```
+
+RequirePredicates blocks query execution unless all required predicate columns are present in the finalized QueryPlan.
+
+<a name="RequireTenantScope"></a>
+### func RequireTenantScope
+
+```go
+func RequireTenantScope(table string, column ...string) Scope
+```
+
+RequireTenantScope blocks query execution unless the tenant predicate exists. The default column is tenant\_id.
+
 <a name="TenantScope"></a>
 ### func TenantScope
 
@@ -1779,6 +2328,15 @@ func TenantScope(tenantID any, column ...string) Scope
 ```
 
 TenantScope adds a tenant filter scope. The default column is tenant\_id.
+
+<a name="TextSearch"></a>
+### func TextSearch
+
+```go
+func TextSearch(columns []string, term string) Scope
+```
+
+TextSearch adds a grouped multi\-column substring search scope.
 
 <a name="SourceLocation"></a>
 ## type SourceLocation
@@ -1886,6 +2444,59 @@ type TableRef = query.TableRef
 
 ```go
 type TableSchema = migration.TableSchema
+```
+
+<a name="TransactionHook"></a>
+## type TransactionHook
+
+TransactionHook runs after the main transaction body and before commit.
+
+Use hooks for audit rows, outbox messages, or other write\-side records that must commit atomically with the aggregate write.
+
+```go
+type TransactionHook struct {
+    Name string
+    Run  func(context.Context, Tx) error
+}
+```
+
+<a name="InsertHook"></a>
+### func InsertHook
+
+```go
+func InsertHook[T any](name string, value T, opts ...WriteOpt) TransactionHook
+```
+
+InsertHook inserts one row inside the surrounding transaction.
+
+<a name="InsertManyHook"></a>
+### func InsertManyHook
+
+```go
+func InsertManyHook[T any](name string, values []T, opts ...WriteOpt) TransactionHook
+```
+
+InsertManyHook inserts rows inside the surrounding transaction.
+
+<a name="NewTransactionHook"></a>
+### func NewTransactionHook
+
+```go
+func NewTransactionHook(name string, run func(context.Context, Tx) error) TransactionHook
+```
+
+NewTransactionHook creates a named transaction hook.
+
+<a name="TransactionWithHooksSpec"></a>
+## type TransactionWithHooksSpec
+
+TransactionWithHooksSpec describes one transaction body plus post\-write hooks.
+
+```go
+type TransactionWithHooksSpec[T any] struct {
+    Apply func(context.Context, Tx) (T, error)
+    Hooks []TransactionHook
+}
 ```
 
 <a name="Tx"></a>
@@ -2120,7 +2731,7 @@ WherePK uses primary key columns in WHERE clause.
 # conv
 
 ```go
-import "github.com/faciam-dev/goquent/orm/conv"
+import "github.com/recoweft/goquent/orm/conv"
 ```
 
 ## Index
@@ -2180,7 +2791,7 @@ Value returns the given key from m converted to T.
 # driver
 
 ```go
-import "github.com/faciam-dev/goquent/orm/driver"
+import "github.com/recoweft/goquent/orm/driver"
 ```
 
 ## Index
@@ -2346,12 +2957,14 @@ type Tx struct{ *sql.Tx }
 # manifest
 
 ```go
-import "github.com/faciam-dev/goquent/orm/manifest"
+import "github.com/recoweft/goquent/orm/manifest"
 ```
 
 ## Index
 
 - [Constants](<#constants>)
+- [func GenerateRepositorySkeleton\(m \*Manifest, opts RepositorySkeletonOptions\) \(\[\]byte, error\)](<#GenerateRepositorySkeleton>)
+- [func GenerateRepositorySkeletonForTable\(table Table, opts RepositorySkeletonOptions\) \(\[\]byte, error\)](<#GenerateRepositorySkeletonForTable>)
 - [func JSONSchema\(\) \(\[\]byte, error\)](<#JSONSchema>)
 - [func Validate\(m \*Manifest\) error](<#Validate>)
 - [func WriteJSON\(w io.Writer, m \*Manifest\) error](<#WriteJSON>)
@@ -2371,6 +2984,7 @@ import "github.com/faciam-dev/goquent/orm/manifest"
 - [type Policy](<#Policy>)
 - [type QueryExample](<#QueryExample>)
 - [type Relation](<#Relation>)
+- [type RepositorySkeletonOptions](<#RepositorySkeletonOptions>)
 - [type Table](<#Table>)
 - [type Verification](<#Verification>)
   - [func Verify\(stored, current \*Manifest, checkedAt time.Time\) Verification](<#Verify>)
@@ -2390,6 +3004,24 @@ const (
     WarningUnreadable = "MANIFEST_UNREADABLE"
 )
 ```
+
+<a name="GenerateRepositorySkeleton"></a>
+## func GenerateRepositorySkeleton
+
+```go
+func GenerateRepositorySkeleton(m *Manifest, opts RepositorySkeletonOptions) ([]byte, error)
+```
+
+GenerateRepositorySkeleton emits a Go repository skeleton for one manifest table.
+
+<a name="GenerateRepositorySkeletonForTable"></a>
+## func GenerateRepositorySkeletonForTable
+
+```go
+func GenerateRepositorySkeletonForTable(table Table, opts RepositorySkeletonOptions) ([]byte, error)
+```
+
+GenerateRepositorySkeletonForTable emits a Go repository skeleton for table.
 
 <a name="JSONSchema"></a>
 ## func JSONSchema
@@ -2628,6 +3260,21 @@ type Relation struct {
 }
 ```
 
+<a name="RepositorySkeletonOptions"></a>
+## type RepositorySkeletonOptions
+
+RepositorySkeletonOptions controls manifest\-backed repository skeleton output.
+
+```go
+type RepositorySkeletonOptions struct {
+    PackageName        string
+    TableName          string
+    RowTypeName        string
+    RepositoryTypeName string
+    ORMImportPath      string
+}
+```
+
 <a name="Table"></a>
 ## type Table
 
@@ -2670,7 +3317,7 @@ Verify compares a stored manifest with a freshly generated one.
 # mcp
 
 ```go
-import "github.com/faciam-dev/goquent/orm/mcp"
+import "github.com/recoweft/goquent/orm/mcp"
 ```
 
 ## Index
@@ -2906,17 +3553,26 @@ type ToolResult struct {
 # migration
 
 ```go
-import "github.com/faciam-dev/goquent/orm/migration"
+import "github.com/recoweft/goquent/orm/migration"
 ```
 
 ## Index
 
 - [Constants](<#constants>)
+- [func ApplyReviewMode\(plan \*MigrationPlan, mode ReviewMode\) error](<#ApplyReviewMode>)
 - [func EnsureExecutable\(plan \*MigrationPlan\) error](<#EnsureExecutable>)
+- [func WriteDriftJSON\(w io.Writer, report DriftReport\) error](<#WriteDriftJSON>)
+- [func WriteDriftPretty\(w io.Writer, report DriftReport\) error](<#WriteDriftPretty>)
 - [func WriteJSON\(w io.Writer, plan \*MigrationPlan\) error](<#WriteJSON>)
 - [func WritePretty\(w io.Writer, plan \*MigrationPlan\) error](<#WritePretty>)
+- [func WriteSchemaJSON\(w io.Writer, schema Schema\) error](<#WriteSchemaJSON>)
+- [func WriteSchemaPretty\(w io.Writer, schema Schema\) error](<#WriteSchemaPretty>)
+- [func WriteStatusJSON\(w io.Writer, status Status\) error](<#WriteStatusJSON>)
+- [func WriteStatusPretty\(w io.Writer, status Status\) error](<#WriteStatusPretty>)
 - [type AppliedMigration](<#AppliedMigration>)
 - [type ColumnSchema](<#ColumnSchema>)
+- [type DriftReport](<#DriftReport>)
+  - [func CompareSchemaDrift\(desired, current Schema\) DriftReport](<#CompareSchemaDrift>)
 - [type Executor](<#Executor>)
 - [type IndexSchema](<#IndexSchema>)
 - [type MigrationPlan](<#MigrationPlan>)
@@ -2935,7 +3591,14 @@ import "github.com/faciam-dev/goquent/orm/migration"
   - [func \(m \*Migrator\) DryRun\(ctx context.Context\) \(\*MigrationPlan, error\)](<#Migrator.DryRun>)
   - [func \(m \*Migrator\) Plan\(ctx context.Context\) \(\*MigrationPlan, error\)](<#Migrator.Plan>)
   - [func \(m \*Migrator\) RequireApproval\(reason string\) \*Migrator](<#Migrator.RequireApproval>)
+  - [func \(m \*Migrator\) ReviewMode\(mode ReviewMode\) \*Migrator](<#Migrator.ReviewMode>)
+- [type ReviewMode](<#ReviewMode>)
 - [type Schema](<#Schema>)
+  - [func ReadSchema\(ctx context.Context, exec StatusExecutor, dialect driver.Dialect, opts ...SchemaReadOption\) \(Schema, error\)](<#ReadSchema>)
+- [type SchemaReadOption](<#SchemaReadOption>)
+  - [func WithSchemaReadSchema\(schema string\) SchemaReadOption](<#WithSchemaReadSchema>)
+  - [func WithSchemaReadTables\(tables ...string\) SchemaReadOption](<#WithSchemaReadTables>)
+- [type SchemaReadOptions](<#SchemaReadOptions>)
 - [type Status](<#Status>)
   - [func ReadStatus\(ctx context.Context, exec StatusExecutor, dialect driver.Dialect, desired \[\]string, opts ...StatusOption\) \(Status, error\)](<#ReadStatus>)
 - [type StatusExecutor](<#StatusExecutor>)
@@ -2964,8 +3627,18 @@ const (
     WarningMigrationSetNotNull            = "MIGRATION_SET_NOT_NULL"
     WarningMigrationAddIndexNonConcurrent = "MIGRATION_ADD_INDEX_NON_CONCURRENT"
     WarningMigrationDropIndex             = "MIGRATION_DROP_INDEX"
+    WarningMigrationBackfillReview        = "MIGRATION_BACKFILL_REVIEW"
 )
 ```
+
+<a name="ApplyReviewMode"></a>
+## func ApplyReviewMode
+
+```go
+func ApplyReviewMode(plan *MigrationPlan, mode ReviewMode) error
+```
+
+ApplyReviewMode annotates plan with additional review guidance.
 
 <a name="EnsureExecutable"></a>
 ## func EnsureExecutable
@@ -2975,6 +3648,24 @@ func EnsureExecutable(plan *MigrationPlan) error
 ```
 
 EnsureExecutable enforces migration approval requirements before execution.
+
+<a name="WriteDriftJSON"></a>
+## func WriteDriftJSON
+
+```go
+func WriteDriftJSON(w io.Writer, report DriftReport) error
+```
+
+WriteDriftJSON writes a machine\-readable schema drift report.
+
+<a name="WriteDriftPretty"></a>
+## func WriteDriftPretty
+
+```go
+func WriteDriftPretty(w io.Writer, report DriftReport) error
+```
+
+WriteDriftPretty writes a human\-readable schema drift report.
 
 <a name="WriteJSON"></a>
 ## func WriteJSON
@@ -2993,6 +3684,42 @@ func WritePretty(w io.Writer, plan *MigrationPlan) error
 ```
 
 WritePretty writes a human\-readable migration plan.
+
+<a name="WriteSchemaJSON"></a>
+## func WriteSchemaJSON
+
+```go
+func WriteSchemaJSON(w io.Writer, schema Schema) error
+```
+
+WriteSchemaJSON writes a machine\-readable migration schema export.
+
+<a name="WriteSchemaPretty"></a>
+## func WriteSchemaPretty
+
+```go
+func WriteSchemaPretty(w io.Writer, schema Schema) error
+```
+
+WriteSchemaPretty writes a compact human\-readable schema export summary.
+
+<a name="WriteStatusJSON"></a>
+## func WriteStatusJSON
+
+```go
+func WriteStatusJSON(w io.Writer, status Status) error
+```
+
+WriteStatusJSON writes a machine\-readable migration status.
+
+<a name="WriteStatusPretty"></a>
+## func WriteStatusPretty
+
+```go
+func WriteStatusPretty(w io.Writer, status Status) error
+```
+
+WriteStatusPretty writes a human\-readable migration status.
 
 <a name="AppliedMigration"></a>
 ## type AppliedMigration
@@ -3021,6 +3748,32 @@ type ColumnSchema struct {
     DefaultExpression string `json:"default_expression,omitempty"`
 }
 ```
+
+<a name="DriftReport"></a>
+## type DriftReport
+
+DriftReport reports whether the current database schema differs from the desired schema representation.
+
+```go
+type DriftReport struct {
+    Drifted       bool            `json:"drifted"`
+    DesiredTables int             `json:"desired_tables"`
+    CurrentTables int             `json:"current_tables"`
+    RiskLevel     query.RiskLevel `json:"risk_level"`
+    Steps         []MigrationStep `json:"steps,omitempty"`
+}
+```
+
+<a name="CompareSchemaDrift"></a>
+### func CompareSchemaDrift
+
+```go
+func CompareSchemaDrift(desired, current Schema) DriftReport
+```
+
+CompareSchemaDrift compares current database schema against desired schema.
+
+The returned steps are the migration steps that would transform current into desired. This is a structural drift report over migration.Schema values; it does not introspect a live database by itself.
 
 <a name="Executor"></a>
 ## type Executor
@@ -3244,6 +3997,33 @@ func (m *Migrator) RequireApproval(reason string) *Migrator
 
 RequireApproval records an explicit reason for applying a risky migration.
 
+<a name="Migrator.ReviewMode"></a>
+### func \(\*Migrator\) ReviewMode
+
+```go
+func (m *Migrator) ReviewMode(mode ReviewMode) *Migrator
+```
+
+ReviewMode enables an additional migration review mode.
+
+<a name="ReviewMode"></a>
+## type ReviewMode
+
+ReviewMode tunes migration review for a specific rollout pattern.
+
+```go
+type ReviewMode string
+```
+
+<a name="ReviewModeBackfill"></a>
+
+```go
+const (
+    // ReviewModeBackfill adds expand/backfill/contract preflight checks.
+    ReviewModeBackfill ReviewMode = "backfill"
+)
+```
+
 <a name="Schema"></a>
 ## type Schema
 
@@ -3252,6 +4032,54 @@ Schema is a minimal desired/current schema representation for diff planning.
 ```go
 type Schema struct {
     Tables []TableSchema `json:"tables,omitempty"`
+}
+```
+
+<a name="ReadSchema"></a>
+### func ReadSchema
+
+```go
+func ReadSchema(ctx context.Context, exec StatusExecutor, dialect driver.Dialect, opts ...SchemaReadOption) (Schema, error)
+```
+
+ReadSchema exports a minimal migration.Schema from database metadata.
+
+<a name="SchemaReadOption"></a>
+## type SchemaReadOption
+
+SchemaReadOption configures ReadSchema.
+
+```go
+type SchemaReadOption func(*SchemaReadOptions)
+```
+
+<a name="WithSchemaReadSchema"></a>
+### func WithSchemaReadSchema
+
+```go
+func WithSchemaReadSchema(schema string) SchemaReadOption
+```
+
+WithSchemaReadSchema sets the database schema/catalog to inspect. PostgreSQL defaults to public. MySQL defaults to DATABASE\(\).
+
+<a name="WithSchemaReadTables"></a>
+### func WithSchemaReadTables
+
+```go
+func WithSchemaReadTables(tables ...string) SchemaReadOption
+```
+
+WithSchemaReadTables limits export to the named tables.
+
+<a name="SchemaReadOptions"></a>
+## type SchemaReadOptions
+
+SchemaReadOptions configures live database schema export.
+
+```go
+type SchemaReadOptions struct {
+    Schema string
+    Tables []string
 }
 ```
 
@@ -3368,7 +4196,7 @@ type TableSchema struct {
 # model
 
 ```go
-import "github.com/faciam-dev/goquent/orm/model"
+import "github.com/recoweft/goquent/orm/model"
 ```
 
 ## Index
@@ -3388,7 +4216,7 @@ TableName returns the table name for the given value.
 # operation
 
 ```go
-import "github.com/faciam-dev/goquent/orm/operation"
+import "github.com/recoweft/goquent/orm/operation"
 ```
 
 ## Index
@@ -3539,7 +4367,7 @@ type OrderSpec struct {
 # query
 
 ```go
-import "github.com/faciam-dev/goquent/orm/query"
+import "github.com/recoweft/goquent/orm/query"
 ```
 
 ## Index
@@ -3548,6 +4376,7 @@ import "github.com/faciam-dev/goquent/orm/query"
 - [Variables](<#variables>)
 - [func AttachTableRiskMetadata\(plan \*QueryPlan, metadata \[\]TableRiskMetadata\)](<#AttachTableRiskMetadata>)
 - [func EnsurePlanExecutable\(plan \*QueryPlan\) error](<#EnsurePlanExecutable>)
+- [func PlanHasPredicateColumn\(plan \*QueryPlan, table, column string\) bool](<#PlanHasPredicateColumn>)
 - [func RegisterTablePolicy\(policy TablePolicy\) error](<#RegisterTablePolicy>)
 - [func ResetPolicyRegistry\(\)](<#ResetPolicyRegistry>)
 - [type AnalysisPrecision](<#AnalysisPrecision>)
@@ -3561,6 +4390,11 @@ import "github.com/faciam-dev/goquent/orm/query"
   - [func CursorDescAlias\(alias string\) CursorColumn](<#CursorDescAlias>)
   - [func CursorDescExpr\(expr string\) CursorColumn](<#CursorDescExpr>)
 - [type Evidence](<#Evidence>)
+- [type JoinClause](<#JoinClause>)
+  - [func \(c \*JoinClause\) On\(my, condition, target string\) \*JoinClause](<#JoinClause.On>)
+  - [func \(c \*JoinClause\) OrOn\(my, condition, target string\) \*JoinClause](<#JoinClause.OrOn>)
+  - [func \(c \*JoinClause\) OrWhere\(column, condition string, value any\) \*JoinClause](<#JoinClause.OrWhere>)
+  - [func \(c \*JoinClause\) Where\(column, condition string, value any\) \*JoinClause](<#JoinClause.Where>)
 - [type JoinRef](<#JoinRef>)
 - [type OperationType](<#OperationType>)
 - [type PolicyMode](<#PolicyMode>)
@@ -3589,11 +4423,11 @@ import "github.com/faciam-dev/goquent/orm/query"
   - [func \(q \*Query\) InsertUsing\(columns \[\]string, sub \*Query\) \(sql.Result, error\)](<#Query.InsertUsing>)
   - [func \(q \*Query\) Join\(table, localColumn, cond, target string\) \*Query](<#Query.Join>)
   - [func \(q \*Query\) JoinLateral\(sub \*Query, alias string\) \*Query](<#Query.JoinLateral>)
-  - [func \(q \*Query\) JoinQuery\(table string, fn func\(b \*qbapi.JoinClauseQueryBuilder\)\) \*Query](<#Query.JoinQuery>)
+  - [func \(q \*Query\) JoinQuery\(table string, fn func\(b \*JoinClause\)\) \*Query](<#Query.JoinQuery>)
   - [func \(q \*Query\) JoinSubQuery\(sub \*Query, alias, my, condition, target string\) \*Query](<#Query.JoinSubQuery>)
   - [func \(q \*Query\) LeftJoin\(table, localColumn, cond, target string\) \*Query](<#Query.LeftJoin>)
   - [func \(q \*Query\) LeftJoinLateral\(sub \*Query, alias string\) \*Query](<#Query.LeftJoinLateral>)
-  - [func \(q \*Query\) LeftJoinQuery\(table string, fn func\(b \*qbapi.JoinClauseQueryBuilder\)\) \*Query](<#Query.LeftJoinQuery>)
+  - [func \(q \*Query\) LeftJoinQuery\(table string, fn func\(b \*JoinClause\)\) \*Query](<#Query.LeftJoinQuery>)
   - [func \(q \*Query\) LeftJoinSubQuery\(sub \*Query, alias, my, condition, target string\) \*Query](<#Query.LeftJoinSubQuery>)
   - [func \(q \*Query\) Limit\(n int\) \*Query](<#Query.Limit>)
   - [func \(q \*Query\) LockForUpdate\(\) \*Query](<#Query.LockForUpdate>)
@@ -3626,6 +4460,7 @@ import "github.com/faciam-dev/goquent/orm/query"
   - [func \(q \*Query\) OrWhereNull\(col string\) \*Query](<#Query.OrWhereNull>)
   - [func \(q \*Query\) OrWhereRaw\(raw string, vals map\[string\]any\) \*Query](<#Query.OrWhereRaw>)
   - [func \(q \*Query\) OrWhereRawNoArgs\(raw string\) \*Query](<#Query.OrWhereRawNoArgs>)
+  - [func \(q \*Query\) OrWhereTextSearch\(columns \[\]string, term string\) \*Query](<#Query.OrWhereTextSearch>)
   - [func \(q \*Query\) OrWhereTime\(col, cond, time string\) \*Query](<#Query.OrWhereTime>)
   - [func \(q \*Query\) OrWhereYear\(col, cond, year string\) \*Query](<#Query.OrWhereYear>)
   - [func \(q \*Query\) OrderBy\(col, dir string\) \*Query](<#Query.OrderBy>)
@@ -3639,8 +4474,9 @@ import "github.com/faciam-dev/goquent/orm/query"
   - [func \(q \*Query\) RawSQL\(\) \(string, error\)](<#Query.RawSQL>)
   - [func \(q \*Query\) ReOrder\(\) \*Query](<#Query.ReOrder>)
   - [func \(q \*Query\) RequireApproval\(reason string\) \*Query](<#Query.RequireApproval>)
+  - [func \(q \*Query\) RequirePredicates\(required ...RequiredPredicate\) \*Query](<#Query.RequirePredicates>)
   - [func \(q \*Query\) RightJoin\(table, localColumn, cond, target string\) \*Query](<#Query.RightJoin>)
-  - [func \(q \*Query\) RightJoinQuery\(table string, fn func\(b \*qbapi.JoinClauseQueryBuilder\)\) \*Query](<#Query.RightJoinQuery>)
+  - [func \(q \*Query\) RightJoinQuery\(table string, fn func\(b \*JoinClause\)\) \*Query](<#Query.RightJoinQuery>)
   - [func \(q \*Query\) RightJoinSubQuery\(sub \*Query, alias, my, condition, target string\) \*Query](<#Query.RightJoinSubQuery>)
   - [func \(q \*Query\) SafeOrWhereRaw\(raw string, vals map\[string\]any\) \*Query](<#Query.SafeOrWhereRaw>)
   - [func \(q \*Query\) SafeWhereRaw\(raw string, vals map\[string\]any\) \*Query](<#Query.SafeWhereRaw>)
@@ -3686,6 +4522,7 @@ import "github.com/faciam-dev/goquent/orm/query"
   - [func \(q \*Query\) WhereNull\(col string\) \*Query](<#Query.WhereNull>)
   - [func \(q \*Query\) WhereRaw\(raw string, vals map\[string\]any\) \*Query](<#Query.WhereRaw>)
   - [func \(q \*Query\) WhereRawNoArgs\(raw string\) \*Query](<#Query.WhereRawNoArgs>)
+  - [func \(q \*Query\) WhereTextSearch\(columns \[\]string, term string\) \*Query](<#Query.WhereTextSearch>)
   - [func \(q \*Query\) WhereTime\(col, cond, time string\) \*Query](<#Query.WhereTime>)
   - [func \(q \*Query\) WhereYear\(col, cond, year string\) \*Query](<#Query.WhereYear>)
   - [func \(q \*Query\) WithContext\(ctx context.Context\) \*Query](<#Query.WithContext>)
@@ -3695,6 +4532,8 @@ import "github.com/faciam-dev/goquent/orm/query"
   - [func \(p \*QueryPlan\) RequiresApproval\(\) bool](<#QueryPlan.RequiresApproval>)
   - [func \(p \*QueryPlan\) String\(\) string](<#QueryPlan.String>)
   - [func \(p \*QueryPlan\) ToJSON\(\) \(\[\]byte, error\)](<#QueryPlan.ToJSON>)
+- [type RequiredPredicate](<#RequiredPredicate>)
+  - [func MissingRequiredPredicates\(plan \*QueryPlan, required \[\]RequiredPredicate\) \[\]RequiredPredicate](<#MissingRequiredPredicates>)
 - [type RiskConfig](<#RiskConfig>)
 - [type RiskEngine](<#RiskEngine>)
   - [func NewRiskEngine\(config RiskConfig\) RiskEngine](<#NewRiskEngine>)
@@ -3723,19 +4562,20 @@ import "github.com/faciam-dev/goquent/orm/query"
 
 ```go
 const (
-    WarningUpdateWithoutWhere      = "UPDATE_WITHOUT_WHERE"
-    WarningDeleteWithoutWhere      = "DELETE_WITHOUT_WHERE"
-    WarningSelectStarUsed          = "SELECT_STAR_USED"
-    WarningLimitMissing            = "LIMIT_MISSING"
-    WarningRawSQLUsed              = "RAW_SQL_USED"
-    WarningBulkUpdateDetected      = "BULK_UPDATE_DETECTED"
-    WarningBulkDeleteDetected      = "BULK_DELETE_DETECTED"
-    WarningDestructiveSQL          = "DESTRUCTIVE_SQL_DETECTED"
-    WarningWeakPredicate           = "WEAK_PREDICATE"
-    WarningSuppressionExpired      = "SUPPRESSION_EXPIRED"
-    WarningSuppressionNotAllowed   = "SUPPRESSION_NOT_ALLOWED"
-    WarningStaticReviewPartial     = "STATIC_REVIEW_PARTIAL"
-    WarningStaticReviewUnsupported = "STATIC_REVIEW_UNSUPPORTED"
+    WarningUpdateWithoutWhere       = "UPDATE_WITHOUT_WHERE"
+    WarningDeleteWithoutWhere       = "DELETE_WITHOUT_WHERE"
+    WarningSelectStarUsed           = "SELECT_STAR_USED"
+    WarningLimitMissing             = "LIMIT_MISSING"
+    WarningRawSQLUsed               = "RAW_SQL_USED"
+    WarningBulkUpdateDetected       = "BULK_UPDATE_DETECTED"
+    WarningBulkDeleteDetected       = "BULK_DELETE_DETECTED"
+    WarningDestructiveSQL           = "DESTRUCTIVE_SQL_DETECTED"
+    WarningWeakPredicate            = "WEAK_PREDICATE"
+    WarningSuppressionExpired       = "SUPPRESSION_EXPIRED"
+    WarningSuppressionNotAllowed    = "SUPPRESSION_NOT_ALLOWED"
+    WarningStaticReviewPartial      = "STATIC_REVIEW_PARTIAL"
+    WarningStaticReviewUnsupported  = "STATIC_REVIEW_UNSUPPORTED"
+    WarningRequiredPredicateMissing = "REQUIRED_PREDICATE_MISSING"
 )
 ```
 
@@ -3748,6 +4588,12 @@ const (
     WarningPIIColumnSelected       = "PII_COLUMN_SELECTED"
     WarningRequiredFilterMissing   = "REQUIRED_FILTER_MISSING"
 )
+```
+
+<a name="MetadataRequiredPredicates"></a>MetadataRequiredPredicates stores \[\]RequiredPredicate in QueryPlan.Metadata.
+
+```go
+const MetadataRequiredPredicates = "required_predicates"
 ```
 
 <a name="MetadataTableRisk"></a>MetadataTableRisk stores \[\]TableRiskMetadata in QueryPlan.Metadata.
@@ -3786,6 +4632,17 @@ func EnsurePlanExecutable(plan *QueryPlan) error
 ```
 
 EnsurePlanExecutable enforces approval and block rules for a finalized plan.
+
+<a name="PlanHasPredicateColumn"></a>
+## func PlanHasPredicateColumn
+
+```go
+func PlanHasPredicateColumn(plan *QueryPlan, table, column string) bool
+```
+
+PlanHasPredicateColumn reports whether plan contains a predicate for column.
+
+If table is non\-empty and the plan touches multiple tables, the predicate must be qualified by that table or its alias. For single\-table plans, unqualified predicates are accepted.
 
 <a name="RegisterTablePolicy"></a>
 ## func RegisterTablePolicy
@@ -3934,6 +4791,53 @@ type Evidence struct {
     Value any    `json:"value,omitempty"`
 }
 ```
+
+<a name="JoinClause"></a>
+## type JoinClause
+
+JoinClause exposes join\-clause operations without leaking the internal SQL builder package into Goquent's public API.
+
+```go
+type JoinClause struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="JoinClause.On"></a>
+### func \(\*JoinClause\) On
+
+```go
+func (c *JoinClause) On(my, condition, target string) *JoinClause
+```
+
+On adds an AND join condition.
+
+<a name="JoinClause.OrOn"></a>
+### func \(\*JoinClause\) OrOn
+
+```go
+func (c *JoinClause) OrOn(my, condition, target string) *JoinClause
+```
+
+OrOn adds an OR join condition.
+
+<a name="JoinClause.OrWhere"></a>
+### func \(\*JoinClause\) OrWhere
+
+```go
+func (c *JoinClause) OrWhere(column, condition string, value any) *JoinClause
+```
+
+OrWhere adds an OR predicate to the join clause.
+
+<a name="JoinClause.Where"></a>
+### func \(\*JoinClause\) Where
+
+```go
+func (c *JoinClause) Where(column, condition string, value any) *JoinClause
+```
+
+Where adds an AND predicate to the join clause.
 
 <a name="JoinRef"></a>
 ## type JoinRef
@@ -4234,7 +5138,7 @@ JoinLateral performs a LATERAL JOIN using a subquery.
 ### func \(\*Query\) JoinQuery
 
 ```go
-func (q *Query) JoinQuery(table string, fn func(b *qbapi.JoinClauseQueryBuilder)) *Query
+func (q *Query) JoinQuery(table string, fn func(b *JoinClause)) *Query
 ```
 
 JoinQuery adds a JOIN with additional ON/WHERE clauses defined in the callback.
@@ -4270,7 +5174,7 @@ LeftJoinLateral performs a LEFT LATERAL JOIN using a subquery.
 ### func \(\*Query\) LeftJoinQuery
 
 ```go
-func (q *Query) LeftJoinQuery(table string, fn func(b *qbapi.JoinClauseQueryBuilder)) *Query
+func (q *Query) LeftJoinQuery(table string, fn func(b *JoinClause)) *Query
 ```
 
 LeftJoinQuery adds a LEFT JOIN with additional clauses defined in the callback.
@@ -4563,6 +5467,15 @@ func (q *Query) OrWhereRawNoArgs(raw string) *Query
 
 OrWhereRawNoArgs appends a raw OR WHERE condition that has no placeholders.
 
+<a name="Query.OrWhereTextSearch"></a>
+### func \(\*Query\) OrWhereTextSearch
+
+```go
+func (q *Query) OrWhereTextSearch(columns []string, term string) *Query
+```
+
+OrWhereTextSearch adds a grouped OR multi\-column substring search predicate.
+
 <a name="Query.OrWhereTime"></a>
 ### func \(\*Query\) OrWhereTime
 
@@ -4680,6 +5593,15 @@ func (q *Query) RequireApproval(reason string) *Query
 
 RequireApproval records an explicit reason for executing a risky query.
 
+<a name="Query.RequirePredicates"></a>
+### func \(\*Query\) RequirePredicates
+
+```go
+func (q *Query) RequirePredicates(required ...RequiredPredicate) *Query
+```
+
+RequirePredicates blocks execution unless the finalized QueryPlan contains the given predicate columns. It is useful for repository\-level tenant or parent\-scope guards that are stricter than global table policy.
+
 <a name="Query.RightJoin"></a>
 ### func \(\*Query\) RightJoin
 
@@ -4693,7 +5615,7 @@ RightJoin adds RIGHT JOIN clause.
 ### func \(\*Query\) RightJoinQuery
 
 ```go
-func (q *Query) RightJoinQuery(table string, fn func(b *qbapi.JoinClauseQueryBuilder)) *Query
+func (q *Query) RightJoinQuery(table string, fn func(b *JoinClause)) *Query
 ```
 
 RightJoinQuery adds a RIGHT JOIN with additional clauses defined in the callback.
@@ -5103,6 +6025,17 @@ func (q *Query) WhereRawNoArgs(raw string) *Query
 
 WhereRawNoArgs appends a raw WHERE condition that has no placeholders.
 
+<a name="Query.WhereTextSearch"></a>
+### func \(\*Query\) WhereTextSearch
+
+```go
+func (q *Query) WhereTextSearch(columns []string, term string) *Query
+```
+
+WhereTextSearch adds a grouped multi\-column substring search predicate.
+
+PostgreSQL uses ILIKE for case\-insensitive matching. Other dialects use LIKE and rely on the column/database collation for case sensitivity. The search term is treated literally; %, \_, and \! are escaped before wrapping it with wildcard markers.
+
 <a name="Query.WhereTime"></a>
 ### func \(\*Query\) WhereTime
 
@@ -5203,6 +6136,27 @@ func (p *QueryPlan) ToJSON() ([]byte, error)
 ```
 
 ToJSON returns stable, indented JSON for the plan.
+
+<a name="RequiredPredicate"></a>
+## type RequiredPredicate
+
+RequiredPredicate describes a repository\-level predicate guard.
+
+```go
+type RequiredPredicate struct {
+    Table  string `json:"table,omitempty"`
+    Column string `json:"column"`
+}
+```
+
+<a name="MissingRequiredPredicates"></a>
+### func MissingRequiredPredicates
+
+```go
+func MissingRequiredPredicates(plan *QueryPlan, required []RequiredPredicate) []RequiredPredicate
+```
+
+MissingRequiredPredicates returns required predicates not present in plan.
 
 <a name="RiskConfig"></a>
 ## type RiskConfig
@@ -5470,11 +6424,12 @@ type Warning struct {
 # review
 
 ```go
-import "github.com/faciam-dev/goquent/orm/review"
+import "github.com/recoweft/goquent/orm/review"
 ```
 
 ## Index
 
+- [Constants](<#constants>)
 - [func HasFindingsAtOrAbove\(report ReviewReport, threshold query.RiskLevel\) bool](<#HasFindingsAtOrAbove>)
 - [func HasFindingsAtOrAbovePrecision\(report ReviewReport, threshold query.AnalysisPrecision\) bool](<#HasFindingsAtOrAbovePrecision>)
 - [func ParseAnalysisPrecision\(s string\) \(query.AnalysisPrecision, error\)](<#ParseAnalysisPrecision>)
@@ -5492,6 +6447,20 @@ import "github.com/faciam-dev/goquent/orm/review"
   - [func Run\(opts Options\) \(ReviewReport, error\)](<#Run>)
 - [type ReviewSummary](<#ReviewSummary>)
 
+
+## Constants
+
+<a name="WarningSuppressionUnused"></a>
+
+```go
+const (
+    WarningSuppressionUnused        = "SUPPRESSION_UNUSED"
+    WarningSuppressionOverbroad     = "SUPPRESSION_OVERBROAD"
+    WarningSuppressionOwnerMissing  = "SUPPRESSION_OWNER_MISSING"
+    WarningSuppressionReasonWeak    = "SUPPRESSION_REASON_WEAK"
+    WarningSuppressionConfigInvalid = "SUPPRESSION_CONFIG_INVALID"
+)
+```
 
 <a name="HasFindingsAtOrAbove"></a>
 ## func HasFindingsAtOrAbove
@@ -5643,6 +6612,7 @@ Options controls review discovery and output behavior.
 type Options struct {
     Paths                []string
     ShowSuppressed       bool
+    ConfigPath           string
     ManifestPath         string
     RequireFreshManifest bool
     CurrentManifest      *manifest.Manifest
@@ -5692,7 +6662,7 @@ type ReviewSummary struct {
 # scanner
 
 ```go
-import "github.com/faciam-dev/goquent/orm/scanner"
+import "github.com/recoweft/goquent/orm/scanner"
 ```
 
 ## Index

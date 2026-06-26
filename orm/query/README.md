@@ -3,7 +3,7 @@
 # query
 
 ```go
-import "github.com/faciam-dev/goquent/orm/query"
+import "github.com/recoweft/goquent/orm/query"
 ```
 
 ## Index
@@ -31,11 +31,11 @@ import "github.com/faciam-dev/goquent/orm/query"
   - [func \(q \*Query\) InsertUsing\(columns \[\]string, sub \*Query\) \(sql.Result, error\)](<#Query.InsertUsing>)
   - [func \(q \*Query\) Join\(table, localColumn, cond, target string\) \*Query](<#Query.Join>)
   - [func \(q \*Query\) JoinLateral\(sub \*Query, alias string\) \*Query](<#Query.JoinLateral>)
-  - [func \(q \*Query\) JoinQuery\(table string, fn func\(b \*qbapi.JoinClauseQueryBuilder\)\) \*Query](<#Query.JoinQuery>)
+  - [func \(q \*Query\) JoinQuery\(table string, fn func\(b \*JoinClause\)\) \*Query](<#Query.JoinQuery>)
   - [func \(q \*Query\) JoinSubQuery\(sub \*Query, alias, my, condition, target string\) \*Query](<#Query.JoinSubQuery>)
   - [func \(q \*Query\) LeftJoin\(table, localColumn, cond, target string\) \*Query](<#Query.LeftJoin>)
   - [func \(q \*Query\) LeftJoinLateral\(sub \*Query, alias string\) \*Query](<#Query.LeftJoinLateral>)
-  - [func \(q \*Query\) LeftJoinQuery\(table string, fn func\(b \*qbapi.JoinClauseQueryBuilder\)\) \*Query](<#Query.LeftJoinQuery>)
+  - [func \(q \*Query\) LeftJoinQuery\(table string, fn func\(b \*JoinClause\)\) \*Query](<#Query.LeftJoinQuery>)
   - [func \(q \*Query\) LeftJoinSubQuery\(sub \*Query, alias, my, condition, target string\) \*Query](<#Query.LeftJoinSubQuery>)
   - [func \(q \*Query\) Limit\(n int\) \*Query](<#Query.Limit>)
   - [func \(q \*Query\) LockForUpdate\(\) \*Query](<#Query.LockForUpdate>)
@@ -74,7 +74,7 @@ import "github.com/faciam-dev/goquent/orm/query"
   - [func \(q \*Query\) RawSQL\(\) \(string, error\)](<#Query.RawSQL>)
   - [func \(q \*Query\) ReOrder\(\) \*Query](<#Query.ReOrder>)
   - [func \(q \*Query\) RightJoin\(table, localColumn, cond, target string\) \*Query](<#Query.RightJoin>)
-  - [func \(q \*Query\) RightJoinQuery\(table string, fn func\(b \*qbapi.JoinClauseQueryBuilder\)\) \*Query](<#Query.RightJoinQuery>)
+  - [func \(q \*Query\) RightJoinQuery\(table string, fn func\(b \*JoinClause\)\) \*Query](<#Query.RightJoinQuery>)
   - [func \(q \*Query\) RightJoinSubQuery\(sub \*Query, alias, my, condition, target string\) \*Query](<#Query.RightJoinSubQuery>)
   - [func \(q \*Query\) SafeOrWhereRaw\(raw string, vals map\[string\]any\) \*Query](<#Query.SafeOrWhereRaw>)
   - [func \(q \*Query\) SafeWhereRaw\(raw string, vals map\[string\]any\) \*Query](<#Query.SafeWhereRaw>)
@@ -119,7 +119,7 @@ import "github.com/faciam-dev/goquent/orm/query"
 
 
 <a name="Query"></a>
-## type [Query](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L36-L43>)
+## type [Query](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L36-L43>)
 
 Query wraps goquent QueryBuilder and the executor.
 
@@ -130,7 +130,7 @@ type Query struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L46>)
+### func [New](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L46>)
 
 ```go
 func New(exec executor, table string, dialect driver.Dialect) *Query
@@ -139,7 +139,7 @@ func New(exec executor, table string, dialect driver.Dialect) *Query
 New creates a Query with given db and table.
 
 <a name="Query.Avg"></a>
-### func \(\*Query\) [Avg](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L322>)
+### func \(\*Query\) [Avg](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L322>)
 
 ```go
 func (q *Query) Avg(col string) *Query
@@ -148,7 +148,7 @@ func (q *Query) Avg(col string) *Query
 Avg adds AVG aggregate function.
 
 <a name="Query.Build"></a>
-### func \(\*Query\) [Build](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L840>)
+### func \(\*Query\) [Build](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L840>)
 
 ```go
 func (q *Query) Build() (string, []any, error)
@@ -157,7 +157,7 @@ func (q *Query) Build() (string, []any, error)
 Build returns the SQL and args.
 
 <a name="Query.Count"></a>
-### func \(\*Query\) [Count](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L264>)
+### func \(\*Query\) [Count](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L264>)
 
 ```go
 func (q *Query) Count(cols ...string) (int64, error)
@@ -166,7 +166,7 @@ func (q *Query) Count(cols ...string) (int64, error)
 Count executes a COUNT query using the current conditions and returns the resulting row count.
 
 <a name="Query.CrossJoin"></a>
-### func \(\*Query\) [CrossJoin](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L391>)
+### func \(\*Query\) [CrossJoin](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L391>)
 
 ```go
 func (q *Query) CrossJoin(table string) *Query
@@ -175,7 +175,7 @@ func (q *Query) CrossJoin(table string) *Query
 CrossJoin adds CROSS JOIN clause.
 
 <a name="Query.Delete"></a>
-### func \(\*Query\) [Delete](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L976>)
+### func \(\*Query\) [Delete](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L976>)
 
 ```go
 func (q *Query) Delete() (sql.Result, error)
@@ -184,7 +184,7 @@ func (q *Query) Delete() (sql.Result, error)
 Delete executes a DELETE query using current conditions.
 
 <a name="Query.Distinct"></a>
-### func \(\*Query\) [Distinct](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L295>)
+### func \(\*Query\) [Distinct](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L295>)
 
 ```go
 func (q *Query) Distinct(cols ...string) *Query
@@ -193,7 +193,7 @@ func (q *Query) Distinct(cols ...string) *Query
 Distinct marks columns as DISTINCT.
 
 <a name="Query.Dump"></a>
-### func \(\*Query\) [Dump](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L843>)
+### func \(\*Query\) [Dump](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L843>)
 
 ```go
 func (q *Query) Dump() (string, []any, error)
@@ -202,7 +202,7 @@ func (q *Query) Dump() (string, []any, error)
 Dump returns SQL and args for debugging.
 
 <a name="Query.First"></a>
-### func \(\*Query\) [First](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L167>)
+### func \(\*Query\) [First](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L167>)
 
 ```go
 func (q *Query) First(dest any) error
@@ -211,7 +211,7 @@ func (q *Query) First(dest any) error
 First scans the first result into dest struct.
 
 <a name="Query.FirstMap"></a>
-### func \(\*Query\) [FirstMap](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L184>)
+### func \(\*Query\) [FirstMap](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L184>)
 
 ```go
 func (q *Query) FirstMap(dest *map[string]any) error
@@ -220,7 +220,7 @@ func (q *Query) FirstMap(dest *map[string]any) error
 FirstMap scans first row into map.
 
 <a name="Query.Get"></a>
-### func \(\*Query\) [Get](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L228>)
+### func \(\*Query\) [Get](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L228>)
 
 ```go
 func (q *Query) Get(dest any) error
@@ -229,7 +229,7 @@ func (q *Query) Get(dest any) error
 Get scans all rows into the slice pointed to by dest.
 
 <a name="Query.GetMaps"></a>
-### func \(\*Query\) [GetMaps](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L206>)
+### func \(\*Query\) [GetMaps](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L206>)
 
 ```go
 func (q *Query) GetMaps(dest *[]map[string]any) error
@@ -238,7 +238,7 @@ func (q *Query) GetMaps(dest *[]map[string]any) error
 GetMaps scans all rows into slice of maps.
 
 <a name="Query.GroupBy"></a>
-### func \(\*Query\) [GroupBy](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L415>)
+### func \(\*Query\) [GroupBy](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L415>)
 
 ```go
 func (q *Query) GroupBy(cols ...string) *Query
@@ -247,7 +247,7 @@ func (q *Query) GroupBy(cols ...string) *Query
 GroupBy adds GROUP BY clause.
 
 <a name="Query.Having"></a>
-### func \(\*Query\) [Having](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L421>)
+### func \(\*Query\) [Having](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L421>)
 
 ```go
 func (q *Query) Having(col, cond string, val any) *Query
@@ -256,7 +256,7 @@ func (q *Query) Having(col, cond string, val any) *Query
 Having adds HAVING condition.
 
 <a name="Query.HavingRaw"></a>
-### func \(\*Query\) [HavingRaw](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L427>)
+### func \(\*Query\) [HavingRaw](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L427>)
 
 ```go
 func (q *Query) HavingRaw(raw string) *Query
@@ -265,7 +265,7 @@ func (q *Query) HavingRaw(raw string) *Query
 HavingRaw adds raw HAVING condition.
 
 <a name="Query.Insert"></a>
-### func \(\*Query\) [Insert](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L856>)
+### func \(\*Query\) [Insert](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L856>)
 
 ```go
 func (q *Query) Insert(data any) (sql.Result, error)
@@ -274,7 +274,7 @@ func (q *Query) Insert(data any) (sql.Result, error)
 Insert executes an INSERT with the given data.
 
 <a name="Query.InsertBatch"></a>
-### func \(\*Query\) [InsertBatch](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L905>)
+### func \(\*Query\) [InsertBatch](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L905>)
 
 ```go
 func (q *Query) InsertBatch(data []map[string]any) (sql.Result, error)
@@ -283,7 +283,7 @@ func (q *Query) InsertBatch(data []map[string]any) (sql.Result, error)
 InsertBatch executes a bulk INSERT with the given slice of data maps.
 
 <a name="Query.InsertGetId"></a>
-### func \(\*Query\) [InsertGetId](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L873>)
+### func \(\*Query\) [InsertGetId](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L873>)
 
 ```go
 func (q *Query) InsertGetId(data any) (int64, error)
@@ -292,7 +292,7 @@ func (q *Query) InsertGetId(data any) (int64, error)
 InsertGetId executes an INSERT and returns the auto\-increment ID. For PostgreSQL, it appends a RETURNING clause for the configured primary key column because the driver does not support LastInsertId.
 
 <a name="Query.InsertOrIgnore"></a>
-### func \(\*Query\) [InsertOrIgnore](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L916>)
+### func \(\*Query\) [InsertOrIgnore](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L916>)
 
 ```go
 func (q *Query) InsertOrIgnore(data []map[string]any) (sql.Result, error)
@@ -301,7 +301,7 @@ func (q *Query) InsertOrIgnore(data []map[string]any) (sql.Result, error)
 InsertOrIgnore executes an INSERT IGNORE.
 
 <a name="Query.InsertUsing"></a>
-### func \(\*Query\) [InsertUsing](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L949>)
+### func \(\*Query\) [InsertUsing](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L949>)
 
 ```go
 func (q *Query) InsertUsing(columns []string, sub *Query) (sql.Result, error)
@@ -310,7 +310,7 @@ func (q *Query) InsertUsing(columns []string, sub *Query) (sql.Result, error)
 InsertUsing executes an INSERT INTO ... SELECT statement using columns from a subquery.
 
 <a name="Query.Join"></a>
-### func \(\*Query\) [Join](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L325>)
+### func \(\*Query\) [Join](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L325>)
 
 ```go
 func (q *Query) Join(table, localColumn, cond, target string) *Query
@@ -319,7 +319,7 @@ func (q *Query) Join(table, localColumn, cond, target string) *Query
 Join adds INNER JOIN clause.
 
 <a name="Query.JoinLateral"></a>
-### func \(\*Query\) [JoinLateral](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L367>)
+### func \(\*Query\) [JoinLateral](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L367>)
 
 ```go
 func (q *Query) JoinLateral(sub *Query, alias string) *Query
@@ -328,16 +328,16 @@ func (q *Query) JoinLateral(sub *Query, alias string) *Query
 JoinLateral performs a LATERAL JOIN using a subquery.
 
 <a name="Query.JoinQuery"></a>
-### func \(\*Query\) [JoinQuery](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L331>)
+### func \(\*Query\) [JoinQuery](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L331>)
 
 ```go
-func (q *Query) JoinQuery(table string, fn func(b *qbapi.JoinClauseQueryBuilder)) *Query
+func (q *Query) JoinQuery(table string, fn func(b *JoinClause)) *Query
 ```
 
 JoinQuery adds a JOIN with additional ON/WHERE clauses defined in the callback.
 
 <a name="Query.JoinSubQuery"></a>
-### func \(\*Query\) [JoinSubQuery](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L349>)
+### func \(\*Query\) [JoinSubQuery](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L349>)
 
 ```go
 func (q *Query) JoinSubQuery(sub *Query, alias, my, condition, target string) *Query
@@ -346,7 +346,7 @@ func (q *Query) JoinSubQuery(sub *Query, alias, my, condition, target string) *Q
 JoinSubQuery joins a subquery with alias and join condition.
 
 <a name="Query.LeftJoin"></a>
-### func \(\*Query\) [LeftJoin](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L379>)
+### func \(\*Query\) [LeftJoin](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L379>)
 
 ```go
 func (q *Query) LeftJoin(table, localColumn, cond, target string) *Query
@@ -355,7 +355,7 @@ func (q *Query) LeftJoin(table, localColumn, cond, target string) *Query
 LeftJoin adds LEFT JOIN clause.
 
 <a name="Query.LeftJoinLateral"></a>
-### func \(\*Query\) [LeftJoinLateral](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L373>)
+### func \(\*Query\) [LeftJoinLateral](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L373>)
 
 ```go
 func (q *Query) LeftJoinLateral(sub *Query, alias string) *Query
@@ -364,16 +364,16 @@ func (q *Query) LeftJoinLateral(sub *Query, alias string) *Query
 LeftJoinLateral performs a LEFT LATERAL JOIN using a subquery.
 
 <a name="Query.LeftJoinQuery"></a>
-### func \(\*Query\) [LeftJoinQuery](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L337>)
+### func \(\*Query\) [LeftJoinQuery](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L337>)
 
 ```go
-func (q *Query) LeftJoinQuery(table string, fn func(b *qbapi.JoinClauseQueryBuilder)) *Query
+func (q *Query) LeftJoinQuery(table string, fn func(b *JoinClause)) *Query
 ```
 
 LeftJoinQuery adds a LEFT JOIN with additional clauses defined in the callback.
 
 <a name="Query.LeftJoinSubQuery"></a>
-### func \(\*Query\) [LeftJoinSubQuery](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L355>)
+### func \(\*Query\) [LeftJoinSubQuery](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L355>)
 
 ```go
 func (q *Query) LeftJoinSubQuery(sub *Query, alias, my, condition, target string) *Query
@@ -382,7 +382,7 @@ func (q *Query) LeftJoinSubQuery(sub *Query, alias, my, condition, target string
 LeftJoinSubQuery performs a LEFT JOIN using a subquery.
 
 <a name="Query.Limit"></a>
-### func \(\*Query\) [Limit](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L245>)
+### func \(\*Query\) [Limit](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L245>)
 
 ```go
 func (q *Query) Limit(n int) *Query
@@ -391,7 +391,7 @@ func (q *Query) Limit(n int) *Query
 Limit sets a limit.
 
 <a name="Query.LockForUpdate"></a>
-### func \(\*Query\) [LockForUpdate](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L834>)
+### func \(\*Query\) [LockForUpdate](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L834>)
 
 ```go
 func (q *Query) LockForUpdate() *Query
@@ -400,7 +400,7 @@ func (q *Query) LockForUpdate() *Query
 LockForUpdate adds FOR UPDATE clause.
 
 <a name="Query.Max"></a>
-### func \(\*Query\) [Max](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L313>)
+### func \(\*Query\) [Max](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L313>)
 
 ```go
 func (q *Query) Max(col string) *Query
@@ -409,7 +409,7 @@ func (q *Query) Max(col string) *Query
 Max adds MAX aggregate function.
 
 <a name="Query.Min"></a>
-### func \(\*Query\) [Min](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L316>)
+### func \(\*Query\) [Min](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L316>)
 
 ```go
 func (q *Query) Min(col string) *Query
@@ -418,7 +418,7 @@ func (q *Query) Min(col string) *Query
 Min adds MIN aggregate function.
 
 <a name="Query.Offset"></a>
-### func \(\*Query\) [Offset](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L251>)
+### func \(\*Query\) [Offset](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L251>)
 
 ```go
 func (q *Query) Offset(n int) *Query
@@ -427,7 +427,7 @@ func (q *Query) Offset(n int) *Query
 Offset sets offset.
 
 <a name="Query.OrHaving"></a>
-### func \(\*Query\) [OrHaving](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L433>)
+### func \(\*Query\) [OrHaving](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L433>)
 
 ```go
 func (q *Query) OrHaving(col, cond string, val any) *Query
@@ -436,7 +436,7 @@ func (q *Query) OrHaving(col, cond string, val any) *Query
 OrHaving adds OR HAVING condition.
 
 <a name="Query.OrHavingRaw"></a>
-### func \(\*Query\) [OrHavingRaw](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L439>)
+### func \(\*Query\) [OrHavingRaw](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L439>)
 
 ```go
 func (q *Query) OrHavingRaw(raw string) *Query
@@ -445,7 +445,7 @@ func (q *Query) OrHavingRaw(raw string) *Query
 OrHavingRaw adds raw OR HAVING condition.
 
 <a name="Query.OrWhere"></a>
-### func \(\*Query\) [OrWhere](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L445>)
+### func \(\*Query\) [OrWhere](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L445>)
 
 ```go
 func (q *Query) OrWhere(col string, args ...any) *Query
@@ -454,7 +454,7 @@ func (q *Query) OrWhere(col string, args ...any) *Query
 OrWhere appends OR condition.
 
 <a name="Query.OrWhereBetween"></a>
-### func \(\*Query\) [OrWhereBetween](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L686>)
+### func \(\*Query\) [OrWhereBetween](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L686>)
 
 ```go
 func (q *Query) OrWhereBetween(col string, min, max any) *Query
@@ -463,7 +463,7 @@ func (q *Query) OrWhereBetween(col string, min, max any) *Query
 OrWhereBetween adds OR WHERE BETWEEN condition.
 
 <a name="Query.OrWhereBetweenColumns"></a>
-### func \(\*Query\) [OrWhereBetweenColumns](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L705>)
+### func \(\*Query\) [OrWhereBetweenColumns](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L705>)
 
 ```go
 func (q *Query) OrWhereBetweenColumns(col, minCol, maxCol string) *Query
@@ -472,7 +472,7 @@ func (q *Query) OrWhereBetweenColumns(col, minCol, maxCol string) *Query
 OrWhereBetweenColumns adds OR WHERE col BETWEEN minCol AND maxCol using columns.
 
 <a name="Query.OrWhereColumn"></a>
-### func \(\*Query\) [OrWhereColumn](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L609>)
+### func \(\*Query\) [OrWhereColumn](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L609>)
 
 ```go
 func (q *Query) OrWhereColumn(col string, args ...string) *Query
@@ -481,7 +481,7 @@ func (q *Query) OrWhereColumn(col string, args ...string) *Query
 OrWhereColumn adds OR WHERE column operator column condition.
 
 <a name="Query.OrWhereColumns"></a>
-### func \(\*Query\) [OrWhereColumns](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L639>)
+### func \(\*Query\) [OrWhereColumns](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L639>)
 
 ```go
 func (q *Query) OrWhereColumns(columns [][]string) *Query
@@ -490,7 +490,7 @@ func (q *Query) OrWhereColumns(columns [][]string) *Query
 OrWhereColumns adds multiple column comparison conditions joined by OR.
 
 <a name="Query.OrWhereDate"></a>
-### func \(\*Query\) [OrWhereDate](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L768>)
+### func \(\*Query\) [OrWhereDate](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L768>)
 
 ```go
 func (q *Query) OrWhereDate(col, cond, date string) *Query
@@ -499,7 +499,7 @@ func (q *Query) OrWhereDate(col, cond, date string) *Query
 OrWhereDate adds OR WHERE DATE\(column\) comparison condition.
 
 <a name="Query.OrWhereDay"></a>
-### func \(\*Query\) [OrWhereDay](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L792>)
+### func \(\*Query\) [OrWhereDay](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L792>)
 
 ```go
 func (q *Query) OrWhereDay(col, cond, day string) *Query
@@ -508,7 +508,7 @@ func (q *Query) OrWhereDay(col, cond, day string) *Query
 OrWhereDay adds OR WHERE DAY\(column\) comparison condition.
 
 <a name="Query.OrWhereExists"></a>
-### func \(\*Query\) [OrWhereExists](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L744>)
+### func \(\*Query\) [OrWhereExists](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L744>)
 
 ```go
 func (q *Query) OrWhereExists(sub *Query) *Query
@@ -517,7 +517,7 @@ func (q *Query) OrWhereExists(sub *Query) *Query
 OrWhereExists adds OR WHERE EXISTS \(subquery\) condition.
 
 <a name="Query.OrWhereFullText"></a>
-### func \(\*Query\) [OrWhereFullText](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L732>)
+### func \(\*Query\) [OrWhereFullText](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L732>)
 
 ```go
 func (q *Query) OrWhereFullText(cols []string, search string, opts map[string]any) *Query
@@ -526,7 +526,7 @@ func (q *Query) OrWhereFullText(cols []string, search string, opts map[string]an
 OrWhereFullText adds OR full\-text search condition.
 
 <a name="Query.OrWhereGroup"></a>
-### func \(\*Query\) [OrWhereGroup](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L500>)
+### func \(\*Query\) [OrWhereGroup](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L500>)
 
 ```go
 func (q *Query) OrWhereGroup(fn func(g *Query)) *Query
@@ -535,7 +535,7 @@ func (q *Query) OrWhereGroup(fn func(g *Query)) *Query
 OrWhereGroup groups conditions with parentheses using OR logic.
 
 <a name="Query.OrWhereIn"></a>
-### func \(\*Query\) [OrWhereIn](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L542>)
+### func \(\*Query\) [OrWhereIn](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L542>)
 
 ```go
 func (q *Query) OrWhereIn(col string, vals any) *Query
@@ -544,7 +544,7 @@ func (q *Query) OrWhereIn(col string, vals any) *Query
 OrWhereIn adds OR WHERE IN condition.
 
 <a name="Query.OrWhereInSubQuery"></a>
-### func \(\*Query\) [OrWhereInSubQuery](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L566>)
+### func \(\*Query\) [OrWhereInSubQuery](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L566>)
 
 ```go
 func (q *Query) OrWhereInSubQuery(col string, sub *Query) *Query
@@ -553,7 +553,7 @@ func (q *Query) OrWhereInSubQuery(col string, sub *Query) *Query
 OrWhereInSubQuery adds OR WHERE IN \(subquery\) condition.
 
 <a name="Query.OrWhereMonth"></a>
-### func \(\*Query\) [OrWhereMonth](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L804>)
+### func \(\*Query\) [OrWhereMonth](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L804>)
 
 ```go
 func (q *Query) OrWhereMonth(col, cond, month string) *Query
@@ -562,7 +562,7 @@ func (q *Query) OrWhereMonth(col, cond, month string) *Query
 OrWhereMonth adds OR WHERE MONTH\(column\) comparison condition.
 
 <a name="Query.OrWhereNot"></a>
-### func \(\*Query\) [OrWhereNot](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L520>)
+### func \(\*Query\) [OrWhereNot](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L520>)
 
 ```go
 func (q *Query) OrWhereNot(fn func(g *Query)) *Query
@@ -571,7 +571,7 @@ func (q *Query) OrWhereNot(fn func(g *Query)) *Query
 OrWhereNot groups conditions inside OR NOT \(...\).
 
 <a name="Query.OrWhereNotBetween"></a>
-### func \(\*Query\) [OrWhereNotBetween](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L692>)
+### func \(\*Query\) [OrWhereNotBetween](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L692>)
 
 ```go
 func (q *Query) OrWhereNotBetween(col string, min, max any) *Query
@@ -580,7 +580,7 @@ func (q *Query) OrWhereNotBetween(col string, min, max any) *Query
 OrWhereNotBetween adds OR WHERE NOT BETWEEN condition.
 
 <a name="Query.OrWhereNotBetweenColumns"></a>
-### func \(\*Query\) [OrWhereNotBetweenColumns](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L719>)
+### func \(\*Query\) [OrWhereNotBetweenColumns](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L719>)
 
 ```go
 func (q *Query) OrWhereNotBetweenColumns(col, minCol, maxCol string) *Query
@@ -589,7 +589,7 @@ func (q *Query) OrWhereNotBetweenColumns(col, minCol, maxCol string) *Query
 OrWhereNotBetweenColumns adds OR WHERE col NOT BETWEEN minCol AND maxCol using columns.
 
 <a name="Query.OrWhereNotExists"></a>
-### func \(\*Query\) [OrWhereNotExists](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L756>)
+### func \(\*Query\) [OrWhereNotExists](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L756>)
 
 ```go
 func (q *Query) OrWhereNotExists(sub *Query) *Query
@@ -598,7 +598,7 @@ func (q *Query) OrWhereNotExists(sub *Query) *Query
 OrWhereNotExists adds OR WHERE NOT EXISTS \(subquery\) condition.
 
 <a name="Query.OrWhereNotIn"></a>
-### func \(\*Query\) [OrWhereNotIn](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L548>)
+### func \(\*Query\) [OrWhereNotIn](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L548>)
 
 ```go
 func (q *Query) OrWhereNotIn(col string, vals any) *Query
@@ -607,7 +607,7 @@ func (q *Query) OrWhereNotIn(col string, vals any) *Query
 OrWhereNotIn adds OR WHERE NOT IN condition.
 
 <a name="Query.OrWhereNotInSubQuery"></a>
-### func \(\*Query\) [OrWhereNotInSubQuery](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L572>)
+### func \(\*Query\) [OrWhereNotInSubQuery](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L572>)
 
 ```go
 func (q *Query) OrWhereNotInSubQuery(col string, sub *Query) *Query
@@ -616,7 +616,7 @@ func (q *Query) OrWhereNotInSubQuery(col string, sub *Query) *Query
 OrWhereNotInSubQuery adds OR WHERE NOT IN \(subquery\) condition.
 
 <a name="Query.OrWhereNotNull"></a>
-### func \(\*Query\) [OrWhereNotNull](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L668>)
+### func \(\*Query\) [OrWhereNotNull](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L668>)
 
 ```go
 func (q *Query) OrWhereNotNull(col string) *Query
@@ -625,7 +625,7 @@ func (q *Query) OrWhereNotNull(col string) *Query
 OrWhereNotNull adds OR WHERE column IS NOT NULL condition.
 
 <a name="Query.OrWhereNull"></a>
-### func \(\*Query\) [OrWhereNull](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L662>)
+### func \(\*Query\) [OrWhereNull](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L662>)
 
 ```go
 func (q *Query) OrWhereNull(col string) *Query
@@ -634,7 +634,7 @@ func (q *Query) OrWhereNull(col string) *Query
 OrWhereNull adds OR WHERE column IS NULL condition.
 
 <a name="Query.OrWhereRaw"></a>
-### func \(\*Query\) [OrWhereRaw](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L472>)
+### func \(\*Query\) [OrWhereRaw](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L472>)
 
 ```go
 func (q *Query) OrWhereRaw(raw string, vals map[string]any) *Query
@@ -643,7 +643,7 @@ func (q *Query) OrWhereRaw(raw string, vals map[string]any) *Query
 OrWhereRaw appends raw OR WHERE condition.
 
 <a name="Query.OrWhereTime"></a>
-### func \(\*Query\) [OrWhereTime](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L780>)
+### func \(\*Query\) [OrWhereTime](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L780>)
 
 ```go
 func (q *Query) OrWhereTime(col, cond, time string) *Query
@@ -652,7 +652,7 @@ func (q *Query) OrWhereTime(col, cond, time string) *Query
 OrWhereTime adds OR WHERE TIME\(column\) comparison condition.
 
 <a name="Query.OrWhereYear"></a>
-### func \(\*Query\) [OrWhereYear](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L816>)
+### func \(\*Query\) [OrWhereYear](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L816>)
 
 ```go
 func (q *Query) OrWhereYear(col, cond, year string) *Query
@@ -661,7 +661,7 @@ func (q *Query) OrWhereYear(col, cond, year string) *Query
 OrWhereYear adds OR WHERE YEAR\(column\) comparison condition.
 
 <a name="Query.OrderBy"></a>
-### func \(\*Query\) [OrderBy](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L397>)
+### func \(\*Query\) [OrderBy](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L397>)
 
 ```go
 func (q *Query) OrderBy(col, dir string) *Query
@@ -670,7 +670,7 @@ func (q *Query) OrderBy(col, dir string) *Query
 OrderBy adds ORDER BY clause.
 
 <a name="Query.OrderByRaw"></a>
-### func \(\*Query\) [OrderByRaw](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L403>)
+### func \(\*Query\) [OrderByRaw](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L403>)
 
 ```go
 func (q *Query) OrderByRaw(raw string) *Query
@@ -679,7 +679,7 @@ func (q *Query) OrderByRaw(raw string) *Query
 OrderByRaw adds raw ORDER BY clause.
 
 <a name="Query.PrimaryKey"></a>
-### func \(\*Query\) [PrimaryKey](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L96>)
+### func \(\*Query\) [PrimaryKey](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L96>)
 
 ```go
 func (q *Query) PrimaryKey(col string) *Query
@@ -688,7 +688,7 @@ func (q *Query) PrimaryKey(col string) *Query
 PrimaryKey sets the primary key column for the table.
 
 <a name="Query.RawSQL"></a>
-### func \(\*Query\) [RawSQL](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L846>)
+### func \(\*Query\) [RawSQL](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L846>)
 
 ```go
 func (q *Query) RawSQL() (string, error)
@@ -697,7 +697,7 @@ func (q *Query) RawSQL() (string, error)
 RawSQL returns interpolated SQL for debugging.
 
 <a name="Query.ReOrder"></a>
-### func \(\*Query\) [ReOrder](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L409>)
+### func \(\*Query\) [ReOrder](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L409>)
 
 ```go
 func (q *Query) ReOrder() *Query
@@ -706,7 +706,7 @@ func (q *Query) ReOrder() *Query
 ReOrder clears ORDER BY clauses.
 
 <a name="Query.RightJoin"></a>
-### func \(\*Query\) [RightJoin](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L385>)
+### func \(\*Query\) [RightJoin](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L385>)
 
 ```go
 func (q *Query) RightJoin(table, localColumn, cond, target string) *Query
@@ -715,16 +715,16 @@ func (q *Query) RightJoin(table, localColumn, cond, target string) *Query
 RightJoin adds RIGHT JOIN clause.
 
 <a name="Query.RightJoinQuery"></a>
-### func \(\*Query\) [RightJoinQuery](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L343>)
+### func \(\*Query\) [RightJoinQuery](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L343>)
 
 ```go
-func (q *Query) RightJoinQuery(table string, fn func(b *qbapi.JoinClauseQueryBuilder)) *Query
+func (q *Query) RightJoinQuery(table string, fn func(b *JoinClause)) *Query
 ```
 
 RightJoinQuery adds a RIGHT JOIN with additional clauses defined in the callback.
 
 <a name="Query.RightJoinSubQuery"></a>
-### func \(\*Query\) [RightJoinSubQuery](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L361>)
+### func \(\*Query\) [RightJoinSubQuery](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L361>)
 
 ```go
 func (q *Query) RightJoinSubQuery(sub *Query, alias, my, condition, target string) *Query
@@ -733,7 +733,7 @@ func (q *Query) RightJoinSubQuery(sub *Query, alias, my, condition, target strin
 RightJoinSubQuery performs a RIGHT JOIN using a subquery.
 
 <a name="Query.SafeOrWhereRaw"></a>
-### func \(\*Query\) [SafeOrWhereRaw](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L484>)
+### func \(\*Query\) [SafeOrWhereRaw](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L484>)
 
 ```go
 func (q *Query) SafeOrWhereRaw(raw string, vals map[string]any) *Query
@@ -742,7 +742,7 @@ func (q *Query) SafeOrWhereRaw(raw string, vals map[string]any) *Query
 SafeOrWhereRaw appends a raw OR WHERE condition ensuring a values map is used.
 
 <a name="Query.SafeWhereRaw"></a>
-### func \(\*Query\) [SafeWhereRaw](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L478>)
+### func \(\*Query\) [SafeWhereRaw](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L478>)
 
 ```go
 func (q *Query) SafeWhereRaw(raw string, vals map[string]any) *Query
@@ -751,7 +751,7 @@ func (q *Query) SafeWhereRaw(raw string, vals map[string]any) *Query
 SafeWhereRaw appends a raw WHERE condition ensuring a values map is always used.
 
 <a name="Query.Select"></a>
-### func \(\*Query\) [Select](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L138>)
+### func \(\*Query\) [Select](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L138>)
 
 ```go
 func (q *Query) Select(cols ...string) *Query
@@ -760,7 +760,7 @@ func (q *Query) Select(cols ...string) *Query
 Select sets selected identifier columns. Use SelectRaw for SQL expressions.
 
 <a name="Query.SelectRaw"></a>
-### func \(\*Query\) [SelectRaw](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L257>)
+### func \(\*Query\) [SelectRaw](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L257>)
 
 ```go
 func (q *Query) SelectRaw(raw string, values ...any) *Query
@@ -769,7 +769,7 @@ func (q *Query) SelectRaw(raw string, values ...any) *Query
 SelectRaw adds a raw select expression.
 
 <a name="Query.SharedLock"></a>
-### func \(\*Query\) [SharedLock](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L828>)
+### func \(\*Query\) [SharedLock](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L828>)
 
 ```go
 func (q *Query) SharedLock() *Query
@@ -778,7 +778,7 @@ func (q *Query) SharedLock() *Query
 SharedLock adds LOCK IN SHARE MODE clause.
 
 <a name="Query.Skip"></a>
-### func \(\*Query\) [Skip](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L825>)
+### func \(\*Query\) [Skip](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L825>)
 
 ```go
 func (q *Query) Skip(n int) *Query
@@ -787,7 +787,7 @@ func (q *Query) Skip(n int) *Query
 Skip is an alias of Offset.
 
 <a name="Query.Sum"></a>
-### func \(\*Query\) [Sum](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L319>)
+### func \(\*Query\) [Sum](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L319>)
 
 ```go
 func (q *Query) Sum(col string) *Query
@@ -796,7 +796,7 @@ func (q *Query) Sum(col string) *Query
 Sum adds SUM aggregate function.
 
 <a name="Query.Take"></a>
-### func \(\*Query\) [Take](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L822>)
+### func \(\*Query\) [Take](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L822>)
 
 ```go
 func (q *Query) Take(n int) *Query
@@ -805,7 +805,7 @@ func (q *Query) Take(n int) *Query
 Take is an alias of Limit.
 
 <a name="Query.Union"></a>
-### func \(\*Query\) [Union](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L301>)
+### func \(\*Query\) [Union](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L301>)
 
 ```go
 func (q *Query) Union(sub *Query) *Query
@@ -814,7 +814,7 @@ func (q *Query) Union(sub *Query) *Query
 Union adds a UNION with another query.
 
 <a name="Query.UnionAll"></a>
-### func \(\*Query\) [UnionAll](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L307>)
+### func \(\*Query\) [UnionAll](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L307>)
 
 ```go
 func (q *Query) UnionAll(sub *Query) *Query
@@ -823,7 +823,7 @@ func (q *Query) UnionAll(sub *Query) *Query
 UnionAll adds a UNION ALL with another query.
 
 <a name="Query.Update"></a>
-### func \(\*Query\) [Update](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L960>)
+### func \(\*Query\) [Update](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L960>)
 
 ```go
 func (q *Query) Update(data any) (sql.Result, error)
@@ -832,7 +832,7 @@ func (q *Query) Update(data any) (sql.Result, error)
 Update executes an UPDATE with the given data.
 
 <a name="Query.UpdateOrInsert"></a>
-### func \(\*Query\) [UpdateOrInsert](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L938>)
+### func \(\*Query\) [UpdateOrInsert](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L938>)
 
 ```go
 func (q *Query) UpdateOrInsert(cond map[string]any, values map[string]any) (sql.Result, error)
@@ -841,7 +841,7 @@ func (q *Query) UpdateOrInsert(cond map[string]any, values map[string]any) (sql.
 UpdateOrInsert performs UPDATE or INSERT based on condition.
 
 <a name="Query.Upsert"></a>
-### func \(\*Query\) [Upsert](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L927>)
+### func \(\*Query\) [Upsert](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L927>)
 
 ```go
 func (q *Query) Upsert(data []map[string]any, unique []string, updateCols []string) (sql.Result, error)
@@ -850,7 +850,7 @@ func (q *Query) Upsert(data []map[string]any, unique []string, updateCols []stri
 Upsert executes an UPSERT using ON DUPLICATE KEY UPDATE.
 
 <a name="Query.Where"></a>
-### func \(\*Query\) [Where](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L146>)
+### func \(\*Query\) [Where](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L146>)
 
 ```go
 func (q *Query) Where(col string, args ...any) *Query
@@ -859,7 +859,7 @@ func (q *Query) Where(col string, args ...any) *Query
 Where appends a column/value comparison. Values are always treated as literals. Use WhereColumn for column\-to\-column comparisons.
 
 <a name="Query.WhereAll"></a>
-### func \(\*Query\) [WhereAll](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L584>)
+### func \(\*Query\) [WhereAll](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L584>)
 
 ```go
 func (q *Query) WhereAll(cols []string, cond string, val any) *Query
@@ -868,7 +868,7 @@ func (q *Query) WhereAll(cols []string, cond string, val any) *Query
 WhereAll adds grouped AND conditions across columns.
 
 <a name="Query.WhereAny"></a>
-### func \(\*Query\) [WhereAny](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L578>)
+### func \(\*Query\) [WhereAny](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L578>)
 
 ```go
 func (q *Query) WhereAny(cols []string, cond string, val any) *Query
@@ -877,7 +877,7 @@ func (q *Query) WhereAny(cols []string, cond string, val any) *Query
 WhereAny adds grouped OR conditions across columns.
 
 <a name="Query.WhereBetween"></a>
-### func \(\*Query\) [WhereBetween](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L674>)
+### func \(\*Query\) [WhereBetween](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L674>)
 
 ```go
 func (q *Query) WhereBetween(col string, min, max any) *Query
@@ -886,7 +886,7 @@ func (q *Query) WhereBetween(col string, min, max any) *Query
 WhereBetween adds WHERE BETWEEN condition.
 
 <a name="Query.WhereBetweenColumns"></a>
-### func \(\*Query\) [WhereBetweenColumns](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L698>)
+### func \(\*Query\) [WhereBetweenColumns](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L698>)
 
 ```go
 func (q *Query) WhereBetweenColumns(col, minCol, maxCol string) *Query
@@ -895,7 +895,7 @@ func (q *Query) WhereBetweenColumns(col, minCol, maxCol string) *Query
 WhereBetweenColumns adds WHERE col BETWEEN minCol AND maxCol using columns.
 
 <a name="Query.WhereColumn"></a>
-### func \(\*Query\) [WhereColumn](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L590>)
+### func \(\*Query\) [WhereColumn](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L590>)
 
 ```go
 func (q *Query) WhereColumn(col string, args ...string) *Query
@@ -904,7 +904,7 @@ func (q *Query) WhereColumn(col string, args ...string) *Query
 WhereColumn adds WHERE column operator column condition.
 
 <a name="Query.WhereColumns"></a>
-### func \(\*Query\) [WhereColumns](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L628>)
+### func \(\*Query\) [WhereColumns](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L628>)
 
 ```go
 func (q *Query) WhereColumns(columns [][]string) *Query
@@ -913,7 +913,7 @@ func (q *Query) WhereColumns(columns [][]string) *Query
 WhereColumns adds multiple column comparison conditions joined by AND.
 
 <a name="Query.WhereDate"></a>
-### func \(\*Query\) [WhereDate](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L762>)
+### func \(\*Query\) [WhereDate](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L762>)
 
 ```go
 func (q *Query) WhereDate(col, cond, date string) *Query
@@ -922,7 +922,7 @@ func (q *Query) WhereDate(col, cond, date string) *Query
 WhereDate adds WHERE DATE\(column\) comparison condition.
 
 <a name="Query.WhereDay"></a>
-### func \(\*Query\) [WhereDay](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L786>)
+### func \(\*Query\) [WhereDay](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L786>)
 
 ```go
 func (q *Query) WhereDay(col, cond, day string) *Query
@@ -931,7 +931,7 @@ func (q *Query) WhereDay(col, cond, day string) *Query
 WhereDay adds WHERE DAY\(column\) comparison condition.
 
 <a name="Query.WhereExists"></a>
-### func \(\*Query\) [WhereExists](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L738>)
+### func \(\*Query\) [WhereExists](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L738>)
 
 ```go
 func (q *Query) WhereExists(sub *Query) *Query
@@ -940,7 +940,7 @@ func (q *Query) WhereExists(sub *Query) *Query
 WhereExists adds WHERE EXISTS \(subquery\) condition.
 
 <a name="Query.WhereFullText"></a>
-### func \(\*Query\) [WhereFullText](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L726>)
+### func \(\*Query\) [WhereFullText](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L726>)
 
 ```go
 func (q *Query) WhereFullText(cols []string, search string, opts map[string]any) *Query
@@ -949,7 +949,7 @@ func (q *Query) WhereFullText(cols []string, search string, opts map[string]any)
 WhereFullText adds full\-text search condition.
 
 <a name="Query.WhereGroup"></a>
-### func \(\*Query\) [WhereGroup](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L490>)
+### func \(\*Query\) [WhereGroup](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L490>)
 
 ```go
 func (q *Query) WhereGroup(fn func(g *Query)) *Query
@@ -958,7 +958,7 @@ func (q *Query) WhereGroup(fn func(g *Query)) *Query
 WhereGroup groups conditions with parentheses using AND logic.
 
 <a name="Query.WhereIn"></a>
-### func \(\*Query\) [WhereIn](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L530>)
+### func \(\*Query\) [WhereIn](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L530>)
 
 ```go
 func (q *Query) WhereIn(col string, vals any) *Query
@@ -967,7 +967,7 @@ func (q *Query) WhereIn(col string, vals any) *Query
 WhereIn adds WHERE IN condition.
 
 <a name="Query.WhereInSubQuery"></a>
-### func \(\*Query\) [WhereInSubQuery](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L554>)
+### func \(\*Query\) [WhereInSubQuery](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L554>)
 
 ```go
 func (q *Query) WhereInSubQuery(col string, sub *Query) *Query
@@ -976,7 +976,7 @@ func (q *Query) WhereInSubQuery(col string, sub *Query) *Query
 WhereInSubQuery adds WHERE IN \(subquery\) condition.
 
 <a name="Query.WhereMonth"></a>
-### func \(\*Query\) [WhereMonth](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L798>)
+### func \(\*Query\) [WhereMonth](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L798>)
 
 ```go
 func (q *Query) WhereMonth(col, cond, month string) *Query
@@ -985,7 +985,7 @@ func (q *Query) WhereMonth(col, cond, month string) *Query
 WhereMonth adds WHERE MONTH\(column\) comparison condition.
 
 <a name="Query.WhereNot"></a>
-### func \(\*Query\) [WhereNot](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L510>)
+### func \(\*Query\) [WhereNot](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L510>)
 
 ```go
 func (q *Query) WhereNot(fn func(g *Query)) *Query
@@ -994,7 +994,7 @@ func (q *Query) WhereNot(fn func(g *Query)) *Query
 WhereNot groups conditions inside NOT \(...\).
 
 <a name="Query.WhereNotBetween"></a>
-### func \(\*Query\) [WhereNotBetween](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L680>)
+### func \(\*Query\) [WhereNotBetween](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L680>)
 
 ```go
 func (q *Query) WhereNotBetween(col string, min, max any) *Query
@@ -1003,7 +1003,7 @@ func (q *Query) WhereNotBetween(col string, min, max any) *Query
 WhereNotBetween adds WHERE NOT BETWEEN condition.
 
 <a name="Query.WhereNotBetweenColumns"></a>
-### func \(\*Query\) [WhereNotBetweenColumns](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L712>)
+### func \(\*Query\) [WhereNotBetweenColumns](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L712>)
 
 ```go
 func (q *Query) WhereNotBetweenColumns(col, minCol, maxCol string) *Query
@@ -1012,7 +1012,7 @@ func (q *Query) WhereNotBetweenColumns(col, minCol, maxCol string) *Query
 WhereNotBetweenColumns adds WHERE col NOT BETWEEN minCol AND maxCol using columns.
 
 <a name="Query.WhereNotExists"></a>
-### func \(\*Query\) [WhereNotExists](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L750>)
+### func \(\*Query\) [WhereNotExists](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L750>)
 
 ```go
 func (q *Query) WhereNotExists(sub *Query) *Query
@@ -1021,7 +1021,7 @@ func (q *Query) WhereNotExists(sub *Query) *Query
 WhereNotExists adds WHERE NOT EXISTS \(subquery\) condition.
 
 <a name="Query.WhereNotIn"></a>
-### func \(\*Query\) [WhereNotIn](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L536>)
+### func \(\*Query\) [WhereNotIn](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L536>)
 
 ```go
 func (q *Query) WhereNotIn(col string, vals any) *Query
@@ -1030,7 +1030,7 @@ func (q *Query) WhereNotIn(col string, vals any) *Query
 WhereNotIn adds WHERE NOT IN condition.
 
 <a name="Query.WhereNotInSubQuery"></a>
-### func \(\*Query\) [WhereNotInSubQuery](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L560>)
+### func \(\*Query\) [WhereNotInSubQuery](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L560>)
 
 ```go
 func (q *Query) WhereNotInSubQuery(col string, sub *Query) *Query
@@ -1039,7 +1039,7 @@ func (q *Query) WhereNotInSubQuery(col string, sub *Query) *Query
 WhereNotInSubQuery adds WHERE NOT IN \(subquery\) condition.
 
 <a name="Query.WhereNotNull"></a>
-### func \(\*Query\) [WhereNotNull](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L656>)
+### func \(\*Query\) [WhereNotNull](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L656>)
 
 ```go
 func (q *Query) WhereNotNull(col string) *Query
@@ -1048,7 +1048,7 @@ func (q *Query) WhereNotNull(col string) *Query
 WhereNotNull adds WHERE column IS NOT NULL condition.
 
 <a name="Query.WhereNull"></a>
-### func \(\*Query\) [WhereNull](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L650>)
+### func \(\*Query\) [WhereNull](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L650>)
 
 ```go
 func (q *Query) WhereNull(col string) *Query
@@ -1057,7 +1057,7 @@ func (q *Query) WhereNull(col string) *Query
 WhereNull adds WHERE column IS NULL condition.
 
 <a name="Query.WhereRaw"></a>
-### func \(\*Query\) [WhereRaw](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L466>)
+### func \(\*Query\) [WhereRaw](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L466>)
 
 ```go
 func (q *Query) WhereRaw(raw string, vals map[string]any) *Query
@@ -1066,7 +1066,7 @@ func (q *Query) WhereRaw(raw string, vals map[string]any) *Query
 WhereRaw appends raw WHERE condition.
 
 <a name="Query.WhereTime"></a>
-### func \(\*Query\) [WhereTime](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L774>)
+### func \(\*Query\) [WhereTime](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L774>)
 
 ```go
 func (q *Query) WhereTime(col, cond, time string) *Query
@@ -1075,7 +1075,7 @@ func (q *Query) WhereTime(col, cond, time string) *Query
 WhereTime adds WHERE TIME\(column\) comparison condition.
 
 <a name="Query.WhereYear"></a>
-### func \(\*Query\) [WhereYear](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L810>)
+### func \(\*Query\) [WhereYear](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L810>)
 
 ```go
 func (q *Query) WhereYear(col, cond, year string) *Query
@@ -1084,7 +1084,7 @@ func (q *Query) WhereYear(col, cond, year string) *Query
 WhereYear adds WHERE YEAR\(column\) comparison condition.
 
 <a name="Query.WithContext"></a>
-### func \(\*Query\) [WithContext](<https://github.com/faciam-dev/goquent/blob/main/orm/query/query.go#L109>)
+### func \(\*Query\) [WithContext](<https://github.com/recoweft/goquent/blob/main/orm/query/query.go#L109>)
 
 ```go
 func (q *Query) WithContext(ctx context.Context) *Query

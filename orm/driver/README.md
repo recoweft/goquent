@@ -3,7 +3,7 @@
 # driver
 
 ```go
-import "github.com/faciam-dev/goquent/orm/driver"
+import "github.com/recoweft/goquent/orm/driver"
 ```
 
 ## Index
@@ -26,7 +26,7 @@ import "github.com/faciam-dev/goquent/orm/driver"
 
 
 <a name="Dialect"></a>
-## type [Dialect](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L16-L19>)
+## type [Dialect](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L16-L19>)
 
 Dialect defines the SQL dialect abstraction.
 
@@ -38,7 +38,7 @@ type Dialect interface {
 ```
 
 <a name="Driver"></a>
-## type [Driver](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L42-L45>)
+## type [Driver](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L42-L45>)
 
 Driver wraps sql.DB with a dialect.
 
@@ -50,7 +50,7 @@ type Driver struct {
 ```
 
 <a name="Open"></a>
-### func [Open](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L48>)
+### func [Open](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L48>)
 
 ```go
 func Open(driverName, dsn string, maxOpen, maxIdle int, lifetime time.Duration) (*Driver, error)
@@ -59,7 +59,7 @@ func Open(driverName, dsn string, maxOpen, maxIdle int, lifetime time.Duration) 
 Open initializes the DB connection with pooling configuration.
 
 <a name="Driver.Begin"></a>
-### func \(\*Driver\) [Begin](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L95>)
+### func \(\*Driver\) [Begin](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L95>)
 
 ```go
 func (d *Driver) Begin() (Tx, error)
@@ -68,7 +68,7 @@ func (d *Driver) Begin() (Tx, error)
 Begin starts a transaction and returns the Tx.
 
 <a name="Driver.BeginTx"></a>
-### func \(\*Driver\) [BeginTx](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L119>)
+### func \(\*Driver\) [BeginTx](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L119>)
 
 ```go
 func (d *Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error)
@@ -77,7 +77,7 @@ func (d *Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error)
 BeginTx starts a transaction with ctx and returns the Tx.
 
 <a name="Driver.Close"></a>
-### func \(\*Driver\) [Close](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L74>)
+### func \(\*Driver\) [Close](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L74>)
 
 ```go
 func (d *Driver) Close() error
@@ -86,7 +86,7 @@ func (d *Driver) Close() error
 Close closes the underlying DB.
 
 <a name="Driver.Transaction"></a>
-### func \(\*Driver\) [Transaction](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L80>)
+### func \(\*Driver\) [Transaction](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L80>)
 
 ```go
 func (d *Driver) Transaction(fn func(Tx) error) error
@@ -95,7 +95,7 @@ func (d *Driver) Transaction(fn func(Tx) error) error
 Transaction executes fn within a transaction.
 
 <a name="Driver.TransactionContext"></a>
-### func \(\*Driver\) [TransactionContext](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L104>)
+### func \(\*Driver\) [TransactionContext](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L104>)
 
 ```go
 func (d *Driver) TransactionContext(ctx context.Context, fn func(Tx) error) error
@@ -104,7 +104,7 @@ func (d *Driver) TransactionContext(ctx context.Context, fn func(Tx) error) erro
 TransactionContext executes fn within a transaction using ctx.
 
 <a name="MySQLDialect"></a>
-## type [MySQLDialect](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L22>)
+## type [MySQLDialect](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L22>)
 
 MySQLDialect implements Dialect for MySQL.
 
@@ -113,7 +113,7 @@ type MySQLDialect struct{}
 ```
 
 <a name="MySQLDialect.Placeholder"></a>
-### func \(MySQLDialect\) [Placeholder](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L34>)
+### func \(MySQLDialect\) [Placeholder](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L34>)
 
 ```go
 func (d MySQLDialect) Placeholder(_ int) string
@@ -122,7 +122,7 @@ func (d MySQLDialect) Placeholder(_ int) string
 
 
 <a name="MySQLDialect.QuoteIdent"></a>
-### func \(MySQLDialect\) [QuoteIdent](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L36>)
+### func \(MySQLDialect\) [QuoteIdent](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L36>)
 
 ```go
 func (d MySQLDialect) QuoteIdent(ident string) string
@@ -131,7 +131,7 @@ func (d MySQLDialect) QuoteIdent(ident string) string
 
 
 <a name="PostgresDialect"></a>
-## type [PostgresDialect](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L25>)
+## type [PostgresDialect](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L25>)
 
 PostgresDialect implements Dialect for PostgreSQL.
 
@@ -140,7 +140,7 @@ type PostgresDialect struct{}
 ```
 
 <a name="PostgresDialect.Placeholder"></a>
-### func \(PostgresDialect\) [Placeholder](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L27>)
+### func \(PostgresDialect\) [Placeholder](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L27>)
 
 ```go
 func (d PostgresDialect) Placeholder(n int) string
@@ -149,7 +149,7 @@ func (d PostgresDialect) Placeholder(n int) string
 
 
 <a name="PostgresDialect.QuoteIdent"></a>
-### func \(PostgresDialect\) [QuoteIdent](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L29>)
+### func \(PostgresDialect\) [QuoteIdent](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L29>)
 
 ```go
 func (d PostgresDialect) QuoteIdent(ident string) string
@@ -158,7 +158,7 @@ func (d PostgresDialect) QuoteIdent(ident string) string
 
 
 <a name="Tx"></a>
-## type [Tx](<https://github.com/faciam-dev/goquent/blob/main/orm/driver/driver.go#L77>)
+## type [Tx](<https://github.com/recoweft/goquent/blob/main/orm/driver/driver.go#L77>)
 
 Tx wraps sql.Tx for transaction handling.
 
