@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 // Config is the JSON configuration accepted by goquent review --config.

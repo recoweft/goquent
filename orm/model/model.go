@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/faciam-dev/goquent/orm/internal/stringutil"
+	"github.com/recoweft/goquent/orm/internal/stringutil"
 )
 
 // fieldInfo holds mapping metadata.

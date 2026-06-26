@@ -3,7 +3,7 @@ package orm
 import (
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 type OperationType = query.OperationType
@@ -45,23 +45,24 @@ const (
 	AnalysisPartial     = query.AnalysisPartial
 	AnalysisUnsupported = query.AnalysisUnsupported
 
-	WarningRawSQLUsed              = query.WarningRawSQLUsed
-	WarningUpdateWithoutWhere      = query.WarningUpdateWithoutWhere
-	WarningDeleteWithoutWhere      = query.WarningDeleteWithoutWhere
-	WarningSelectStarUsed          = query.WarningSelectStarUsed
-	WarningLimitMissing            = query.WarningLimitMissing
-	WarningBulkUpdateDetected      = query.WarningBulkUpdateDetected
-	WarningBulkDeleteDetected      = query.WarningBulkDeleteDetected
-	WarningDestructiveSQL          = query.WarningDestructiveSQL
-	WarningWeakPredicate           = query.WarningWeakPredicate
-	WarningSuppressionExpired      = query.WarningSuppressionExpired
-	WarningSuppressionNotAllowed   = query.WarningSuppressionNotAllowed
-	WarningStaticReviewPartial     = query.WarningStaticReviewPartial
-	WarningStaticReviewUnsupported = query.WarningStaticReviewUnsupported
-	WarningTenantFilterMissing     = query.WarningTenantFilterMissing
-	WarningSoftDeleteFilterMissing = query.WarningSoftDeleteFilterMissing
-	WarningPIIColumnSelected       = query.WarningPIIColumnSelected
-	WarningRequiredFilterMissing   = query.WarningRequiredFilterMissing
+	WarningRawSQLUsed               = query.WarningRawSQLUsed
+	WarningUpdateWithoutWhere       = query.WarningUpdateWithoutWhere
+	WarningDeleteWithoutWhere       = query.WarningDeleteWithoutWhere
+	WarningSelectStarUsed           = query.WarningSelectStarUsed
+	WarningLimitMissing             = query.WarningLimitMissing
+	WarningBulkUpdateDetected       = query.WarningBulkUpdateDetected
+	WarningBulkDeleteDetected       = query.WarningBulkDeleteDetected
+	WarningDestructiveSQL           = query.WarningDestructiveSQL
+	WarningWeakPredicate            = query.WarningWeakPredicate
+	WarningSuppressionExpired       = query.WarningSuppressionExpired
+	WarningSuppressionNotAllowed    = query.WarningSuppressionNotAllowed
+	WarningStaticReviewPartial      = query.WarningStaticReviewPartial
+	WarningStaticReviewUnsupported  = query.WarningStaticReviewUnsupported
+	WarningRequiredPredicateMissing = query.WarningRequiredPredicateMissing
+	WarningTenantFilterMissing      = query.WarningTenantFilterMissing
+	WarningSoftDeleteFilterMissing  = query.WarningSoftDeleteFilterMissing
+	WarningPIIColumnSelected        = query.WarningPIIColumnSelected
+	WarningRequiredFilterMissing    = query.WarningRequiredFilterMissing
 
 	SuppressionScopeQuery  = query.SuppressionScopeQuery
 	SuppressionScopeInline = query.SuppressionScopeInline
@@ -98,4 +99,16 @@ func ParseInlineSuppression(comment string) (Suppression, bool, error) {
 
 func NewRiskEngine(config RiskConfig) RiskEngine {
 	return query.NewRiskEngine(config)
+}
+
+func EnsurePlanExecutable(plan *QueryPlan) error {
+	return query.EnsurePlanExecutable(plan)
+}
+
+func PlanHasPredicateColumn(plan *QueryPlan, table, column string) bool {
+	return query.PlanHasPredicateColumn(plan, table, column)
+}
+
+func MissingRequiredPredicates(plan *QueryPlan, required []RequiredPredicate) []RequiredPredicate {
+	return query.MissingRequiredPredicates(plan, required)
 }

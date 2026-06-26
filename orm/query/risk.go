@@ -209,6 +209,7 @@ func finalizePlanWithPolicy(plan *QueryPlan, approval *Approval, suppressions []
 	}
 	result := DefaultRiskEngine.CheckQuery(plan)
 	allWarnings := append([]Warning(nil), result.Warnings...)
+	allWarnings = append(allWarnings, checkRequiredPredicates(plan)...)
 	allWarnings = append(allWarnings, checkPolicies(plan, policy)...)
 	warnings, suppressed, suppressionWarnings := applySuppressions(allWarnings, suppressions, time.Now().UTC())
 	warnings = append(warnings, suppressionWarnings...)
@@ -226,6 +227,71 @@ func finalizePlanWithPolicy(plan *QueryPlan, approval *Approval, suppressions []
 	if approval != nil {
 		copied := *approval
 		plan.Approval = &copied
+	}
+}
+
+func checkRequiredPredicates(plan *QueryPlan) []Warning {
+	required := requiredPredicatesFromPlan(plan)
+	missing := MissingRequiredPredicates(plan, required)
+	if len(missing) == 0 {
+		return nil
+	}
+	warnings := make([]Warning, 0, len(missing))
+	for _, req := range missing {
+		label := req.Column
+		if strings.TrimSpace(req.Table) != "" {
+			label = req.Table + "." + req.Column
+		}
+		warnings = append(warnings, Warning{
+			Code:         WarningRequiredPredicateMissing,
+			Level:        RiskBlocked,
+			Message:      fmt.Sprintf("required predicate %s is missing", label),
+			Hint:         "add the required repository scope before executing this query",
+			Suppressible: false,
+			Evidence: []Evidence{
+				{Key: "table", Value: req.Table},
+				{Key: "column", Value: req.Column},
+			},
+		})
+	}
+	return warnings
+}
+
+func requiredPredicatesFromPlan(plan *QueryPlan) []RequiredPredicate {
+	if plan == nil || plan.Metadata == nil {
+		return nil
+	}
+	raw, ok := plan.Metadata[MetadataRequiredPredicates]
+	if !ok {
+		return nil
+	}
+	switch v := raw.(type) {
+	case []RequiredPredicate:
+		return append([]RequiredPredicate(nil), v...)
+	case []any:
+		out := make([]RequiredPredicate, 0, len(v))
+		for _, item := range v {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			out = append(out, RequiredPredicate{
+				Table:  stringValue(m["table"]),
+				Column: stringValue(m["column"]),
+			})
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func stringValue(v any) string {
+	switch s := v.(type) {
+	case string:
+		return s
+	default:
+		return ""
 	}
 }
 

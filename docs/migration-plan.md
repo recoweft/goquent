@@ -8,6 +8,10 @@ go run ./cmd/goquent migrate plan --format pretty migrations/001.sql
 go run ./cmd/goquent migrate plan --format json --fail-on high migrations/001.sql
 go run ./cmd/goquent migrate dry-run migrations/001.sql
 go run ./cmd/goquent migrate dry-run --approve "legacy column retired" migrations/001.sql
+go run ./cmd/goquent migrate status --driver mysql --dsn "$MYSQL_DSN" --desired-file desired-migrations.txt
+go run ./cmd/goquent migrate schema --driver mysql --dsn "$MYSQL_DSN" --format json
+go run ./cmd/goquent migrate drift --desired-schema schema.json --database-schema database-schema.json
+go run ./cmd/goquent migrate drift --desired-schema schema.json --driver mysql --dsn "$MYSQL_DSN"
 ```
 
 Supported step types include:
@@ -41,7 +45,9 @@ backup or rollback preparation, and evidence that dropped objects are no longer 
 Programmatic use:
 
 ```go
-plan, err := migration.PlanSQL(`ALTER TABLE users DROP COLUMN legacy_email;`)
+plan, err := migration.New(`ALTER TABLE users DROP COLUMN legacy_email;`).
+    ReviewMode(migration.ReviewModeBackfill).
+    Plan(ctx)
 if err != nil {
     return err
 }
@@ -62,6 +68,25 @@ manifests, generated code, migration file fingerprints, or application
 expectations. If the database has applied versions that are not present in the
 caller-provided desired list, the status includes a warning and marks the
 result as unknown instead of claiming a complete drift verdict.
+
+CLI use:
+
+```bash
+go run ./cmd/goquent migrate status \
+  --driver postgres \
+  --dsn "$POSTGRES_DSN" \
+  --table schema_migrations \
+  --dirty-column dirty \
+  --applied-at-column applied_at \
+  --desired 202605220001_create_users \
+  --desired 202605220002_add_document_nodes \
+  --format json
+```
+
+`migrate status` returns `0` when the migration table exists, no desired
+versions are pending, no dirty row is present, and the result is not marked
+unknown. It returns `1` when migrations are pending, dirty, missing, or unknown,
+and `2` for configuration, connection, or read errors.
 
 ```go
 desired := []string{
@@ -114,6 +139,85 @@ default table is `schema_migrations` and the default version column is
 `version`. Desired versions are supplied by the caller; file discovery and
 manifest/schema/generated-code comparison are explicit non-goals for this
 helper.
+
+## Live Schema Export
+
+`ReadSchema` exports a minimal `migration.Schema` from PostgreSQL or MySQL
+metadata. It includes tables, columns, defaults, and indexes.
+
+CLI use:
+
+```bash
+go run ./cmd/goquent migrate schema \
+  --driver postgres \
+  --dsn "$POSTGRES_DSN" \
+  --schema public \
+  --table users \
+  --format json > database-schema.json
+```
+
+Programmatic use:
+
+```go
+schema, err := migration.ReadSchema(
+    ctx,
+    sqlDB,
+    driver.PostgresDialect{},
+    migration.WithSchemaReadSchema("public"),
+    migration.WithSchemaReadTables("users"),
+)
+```
+
+## Schema Drift Report
+
+`CompareSchemaDrift` compares desired schema JSON with a database/current schema
+JSON export. It returns the migration steps that would transform the current
+database schema into the desired schema.
+
+CLI use:
+
+```bash
+go run ./cmd/goquent migrate drift \
+  --desired-schema schema.json \
+  --database-schema database-schema.json \
+  --format pretty
+
+go run ./cmd/goquent migrate drift \
+  --desired-schema schema.json \
+  --driver mysql \
+  --dsn "$MYSQL_DSN" \
+  --format json
+```
+
+`migrate drift` returns `0` when no drift is detected, `1` when structural drift
+is detected, and `2` for invalid input.
+
+```go
+report := migration.CompareSchemaDrift(desiredSchema, databaseSchema)
+if report.Drifted {
+    _ = migration.WriteDriftPretty(os.Stdout, report)
+}
+```
+
+This helper is a structural comparison over `migration.Schema` values. It does
+not replace a full database-specific drift system, but the CLI can now read the
+current schema directly through `migrate schema`/`migrate drift --driver --dsn`.
+
+## Backfill Review Mode
+
+Use `--review-mode backfill` when reviewing expand/backfill/contract migration
+steps. The mode adds `MIGRATION_BACKFILL_REVIEW` warnings and preflight evidence
+items for NOT NULL enforcement, column type changes, renames, and drops.
+
+```bash
+go run ./cmd/goquent migrate plan \
+  --review-mode backfill \
+  migrations/202606260001_contract.sql
+```
+
+Backfill review mode does not approve a migration. It makes the evidence
+requirements visible in the plan so CI or a reviewer can require the missing
+batching, dual-write, and zero-NULL proof before apply.
 
 ## Human-Controlled Apply
 

@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 func profileJoinScope() orm.Scope {

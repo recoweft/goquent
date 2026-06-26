@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- Moved the SQL query builder into `orm/internal/querybuilder`, removed the external
+  `goquent-query-builder` module dependency, and prepared the old Builder repository for archive.
+- Added Builder snapshot/state-copy contracts so `QueryPlan`, update/delete state copy, and grouped
+  predicates no longer rely on reflection or unsafe field writes.
+- Hid Builder callback types from the public query API; `JoinQuery` callbacks now use
+  `*query.JoinClause`.
 - Hardened `goquent review --require-fresh-manifest`: missing, stale, or unverified manifests now
   fail the manifest gate, and review can verify current `--schema`, `--policy`, `--code`, and
   `--database-schema` inputs directly.

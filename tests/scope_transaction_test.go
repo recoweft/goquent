@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm"
+	"github.com/recoweft/goquent/orm"
 )
 
 func TestSelectAllByWithinTransactionRollback(t *testing.T) {

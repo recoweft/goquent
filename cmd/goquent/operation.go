@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/faciam-dev/goquent/orm/manifest"
-	"github.com/faciam-dev/goquent/orm/operation"
+	"github.com/recoweft/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/operation"
 )
 
 func runOperation(args []string, stdout, stderr io.Writer) int {

@@ -3,7 +3,7 @@ package orm
 import (
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/manifest"
 )
 
 type Manifest = manifest.Manifest

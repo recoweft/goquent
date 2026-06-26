@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/faciam-dev/goquent/orm/driver"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 type scopeUser struct {
@@ -150,6 +150,146 @@ func TestTenantScopeAllowsCustomTenantColumn(t *testing.T) {
 	}
 }
 
+func TestTextSearchScopeAddsMultiColumnSearch(t *testing.T) {
+	db, _ := newScopeMockDB(t, driver.PostgresDialect{})
+
+	plan, err := PlanSelectBy(
+		context.Background(),
+		db.Table("corpus_units").Select("id"),
+		TenantScope("tenant-1"),
+		TextSearch([]string{"title", "normalized_text", "article_no"}, "Article_10%"),
+	)
+	if err != nil {
+		t.Fatalf("plan select by: %v", err)
+	}
+	if !strings.Contains(plan.SQL, `"title" ILIKE`) || !strings.Contains(plan.SQL, `"normalized_text" ILIKE`) {
+		t.Fatalf("expected text search predicate, sql=%s", plan.SQL)
+	}
+	if len(plan.Params) != 4 || plan.Params[0] != "tenant-1" || plan.Params[1] != "%Article!_10!%%" {
+		t.Fatalf("unexpected params: %#v", plan.Params)
+	}
+}
+
+func TestRequireTenantScopeBlocksMissingScopedQuery(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newScopeMockDB(t, driver.MySQLDialect{})
+
+	_, err := SelectAllBy[scopeUser](
+		ctx,
+		db,
+		db.Table("users"),
+		RequireTenantScope("users"),
+	)
+	if !errors.Is(err, query.ErrBlockedOperation) {
+		t.Fatalf("expected blocked operation for missing tenant scope, got %v", err)
+	}
+}
+
+func TestRequireTenantScopePassesWithTenantScope(t *testing.T) {
+	ctx := context.Background()
+	db, mock := newScopeMockDB(t, driver.MySQLDialect{})
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `users` WHERE `tenant_id` = ?")).
+		WithArgs("tenant-1").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "age"}).AddRow(1, "alice", 30))
+
+	users, err := SelectAllBy[scopeUser](
+		ctx,
+		db,
+		db.Table("users"),
+		RequireTenantScope("users"),
+		TenantScope("tenant-1"),
+	)
+	if err != nil {
+		t.Fatalf("select all by: %v", err)
+	}
+	if len(users) != 1 || users[0].Name != "alice" {
+		t.Fatalf("unexpected users: %+v", users)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestPlanSelectBySnapshotsScopedQueryWithoutExecuting(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newScopeMockDB(t, driver.MySQLDialect{})
+
+	plan, err := PlanSelectBy(
+		ctx,
+		db.Table("users"),
+		selectUserColumns(),
+		RequireTenantScope("users"),
+	)
+	if err != nil {
+		t.Fatalf("plan select by: %v", err)
+	}
+	if plan.Operation != OperationSelect {
+		t.Fatalf("operation=%s", plan.Operation)
+	}
+	if !plan.Blocked || !warningCode(plan.Warnings, WarningRequiredPredicateMissing) {
+		t.Fatalf("expected blocked missing required predicate, warnings=%#v", plan.Warnings)
+	}
+	if !strings.Contains(plan.SQL, "SELECT `users`.`id`, `users`.`name`, `users`.`age` FROM `users`") {
+		t.Fatalf("unexpected sql: %s", plan.SQL)
+	}
+}
+
+func TestPlanUpdateBySnapshotsScopedUpdate(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newScopeMockDB(t, driver.MySQLDialect{})
+
+	plan, err := PlanUpdateBy(
+		ctx,
+		db.Table("users"),
+		map[string]any{"age": 41},
+		RequireTenantScope("users"),
+		TenantScope("tenant-1"),
+		func(q *query.Query) *query.Query {
+			return q.Where("id", 7)
+		},
+	)
+	if err != nil {
+		t.Fatalf("plan update by: %v", err)
+	}
+	if plan.Operation != OperationUpdate {
+		t.Fatalf("operation=%s", plan.Operation)
+	}
+	if plan.Blocked || warningCode(plan.Warnings, WarningRequiredPredicateMissing) {
+		t.Fatalf("unexpected required predicate warning=%#v", plan.Warnings)
+	}
+	if !strings.Contains(plan.SQL, "UPDATE `users` SET `age` = ? WHERE `tenant_id` = ? AND `id` = ?") {
+		t.Fatalf("unexpected sql: %s", plan.SQL)
+	}
+	if len(plan.Params) != 3 || plan.Params[0] != 41 || plan.Params[1] != "tenant-1" || plan.Params[2] != 7 {
+		t.Fatalf("unexpected params: %#v", plan.Params)
+	}
+}
+
+func TestPlanDeleteBySnapshotsScopedDelete(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newScopeMockDB(t, driver.MySQLDialect{})
+
+	plan, err := PlanDeleteBy(
+		ctx,
+		db.Table("users"),
+		RequireTenantScope("users"),
+		TenantScope("tenant-1"),
+	)
+	if err != nil {
+		t.Fatalf("plan delete by: %v", err)
+	}
+	if plan.Operation != OperationDelete {
+		t.Fatalf("operation=%s", plan.Operation)
+	}
+	if plan.Blocked || warningCode(plan.Warnings, WarningRequiredPredicateMissing) {
+		t.Fatalf("unexpected required predicate warning=%#v", plan.Warnings)
+	}
+	if !strings.Contains(plan.SQL, "DELETE FROM `users` WHERE `tenant_id` = ?") {
+		t.Fatalf("unexpected sql: %s", plan.SQL)
+	}
+}
+
 func TestSelectAllByBuildsFromScopedQuery(t *testing.T) {
 	ctx := context.Background()
 	db, mock := newScopeMockDB(t, driver.MySQLDialect{})
@@ -177,6 +317,15 @@ func TestSelectAllByBuildsFromScopedQuery(t *testing.T) {
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("expectations: %v", err)
 	}
+}
+
+func warningCode(warnings []Warning, code string) bool {
+	for _, warning := range warnings {
+		if warning.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 func TestUpdateByAppliesScopes(t *testing.T) {

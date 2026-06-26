@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/manifest"
-	"github.com/faciam-dev/goquent/orm/migration"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 func TestRunReviewsRawSQLAndQueryPlanJSON(t *testing.T) {
@@ -21,6 +21,8 @@ func TestRunReviewsRawSQLAndQueryPlanJSON(t *testing.T) {
 	}
 
 	plan := query.NewRawPlan("DELETE FROM users WHERE id = ?", 10)
+	plan.Approval = &query.Approval{Reason: "reviewed raw delete"}
+	plan.Tables = []query.TableRef{{Name: "users"}}
 	planJSON, err := plan.ToJSON()
 	if err != nil {
 		t.Fatal(err)
@@ -37,6 +39,10 @@ func TestRunReviewsRawSQLAndQueryPlanJSON(t *testing.T) {
 
 	if !hasFinding(report.Findings, query.WarningRawSQLUsed) {
 		t.Fatalf("expected %s finding, got %#v", query.WarningRawSQLUsed, report.Findings)
+	}
+	rawFinding, ok := findFinding(report.Findings, query.WarningRawSQLUsed)
+	if !ok || !findingHasEvidence(rawFinding, "approval_reason") || !findingHasEvidence(rawFinding, "touched_tables") {
+		t.Fatalf("expected raw SQL evidence, got %#v", rawFinding)
 	}
 	if !hasFinding(report.Findings, migration.WarningMigrationDropTable) {
 		t.Fatalf("expected %s finding, got %#v", migration.WarningMigrationDropTable, report.Findings)
@@ -382,12 +388,72 @@ func run(db any) {
 	}
 }
 
+func TestRunLintsConfigSuppressions(t *testing.T) {
+	dir := t.TempDir()
+	goPath := filepath.Join(dir, "repo.go")
+	src := `package sample
+
+func run(db any) {
+	var rows []map[string]any
+	db.Table("users").Select("id").GetMaps(&rows)
+}
+`
+	if err := os.WriteFile(goPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(dir, "goquent.review.json")
+
+	report, err := Run(Options{
+		Paths:      []string{goPath},
+		ConfigPath: configPath,
+		ConfigSuppressions: []ConfigSuppression{
+			{
+				Code:   query.WarningLimitMissing,
+				Path:   goPath,
+				Reason: "batch export is intentionally unbounded",
+				Owner:  "platform",
+			},
+			{
+				Code:    query.WarningDestructiveSQL,
+				Path:    filepath.Join(dir, "missing.go"),
+				Reason:  "temporary",
+				Expires: "2020-01-01",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.Suppressed != 1 {
+		t.Fatalf("expected one config-suppressed finding, got %d", report.Summary.Suppressed)
+	}
+	if !hasFinding(report.Findings, query.WarningSuppressionExpired) {
+		t.Fatalf("expected expired suppression lint, got %#v", report.Findings)
+	}
+	if !hasFinding(report.Findings, query.WarningSuppressionNotAllowed) {
+		t.Fatalf("expected non-suppressible suppression lint, got %#v", report.Findings)
+	}
+	if !hasFinding(report.Findings, WarningSuppressionOwnerMissing) {
+		t.Fatalf("expected owner-missing suppression lint, got %#v", report.Findings)
+	}
+	if !hasFinding(report.Findings, WarningSuppressionReasonWeak) {
+		t.Fatalf("expected reason-weak suppression lint, got %#v", report.Findings)
+	}
+	if !hasFinding(report.Findings, WarningSuppressionUnused) {
+		t.Fatalf("expected unused suppression lint, got %#v", report.Findings)
+	}
+	if hasUnsuppressedFinding(report.Findings, query.WarningLimitMissing) {
+		t.Fatalf("expected LIMIT_MISSING to be suppressed, got %#v", report.Findings)
+	}
+}
+
 func TestWriteJSONAndPretty(t *testing.T) {
 	report := ReviewReport{
 		Findings: []Finding{{
 			Code:              query.WarningRawSQLUsed,
 			Level:             query.RiskHigh,
 			Message:           "raw SQL was used",
+			Evidence:          []query.Evidence{{Key: "table", Value: "users"}},
 			AnalysisPrecision: query.AnalysisPrecise,
 		}},
 	}
@@ -412,6 +478,17 @@ func TestWriteJSONAndPretty(t *testing.T) {
 	if !bytes.Contains(pretty.Bytes(), []byte("Database Review")) {
 		t.Fatalf("expected pretty output header, got %s", pretty.String())
 	}
+	if !bytes.Contains(pretty.Bytes(), []byte("evidence: table=users")) {
+		t.Fatalf("expected pretty output evidence, got %s", pretty.String())
+	}
+
+	var github bytes.Buffer
+	if err := WriteGitHub(&github, report); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(github.Bytes(), []byte("evidence: table=users")) {
+		t.Fatalf("expected GitHub output evidence, got %s", github.String())
+	}
 }
 
 func hasFinding(findings []Finding, code string) bool {
@@ -422,6 +499,24 @@ func hasFinding(findings []Finding, code string) bool {
 func hasSuppressedFinding(findings []Finding, code string) bool {
 	for _, finding := range findings {
 		if finding.Code == code && finding.Suppressed {
+			return true
+		}
+	}
+	return false
+}
+
+func hasUnsuppressedFinding(findings []Finding, code string) bool {
+	for _, finding := range findings {
+		if finding.Code == code && !finding.Suppressed {
+			return true
+		}
+	}
+	return false
+}
+
+func findingHasEvidence(finding Finding, key string) bool {
+	for _, evidence := range finding.Evidence {
+		if evidence.Key == key {
 			return true
 		}
 	}

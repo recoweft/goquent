@@ -304,6 +304,21 @@ func planTouchesTable(plan *QueryPlan, table string) bool {
 	return false
 }
 
+func countPlanTables(plan *QueryPlan) int {
+	if plan == nil {
+		return 0
+	}
+	seen := make(map[string]struct{}, len(plan.Tables))
+	for _, ref := range plan.Tables {
+		name := normalizeTableName(ref.Name)
+		if name == "" {
+			continue
+		}
+		seen[name] = struct{}{}
+	}
+	return len(seen)
+}
+
 func hasPredicateColumn(plan *QueryPlan, column string) bool {
 	return hasPolicyPredicateColumn(plan, "", column, true)
 }

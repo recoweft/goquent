@@ -4,17 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
-	"unsafe"
 
-	qbapi "github.com/faciam-dev/goquent-query-builder/api"
-	qbmysql "github.com/faciam-dev/goquent-query-builder/database/mysql"
-	qbpostgres "github.com/faciam-dev/goquent-query-builder/database/postgres"
-	"github.com/faciam-dev/goquent/orm/conv"
-	"github.com/faciam-dev/goquent/orm/driver"
-	"github.com/faciam-dev/goquent/orm/scanner"
+	"github.com/recoweft/goquent/orm/conv"
+	"github.com/recoweft/goquent/orm/driver"
+	qbapi "github.com/recoweft/goquent/orm/internal/querybuilder/api"
+	qbmysql "github.com/recoweft/goquent/orm/internal/querybuilder/database/mysql"
+	qbpostgres "github.com/recoweft/goquent/orm/internal/querybuilder/database/postgres"
+	"github.com/recoweft/goquent/orm/scanner"
 )
 
 // Query wraps goquent QueryBuilder and the Driver.
@@ -36,20 +34,21 @@ type executor interface {
 
 // Query wraps goquent QueryBuilder and the executor.
 type Query struct {
-	builder       *qbapi.SelectQueryBuilder
-	exec          executor
-	ctx           context.Context
-	err           error
-	dialect       driver.Dialect
-	paramSeq      int
-	primaryKey    string
-	approval      *Approval
-	suppressions  []Suppression
-	policy        *TablePolicy
-	accessReason  string
-	withDeleted   bool
-	onlyDeleted   bool
-	policyApplied bool
+	builder            *qbapi.SelectQueryBuilder
+	exec               executor
+	ctx                context.Context
+	err                error
+	dialect            driver.Dialect
+	paramSeq           int
+	primaryKey         string
+	approval           *Approval
+	suppressions       []Suppression
+	requiredPredicates []RequiredPredicate
+	policy             *TablePolicy
+	accessReason       string
+	withDeleted        bool
+	onlyDeleted        bool
+	policyApplied      bool
 }
 
 // CursorColumn describes an ordered column used by keyset cursor predicates.
@@ -96,6 +95,10 @@ func New(exec executor, table string, dialect driver.Dialect) *Query {
 		q.policy = &policy
 	}
 	return q
+}
+
+func (q *Query) tableName() string {
+	return q.builder.Snapshot().Table
 }
 
 func builderByDialect[T any](d driver.Dialect, mysqlFn, pgFn func() T) T {
@@ -182,6 +185,25 @@ func (q *Query) SuppressWarning(code, reason string, opts ...SuppressionOption) 
 	return q
 }
 
+// RequirePredicates blocks execution unless the finalized QueryPlan contains
+// the given predicate columns. It is useful for repository-level tenant or
+// parent-scope guards that are stricter than global table policy.
+func (q *Query) RequirePredicates(required ...RequiredPredicate) *Query {
+	if q.err != nil {
+		return q
+	}
+	for _, req := range required {
+		req.Table = strings.TrimSpace(req.Table)
+		req.Column = strings.TrimSpace(req.Column)
+		if req.Column == "" {
+			q.err = fmt.Errorf("goquent: required predicate column is required")
+			return q
+		}
+		q.requiredPredicates = append(q.requiredPredicates, req)
+	}
+	return q
+}
+
 // AccessReason records why this query needs access to sensitive columns.
 func (q *Query) AccessReason(reason string) *Query {
 	reason = strings.TrimSpace(reason)
@@ -237,6 +259,9 @@ func (q *Query) applyPolicyMetadata(plan *QueryPlan) {
 	}
 	if q.accessReason != "" {
 		plan.Metadata["access_reason"] = q.accessReason
+	}
+	if len(q.requiredPredicates) > 0 {
+		plan.Metadata[MetadataRequiredPredicates] = append([]RequiredPredicate(nil), q.requiredPredicates...)
 	}
 	if q.policy == nil {
 		return
@@ -483,7 +508,7 @@ func (q *Query) Count(cols ...string) (int64, error) {
 	q.applyPolicyPredicates()
 
 	b := newSelectBuilder(q.dialect)
-	b.Table(q.builder.GetQuery().Table.Name)
+	b.Table(q.tableName())
 	if err := copySelectBuilderState(q.builder, b); err != nil {
 		return 0, err
 	}
@@ -555,20 +580,20 @@ func (q *Query) Join(table, localColumn, cond, target string) *Query {
 }
 
 // JoinQuery adds a JOIN with additional ON/WHERE clauses defined in the callback.
-func (q *Query) JoinQuery(table string, fn func(b *qbapi.JoinClauseQueryBuilder)) *Query {
-	q.builder.JoinQuery(table, func(b *qbapi.JoinClauseQueryBuilder) { fn(b) })
+func (q *Query) JoinQuery(table string, fn func(b *JoinClause)) *Query {
+	q.builder.JoinQuery(table, func(b *qbapi.JoinClauseQueryBuilder) { fn(newJoinClause(b)) })
 	return q
 }
 
 // LeftJoinQuery adds a LEFT JOIN with additional clauses defined in the callback.
-func (q *Query) LeftJoinQuery(table string, fn func(b *qbapi.JoinClauseQueryBuilder)) *Query {
-	q.builder.LeftJoinQuery(table, func(b *qbapi.JoinClauseQueryBuilder) { fn(b) })
+func (q *Query) LeftJoinQuery(table string, fn func(b *JoinClause)) *Query {
+	q.builder.LeftJoinQuery(table, func(b *qbapi.JoinClauseQueryBuilder) { fn(newJoinClause(b)) })
 	return q
 }
 
 // RightJoinQuery adds a RIGHT JOIN with additional clauses defined in the callback.
-func (q *Query) RightJoinQuery(table string, fn func(b *qbapi.JoinClauseQueryBuilder)) *Query {
-	q.builder.RightJoinQuery(table, func(b *qbapi.JoinClauseQueryBuilder) { fn(b) })
+func (q *Query) RightJoinQuery(table string, fn func(b *JoinClause)) *Query {
+	q.builder.RightJoinQuery(table, func(b *qbapi.JoinClauseQueryBuilder) { fn(newJoinClause(b)) })
 	return q
 }
 
@@ -837,6 +862,21 @@ func (q *Query) WhereJSONNotHasKey(column, key string) *Query {
 	return q.whereJSONHasKey(column, key, true)
 }
 
+// WhereTextSearch adds a grouped multi-column substring search predicate.
+//
+// PostgreSQL uses ILIKE for case-insensitive matching. Other dialects use LIKE
+// and rely on the column/database collation for case sensitivity. The search
+// term is treated literally; %, _, and ! are escaped before wrapping it with
+// wildcard markers.
+func (q *Query) WhereTextSearch(columns []string, term string) *Query {
+	return q.whereTextSearch(columns, term, false)
+}
+
+// OrWhereTextSearch adds a grouped OR multi-column substring search predicate.
+func (q *Query) OrWhereTextSearch(columns []string, term string) *Query {
+	return q.whereTextSearch(columns, term, true)
+}
+
 func (q *Query) whereJSONHasKey(column, key string, negated bool) *Query {
 	if q.err != nil {
 		return q
@@ -861,6 +901,44 @@ func (q *Query) whereJSONHasKey(column, key string, negated bool) *Query {
 		raw = "NOT (" + raw + ")"
 	}
 	return q.WhereRaw(raw, map[string]any{keyName: key})
+}
+
+func (q *Query) whereTextSearch(columns []string, term string, or bool) *Query {
+	if q.err != nil {
+		return q
+	}
+	trimmed := strings.TrimSpace(term)
+	if trimmed == "" {
+		q.err = fmt.Errorf("goquent: text search term is required")
+		return q
+	}
+	if len(columns) == 0 {
+		q.err = fmt.Errorf("goquent: text search columns are required")
+		return q
+	}
+
+	operator := "LIKE"
+	if _, ok := q.dialect.(driver.PostgresDialect); ok {
+		operator = "ILIKE"
+	}
+	pattern := "%" + escapeLikePattern(term) + "%"
+	values := make(map[string]any, len(columns))
+	parts := make([]string, 0, len(columns))
+	for _, column := range columns {
+		column = strings.TrimSpace(column)
+		if err := validateSelectColumn(column); err != nil {
+			q.err = fmt.Errorf("goquent: invalid text search column %q: %w", column, err)
+			return q
+		}
+		name := q.nextParamName("text_search")
+		values[name] = pattern
+		parts = append(parts, fmt.Sprintf("%s %s :%s ESCAPE '!'", quoteIdentifierPath(q.dialect, column), operator, name))
+	}
+	raw := "(" + strings.Join(parts, " OR ") + ")"
+	if or {
+		return q.OrWhereRaw(raw, values)
+	}
+	return q.WhereRaw(raw, values)
 }
 
 // OrWhereRaw appends raw OR WHERE condition.
@@ -913,8 +991,8 @@ func (q *Query) WhereGroup(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.WhereGroup(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq}
-		_ = setFieldValue(reflect.ValueOf(&grp.builder.WhereQueryBuilder), "builder", reflect.ValueOf(b.GetBuilder()))
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
+		grp.builder.UseWhereBuilder(b.GetBuilder())
 		fn(grp)
 		q.paramSeq = grp.paramSeq
 		if grp.err != nil {
@@ -930,8 +1008,8 @@ func (q *Query) OrWhereGroup(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.OrWhereGroup(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq}
-		_ = setFieldValue(reflect.ValueOf(&grp.builder.WhereQueryBuilder), "builder", reflect.ValueOf(b.GetBuilder()))
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
+		grp.builder.UseWhereBuilder(b.GetBuilder())
 		fn(grp)
 		q.paramSeq = grp.paramSeq
 		if grp.err != nil {
@@ -947,8 +1025,8 @@ func (q *Query) WhereNot(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.WhereNot(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq}
-		_ = setFieldValue(reflect.ValueOf(&grp.builder.WhereQueryBuilder), "builder", reflect.ValueOf(b.GetBuilder()))
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
+		grp.builder.UseWhereBuilder(b.GetBuilder())
 		fn(grp)
 		q.paramSeq = grp.paramSeq
 		if grp.err != nil {
@@ -964,8 +1042,8 @@ func (q *Query) OrWhereNot(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.OrWhereNot(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq}
-		_ = setFieldValue(reflect.ValueOf(&grp.builder.WhereQueryBuilder), "builder", reflect.ValueOf(b.GetBuilder()))
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
+		grp.builder.UseWhereBuilder(b.GetBuilder())
 		fn(grp)
 		q.paramSeq = grp.paramSeq
 		if grp.err != nil {
@@ -1461,13 +1539,13 @@ func (q *Query) PlanInsert(ctx context.Context, data any) (*QueryPlan, error) {
 		return nil, err
 	}
 	ib := newInsertBuilder(q.dialect)
-	ib.Table(q.builder.GetQuery().Table.Name).Insert(m)
+	ib.Table(q.tableName()).Insert(m)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.builder.GetQuery().Table.Name})
+	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
 	plan.Columns = columnRefsFromNames(sortedMapKeys(m))
 	q.finalizePlan(plan)
 	return plan, nil
@@ -1524,13 +1602,13 @@ func (q *Query) PlanInsertBatch(ctx context.Context, data []map[string]any) (*Qu
 		return nil, q.err
 	}
 	ib := newInsertBuilder(q.dialect)
-	ib.Table(q.builder.GetQuery().Table.Name).InsertBatch(data)
+	ib.Table(q.tableName()).InsertBatch(data)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.builder.GetQuery().Table.Name})
+	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
 	plan.Columns = columnRefsFromNames(sortedBatchMapKeys(data))
 	plan.Metadata = map[string]any{"batch_size": len(data)}
 	q.finalizePlan(plan)
@@ -1555,13 +1633,13 @@ func (q *Query) planInsertOrIgnore(ctx context.Context, data []map[string]any) (
 		return nil, q.err
 	}
 	ib := newInsertBuilder(q.dialect)
-	ib.Table(q.builder.GetQuery().Table.Name).InsertOrIgnore(data)
+	ib.Table(q.tableName()).InsertOrIgnore(data)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.builder.GetQuery().Table.Name})
+	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
 	plan.Columns = columnRefsFromNames(sortedBatchMapKeys(data))
 	plan.Metadata = map[string]any{"insert_mode": "ignore", "batch_size": len(data)}
 	q.finalizePlan(plan)
@@ -1586,13 +1664,13 @@ func (q *Query) planUpsert(ctx context.Context, data []map[string]any, unique []
 		return nil, q.err
 	}
 	ib := newInsertBuilder(q.dialect)
-	ib.Table(q.builder.GetQuery().Table.Name).Upsert(data, unique, updateCols)
+	ib.Table(q.tableName()).Upsert(data, unique, updateCols)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.builder.GetQuery().Table.Name})
+	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
 	plan.Columns = columnRefsFromNames(sortedBatchMapKeys(data))
 	plan.Metadata = map[string]any{"insert_mode": "upsert", "unique_columns": unique, "update_columns": updateCols}
 	q.finalizePlan(plan)
@@ -1617,13 +1695,13 @@ func (q *Query) planUpdateOrInsert(ctx context.Context, cond map[string]any, val
 		return nil, q.err
 	}
 	ib := newInsertBuilder(q.dialect)
-	ib.Table(q.builder.GetQuery().Table.Name).UpdateOrInsert(cond, values)
+	ib.Table(q.tableName()).UpdateOrInsert(cond, values)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.builder.GetQuery().Table.Name})
+	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
 	merged := make(map[string]any, len(cond)+len(values))
 	for k, v := range cond {
 		merged[k] = v
@@ -1655,13 +1733,13 @@ func (q *Query) planInsertUsing(ctx context.Context, columns []string, sub *Quer
 		return nil, q.err
 	}
 	ib := newInsertBuilder(q.dialect)
-	ib.Table(q.builder.GetQuery().Table.Name).InsertUsing(columns, sub.builder)
+	ib.Table(q.tableName()).InsertUsing(columns, sub.builder)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.builder.GetQuery().Table.Name})
+	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
 	plan.Columns = columnRefsFromNames(columns)
 	plan.Metadata = map[string]any{"insert_mode": "insert_using"}
 	q.finalizePlan(plan)
@@ -1692,14 +1770,14 @@ func (q *Query) PlanUpdate(ctx context.Context, data any) (*QueryPlan, error) {
 		return nil, err
 	}
 	ub := newUpdateBuilder(q.dialect)
-	ub.Table(q.builder.GetQuery().Table.Name).Update(m)
+	ub.Table(q.tableName()).Update(m)
 	copyBuilderState(q.builder, ub)
 	sqlStr, args, err := ub.Build()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationUpdate, sqlStr, args)
-	appendTableRef(plan, q.builder.GetQuery().Table.Name, "")
+	appendTableRef(plan, q.tableName(), "")
 	plan.Columns = columnRefsFromNames(sortedMapKeys(m))
 	appendSelectBuilderWriteMetadata(plan, q.builder)
 	q.finalizePlan(plan)
@@ -1726,14 +1804,14 @@ func (q *Query) PlanDelete(ctx context.Context) (*QueryPlan, error) {
 	}
 	q.applyPolicyPredicates()
 	delBuilder := newDeleteBuilder(q.dialect)
-	delBuilder.Table(q.builder.GetQuery().Table.Name).Delete()
+	delBuilder.Table(q.tableName()).Delete()
 	copyBuilderStateDelete(q.builder, delBuilder)
 	sqlStr, args, err := delBuilder.Build()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationDelete, sqlStr, args)
-	appendTableRef(plan, q.builder.GetQuery().Table.Name, "")
+	appendTableRef(plan, q.tableName(), "")
 	appendSelectBuilderWriteMetadata(plan, q.builder)
 	q.finalizePlan(plan)
 	return plan, nil
@@ -1741,210 +1819,19 @@ func (q *Query) PlanDelete(ctx context.Context) (*QueryPlan, error) {
 
 // copyBuilderState duplicates where, join and order clauses from src to dst.
 func copyBuilderState(src *qbapi.SelectQueryBuilder, dst *qbapi.UpdateQueryBuilder) {
-	// copy where
-	srcWb := src.GetWhereBuilder()
-	dstWb := dst.GetWhereBuilder()
-	_ = setFieldValue(reflect.ValueOf(dstWb), "query", reflect.ValueOf(srcWb.GetQuery()))
-
-	// copy join
-	srcJb := src.GetJoinBuilder()
-	dstJb := dst.GetJoinBuilder()
-	// deep copy joins to avoid sharing slices between builders. The query
-	// builder does not expose a cloning API, so reflection is used here.
-	newJoins := deepCopyJoins(srcJb)
-	_ = setFieldValue(reflect.ValueOf(dstJb), "Joins", newJoins)
-
-	// copy order
-	srcOb := src.GetOrderByBuilder()
-	dstOb := dst.GetOrderByBuilder()
-	_ = setFieldValue(reflect.ValueOf(dstOb), "Order", reflect.ValueOf(srcOb).Elem().FieldByName("Order"))
+	src.CopyStateToUpdate(dst)
 }
 
 // copyBuilderStateDelete duplicates where, join and order clauses from src to a DeleteQueryBuilder.
 func copyBuilderStateDelete(src *qbapi.SelectQueryBuilder, dst *qbapi.DeleteQueryBuilder) {
-	// copy where
-	srcWb := src.GetWhereBuilder()
-	dstWb := dst.GetWhereBuilder()
-	_ = setFieldValue(reflect.ValueOf(dstWb), "query", reflect.ValueOf(srcWb.GetQuery()))
-
-	// copy join
-	srcJb := src.GetJoinBuilder()
-	dstJb := dst.GetJoinBuilder()
-	newJoins := deepCopyJoins(srcJb)
-	_ = setFieldValue(reflect.ValueOf(dstJb), "Joins", newJoins)
-
-	// copy order
-	srcOb := src.GetOrderByBuilder()
-	dstOb := dst.GetOrderByBuilder()
-	_ = setFieldValue(reflect.ValueOf(dstOb), "Order", reflect.ValueOf(srcOb).Elem().FieldByName("Order"))
+	src.CopyStateToDelete(dst)
 }
 
 // copySelectBuilderState duplicates where, join, group and lock clauses from src
-// to dst. This relies on reflection because goquent-query-builder does not
-// expose a safe cloning API. TODO: replace this with qbapi.Clone when available.
+// to dst.
 func copySelectBuilderState(src *qbapi.SelectQueryBuilder, dst *qbapi.SelectQueryBuilder) error {
-	srcWb := src.GetWhereBuilder()
-	dstWb := dst.GetWhereBuilder()
-	clonedWhere := reflect.New(reflect.ValueOf(srcWb.GetQuery()).Elem().Type())
-	clonedWhere.Elem().Set(reflect.ValueOf(srcWb.GetQuery()).Elem())
-	if err := setFieldValue(reflect.ValueOf(dstWb), "query", clonedWhere); err != nil {
-		return err
-	}
-
-	srcJb := src.GetJoinBuilder()
-	dstJb := dst.GetJoinBuilder()
-	newJoins := deepCopyJoins(srcJb)
-	if err := setFieldValue(reflect.ValueOf(dstJb), "Joins", newJoins); err != nil {
-		return err
-	}
-
-	srcOb := src.GetOrderByBuilder()
-	dstOb := dst.GetOrderByBuilder()
-	if err := setFieldValue(reflect.ValueOf(dstOb), "Order", reflect.ValueOf(srcOb).Elem().FieldByName("Order")); err != nil {
-		return err
-	}
-
-	srcSB := reflect.ValueOf(src).Elem().FieldByName("builder").Elem()
-	dstSB := reflect.ValueOf(dst).Elem().FieldByName("builder").Elem()
-	srcSel := srcSB.FieldByName("selectQuery").Elem()
-	dstSel := dstSB.FieldByName("selectQuery").Elem()
-
-	dstSelAddr := reflect.NewAt(dstSel.Type(), unsafe.Pointer(dstSel.UnsafeAddr())).Elem()
-
-	if err := setFieldValue(dstSelAddr.Addr(), "Group", srcSel.FieldByName("Group")); err != nil {
-		return err
-	}
-	if err := setFieldValue(dstSelAddr.Addr(), "Lock", srcSel.FieldByName("Lock")); err != nil {
-		return err
-	}
-
+	src.CopyStateToSelect(dst)
 	return nil
-}
-
-// deepCopyJoins clones the Joins value from a JoinBuilder using reflection.
-// Each field of Joins is a pointer to a slice, so we copy the underlying
-// slices to ensure the destination builder can modify them independently.
-func deepCopyJoins(jb any) reflect.Value {
-	joinsVal := reflect.ValueOf(jb).Elem().FieldByName("Joins")
-	newJoins := reflect.New(joinsVal.Elem().Type())
-	newJoins.Elem().Set(joinsVal.Elem())
-	for _, name := range []string{"Joins", "JoinClauses", "LateralJoins"} {
-		slice := joinsVal.Elem().FieldByName(name)
-		if slice.IsValid() && !slice.IsNil() {
-			sliceType := slice.Type().Elem()
-			newSlice := reflect.MakeSlice(sliceType, slice.Elem().Len(), slice.Elem().Len())
-			reflect.Copy(newSlice, slice.Elem())
-			newSlicePtr := reflect.New(sliceType)
-			newSlicePtr.Elem().Set(newSlice)
-			newJoins.Elem().FieldByName(name).Set(newSlicePtr)
-		}
-	}
-	return newJoins
-}
-
-// setFieldValue assigns value to an exported field using reflection.
-// If the target field is unexported or cannot be set, it returns an error.
-func setFieldValue(targetValue reflect.Value, field string, value reflect.Value) error {
-	v := targetValue.Elem().FieldByName(field)
-	if !v.IsValid() {
-		return fmt.Errorf("field %q does not exist in target", field)
-	}
-	if v.Type() != value.Type() {
-		return fmt.Errorf("type mismatch for field %q", field)
-	}
-
-	// Use unsafe to bypass Go's restrictions on setting unexported fields.
-	// We create a writable handle for the destination field.
-	dest := reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem()
-
-	// Special handling for zero-size types
-	if value.Type().Size() == 0 {
-		return nil
-	}
-
-	// Handle the case where value might not be addressable
-	if !value.CanAddr() {
-		// For non-addressable values, we need to make them addressable first
-		// Create a new value of the same type and copy the content
-		tempValue := reflect.New(value.Type()).Elem()
-
-		// Use a different approach based on whether we can get the interface
-		if value.CanInterface() {
-			// For interface-able values, we can safely recreate them
-			tempValue.Set(reflect.ValueOf(value.Interface()))
-			value = tempValue
-		} else {
-			// For non-interface-able values, try to copy using reflection
-			// This works for most basic types and some complex types
-			if copyValueByReflection(tempValue, value) {
-				value = tempValue
-			} else {
-				return fmt.Errorf("cannot copy non-addressable value for field %q", field)
-			}
-		}
-	}
-
-	// Now both src and dst should be addressable
-	srcPtr := unsafe.Pointer(value.UnsafeAddr())
-	dstPtr := unsafe.Pointer(dest.UnsafeAddr())
-	size := int(value.Type().Size())
-
-	// Copy memory directly
-	destSlice := unsafe.Slice((*byte)(dstPtr), size)
-	srcSlice := unsafe.Slice((*byte)(srcPtr), size)
-	copy(destSlice, srcSlice)
-
-	return nil
-}
-
-// copyValueByReflection attempts to copy value using pure reflection
-// Returns true if successful, false otherwise
-func copyValueByReflection(dst, src reflect.Value) bool {
-	if dst.Type() != src.Type() {
-		return false
-	}
-
-	switch src.Kind() {
-	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
-		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.String:
-		// For basic types, we can try to extract and set the value
-		if src.CanInterface() {
-			dst.Set(reflect.ValueOf(src.Interface()))
-			return true
-		}
-		return false
-	case reflect.Slice, reflect.Array:
-		// For slices and arrays, copy element by element
-		if src.Len() != dst.Len() {
-			return false
-		}
-		for i := 0; i < src.Len(); i++ {
-			if !copyValueByReflection(dst.Index(i), src.Index(i)) {
-				return false
-			}
-		}
-		return true
-	case reflect.Struct:
-		// For structs, copy field by field
-		for i := 0; i < src.NumField(); i++ {
-			if !copyValueByReflection(dst.Field(i), src.Field(i)) {
-				return false
-			}
-		}
-		return true
-	case reflect.Ptr:
-		if src.IsNil() {
-			dst.Set(reflect.Zero(dst.Type()))
-			return true
-		}
-		if dst.IsNil() {
-			dst.Set(reflect.New(src.Type().Elem()))
-		}
-		return copyValueByReflection(dst.Elem(), src.Elem())
-	default:
-		return false
-	}
 }
 
 func validateConditionOperator(op string) (string, error) {
@@ -2050,6 +1937,19 @@ func cursorComparisonOperator(direction string, after bool) string {
 		return ">"
 	}
 	return "<"
+}
+
+func escapeLikePattern(term string) string {
+	var b strings.Builder
+	b.Grow(len(term))
+	for _, r := range term {
+		switch r {
+		case '!', '%', '_':
+			b.WriteRune('!')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func quoteIdentifierPath(d driver.Dialect, ident string) string {

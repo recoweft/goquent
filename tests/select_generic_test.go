@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm"
+	"github.com/recoweft/goquent/orm"
 )
 
 func TestSelectOneMap(t *testing.T) {

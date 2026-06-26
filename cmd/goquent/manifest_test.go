@@ -3,13 +3,15 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/manifest"
-	"github.com/faciam-dev/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/migration"
 )
 
 func TestManifestCommandGeneratesJSONAndSchema(t *testing.T) {
@@ -150,6 +152,43 @@ func TestManifestVerifyAgainstDBFlagControlsDatabaseFingerprint(t *testing.T) {
 	code = run([]string{"manifest", "verify", "--manifest", manifestPath, "--schema", schemaPath, "--against-db"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("expected --against-db without --database-schema to fail, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+}
+
+func TestManifestRepositoryCommandGeneratesSkeleton(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "manifest.json")
+	writeJSON(t, manifestPath, manifest.Manifest{
+		Version:          manifest.Version,
+		GeneratedAt:      time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC),
+		GeneratorVersion: manifest.Generator,
+		Tables: []manifest.Table{{
+			Name: "users",
+			Columns: []manifest.Column{
+				{Name: "id", Type: "bigint", Primary: true},
+				{Name: "tenant_id", Type: "uuid", TenantScope: true, RequiredFilter: true},
+				{Name: "email", Type: "text"},
+			},
+		}},
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"manifest", "repository", "--manifest", manifestPath, "--table", "users", "--package", "infra"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected repository skeleton success, got %d stderr=%s", code, stderr.String())
+	}
+	if _, err := parser.ParseFile(token.NewFileSet(), "users_repository.go", stdout.Bytes(), parser.AllErrors); err != nil {
+		t.Fatalf("generated code should parse: %v\n%s", err, stdout.String())
+	}
+	for _, want := range [][]byte{
+		[]byte("package infra"),
+		[]byte("type UserRepository struct"),
+		[]byte("orm.RequirePredicate(\"users\", \"tenant_id\")"),
+		[]byte("func UserTenantIDScope(value any) orm.Scope"),
+	} {
+		if !bytes.Contains(stdout.Bytes(), want) {
+			t.Fatalf("expected skeleton to contain %s:\n%s", want, stdout.String())
+		}
 	}
 }
 

@@ -8,11 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 // MigrationStepType classifies a structural schema migration step.
 type MigrationStepType string
+
+// ReviewMode tunes migration review for a specific rollout pattern.
+type ReviewMode string
 
 const (
 	AddTable         MigrationStepType = "add_table"
@@ -28,6 +31,11 @@ const (
 )
 
 const (
+	// ReviewModeBackfill adds expand/backfill/contract preflight checks.
+	ReviewModeBackfill ReviewMode = "backfill"
+)
+
+const (
 	WarningMigrationUnsupported           = "MIGRATION_UNSUPPORTED"
 	WarningMigrationDropTable             = "MIGRATION_DROP_TABLE"
 	WarningMigrationDropColumn            = "MIGRATION_DROP_COLUMN"
@@ -38,6 +46,7 @@ const (
 	WarningMigrationSetNotNull            = "MIGRATION_SET_NOT_NULL"
 	WarningMigrationAddIndexNonConcurrent = "MIGRATION_ADD_INDEX_NON_CONCURRENT"
 	WarningMigrationDropIndex             = "MIGRATION_DROP_INDEX"
+	WarningMigrationBackfillReview        = "MIGRATION_BACKFILL_REVIEW"
 )
 
 // MigrationStatement is one executable SQL statement in a migration plan.
@@ -126,8 +135,9 @@ func (p *MigrationPlan) String() string {
 
 // Migrator builds and optionally applies a migration plan.
 type Migrator struct {
-	sql      string
-	approval *query.Approval
+	sql        string
+	approval   *query.Approval
+	reviewMode ReviewMode
 }
 
 // New creates a migration planner for SQL text.
@@ -145,11 +155,20 @@ func (m *Migrator) RequireApproval(reason string) *Migrator {
 	return m
 }
 
+// ReviewMode enables an additional migration review mode.
+func (m *Migrator) ReviewMode(mode ReviewMode) *Migrator {
+	m.reviewMode = mode
+	return m
+}
+
 // Plan builds a migration plan without executing it.
 func (m *Migrator) Plan(ctx context.Context) (*MigrationPlan, error) {
 	_ = ctx
 	plan, err := PlanSQL(m.sql)
 	if err != nil {
+		return nil, err
+	}
+	if err := ApplyReviewMode(plan, m.reviewMode); err != nil {
 		return nil, err
 	}
 	if m.approval != nil {

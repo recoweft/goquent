@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm"
-	"github.com/faciam-dev/goquent/orm/query"
 	_ "github.com/lib/pq"
+	"github.com/recoweft/goquent/orm"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 type pgUpsertOmitEmptyUser struct {

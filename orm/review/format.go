@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 // WriteJSON writes a stable machine-readable review report.
@@ -56,9 +56,27 @@ func WritePretty(w io.Writer, report ReviewReport) error {
 				return err
 			}
 		}
+		for _, evidence := range finding.Evidence {
+			if evidence.Key == "" {
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "  evidence: %s=%v\n", evidence.Key, evidence.Value); err != nil {
+				return err
+			}
+		}
 		if finding.Suppression != nil {
 			if _, err := fmt.Fprintf(w, "  suppression_reason: %s\n", finding.Suppression.Reason); err != nil {
 				return err
+			}
+			if finding.Suppression.Owner != "" {
+				if _, err := fmt.Fprintf(w, "  suppression_owner: %s\n", finding.Suppression.Owner); err != nil {
+					return err
+				}
+			}
+			if finding.Suppression.ExpiresAt != nil {
+				if _, err := fmt.Fprintf(w, "  suppression_expires: %s\n", finding.Suppression.ExpiresAt.Format("2006-01-02T15:04:05Z07:00")); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -93,6 +111,12 @@ func WriteGitHub(w io.Writer, report ReviewReport) error {
 		if finding.Hint != "" {
 			message += " hint: " + finding.Hint
 		}
+		if evidence := evidenceSummary(finding.Evidence); evidence != "" {
+			message += " evidence: " + evidence
+		}
+		if finding.Suppression != nil && finding.Suppression.Reason != "" {
+			message += " suppression_reason: " + finding.Suppression.Reason
+		}
 		propText := ""
 		if len(props) > 0 {
 			propText = " " + strings.Join(props, ",")
@@ -102,6 +126,20 @@ func WriteGitHub(w io.Writer, report ReviewReport) error {
 		}
 	}
 	return nil
+}
+
+func evidenceSummary(evidence []query.Evidence) string {
+	if len(evidence) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(evidence))
+	for _, item := range evidence {
+		if item.Key == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%v", item.Key, item.Value))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func riskLabel(level query.RiskLevel) string {

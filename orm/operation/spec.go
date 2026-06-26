@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/faciam-dev/goquent/orm/driver"
-	"github.com/faciam-dev/goquent/orm/manifest"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 const (

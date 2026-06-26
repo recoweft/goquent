@@ -7,11 +7,11 @@ import (
 	"log"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm"
-	"github.com/faciam-dev/goquent/orm/driver"
-	"github.com/faciam-dev/goquent/orm/manifest"
-	"github.com/faciam-dev/goquent/orm/migration"
-	"github.com/faciam-dev/goquent/orm/operation"
+	"github.com/recoweft/goquent/orm"
+	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/operation"
 )
 
 type User struct {

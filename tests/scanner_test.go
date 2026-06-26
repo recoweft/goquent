@@ -7,7 +7,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock" // TODO: consider removing external mock library
 
-	"github.com/faciam-dev/goquent/orm/scanner"
+	"github.com/recoweft/goquent/orm/scanner"
 )
 
 func TestMapConvertsBytes(t *testing.T) {
@@ -129,6 +129,91 @@ func TestStructsDBTag(t *testing.T) {
 	}
 	if len(users) != 1 || users[0].ID != 2 {
 		t.Errorf("unexpected users: %+v", users)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestStructsDBTagOptions(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock new: %v", err)
+	}
+	defer db.Close()
+
+	rows := sqlmock.NewRows([]string{"id"}).AddRow(7)
+	mock.ExpectQuery("SELECT").WillReturnRows(rows)
+
+	r, err := db.Query("SELECT id FROM users")
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	defer r.Close()
+
+	var users []struct {
+		ID int64 `db:"id,pk"`
+	}
+	if err := scanner.Structs(&users, r); err != nil {
+		t.Fatalf("scan structs: %v", err)
+	}
+	if len(users) != 1 || users[0].ID != 7 {
+		t.Errorf("unexpected users: %+v", users)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestStructsNestedDBPrefix(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock new: %v", err)
+	}
+	defer db.Close()
+
+	rows := sqlmock.NewRows([]string{"user_id", "user_name", "profile_id", "profile_bio"}).
+		AddRow(1, "alice", 10, "go developer").
+		AddRow(2, "bob", nil, nil)
+	mock.ExpectQuery("SELECT").WillReturnRows(rows)
+
+	r, err := db.Query("SELECT joined rows")
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	defer r.Close()
+
+	type userRow struct {
+		ID   int64  `db:"id,pk"`
+		Name string `db:"name"`
+	}
+	type profileRow struct {
+		ID  int64          `db:"id"`
+		Bio sql.NullString `db:"bio"`
+	}
+	var rowsOut []struct {
+		User    userRow     `db:"user,prefix"`
+		Profile *profileRow `db:"profile,prefix"`
+	}
+	if err := scanner.Structs(&rowsOut, r); err != nil {
+		t.Fatalf("scan structs: %v", err)
+	}
+	if len(rowsOut) != 2 {
+		t.Fatalf("expected two rows, got %+v", rowsOut)
+	}
+	if rowsOut[0].User.ID != 1 || rowsOut[0].User.Name != "alice" {
+		t.Fatalf("unexpected first user: %+v", rowsOut[0].User)
+	}
+	if rowsOut[0].Profile == nil || rowsOut[0].Profile.ID != 10 || rowsOut[0].Profile.Bio.String != "go developer" {
+		t.Fatalf("unexpected first profile: %+v", rowsOut[0].Profile)
+	}
+	if rowsOut[1].User.ID != 2 || rowsOut[1].User.Name != "bob" {
+		t.Fatalf("unexpected second user: %+v", rowsOut[1].User)
+	}
+	if rowsOut[1].Profile != nil {
+		t.Fatalf("expected nil profile for left join miss, got %+v", rowsOut[1].Profile)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

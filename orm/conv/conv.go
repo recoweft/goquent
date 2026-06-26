@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/faciam-dev/goquent/orm/internal/stringutil"
+	"github.com/recoweft/goquent/orm/internal/stringutil"
 )
 
 // As converts v to the desired type T using reflection.

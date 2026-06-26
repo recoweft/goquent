@@ -1,14 +1,17 @@
 package migration
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/faciam-dev/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/driver"
 )
 
 func newStatusMockDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock) {
@@ -163,5 +166,126 @@ func TestReadStatusMySQLSchemaQualifiedTable(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestReadSchemaPostgres(t *testing.T) {
+	db, mock := newStatusMockDB(t)
+	mock.ExpectQuery("information_schema\\.columns").
+		WithArgs("public").
+		WillReturnRows(sqlmock.NewRows([]string{"table_name", "column_name", "data_type", "is_nullable", "column_default"}).
+			AddRow("users", "id", "uuid", "NO", nil).
+			AddRow("users", "email", "text", "NO", nil).
+			AddRow("users", "created_at", "timestamp with time zone", "NO", "now()"))
+	mock.ExpectQuery("pg_index").
+		WithArgs("public").
+		WillReturnRows(sqlmock.NewRows([]string{"table_name", "index_name", "indisunique", "indexdef"}).
+			AddRow("users", "users_email_idx", true, "CREATE UNIQUE INDEX users_email_idx ON public.users USING btree (email)"))
+
+	schema, err := ReadSchema(context.Background(), db, driver.PostgresDialect{}, WithSchemaReadSchema("public"))
+	if err != nil {
+		t.Fatalf("read schema: %v", err)
+	}
+	if len(schema.Tables) != 1 || schema.Tables[0].Name != "users" {
+		t.Fatalf("unexpected schema tables: %+v", schema.Tables)
+	}
+	table := schema.Tables[0]
+	if len(table.Columns) != 3 || table.Columns[2].DefaultExpression != "now()" {
+		t.Fatalf("unexpected columns: %+v", table.Columns)
+	}
+	if len(table.Indexes) != 1 || !table.Indexes[0].Unique || table.Indexes[0].Columns[0] != "email" {
+		t.Fatalf("unexpected indexes: %+v", table.Indexes)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestReadSchemaMySQLFiltersTables(t *testing.T) {
+	db, mock := newStatusMockDB(t)
+	mock.ExpectQuery("information_schema\\.columns").
+		WithArgs("app", "app").
+		WillReturnRows(sqlmock.NewRows([]string{"table_name", "column_name", "column_type", "is_nullable", "column_default"}).
+			AddRow("users", "id", "bigint", "NO", nil).
+			AddRow("users", "email", "varchar(255)", "NO", nil).
+			AddRow("ignored", "id", "bigint", "NO", nil))
+	mock.ExpectQuery("information_schema\\.statistics").
+		WithArgs("app", "app").
+		WillReturnRows(sqlmock.NewRows([]string{"table_name", "index_name", "non_unique", "seq_in_index", "column_name"}).
+			AddRow("users", "users_email_idx", 0, 1, "email").
+			AddRow("ignored", "ignored_idx", 1, 1, "id"))
+
+	schema, err := ReadSchema(
+		context.Background(),
+		db,
+		driver.MySQLDialect{},
+		WithSchemaReadSchema("app"),
+		WithSchemaReadTables("users"),
+	)
+	if err != nil {
+		t.Fatalf("read schema: %v", err)
+	}
+	if len(schema.Tables) != 1 || schema.Tables[0].Name != "users" {
+		t.Fatalf("unexpected schema tables: %+v", schema.Tables)
+	}
+	if len(schema.Tables[0].Indexes) != 1 || schema.Tables[0].Indexes[0].Columns[0] != "email" {
+		t.Fatalf("unexpected indexes: %+v", schema.Tables[0].Indexes)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestWriteSchemaPrettyAndJSON(t *testing.T) {
+	schema := Schema{Tables: []TableSchema{{
+		Name:    "users",
+		Columns: []ColumnSchema{{Name: "id", Type: "uuid"}},
+	}}}
+	var pretty bytes.Buffer
+	if err := WriteSchemaPretty(&pretty, schema); err != nil {
+		t.Fatalf("pretty schema: %v", err)
+	}
+	if !strings.Contains(pretty.String(), "Schema Export") || !strings.Contains(pretty.String(), "users") {
+		t.Fatalf("unexpected pretty output: %s", pretty.String())
+	}
+	var jsonBuf bytes.Buffer
+	if err := WriteSchemaJSON(&jsonBuf, schema); err != nil {
+		t.Fatalf("json schema: %v", err)
+	}
+	var decoded Schema
+	if err := json.Unmarshal(jsonBuf.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode schema json: %v", err)
+	}
+	if len(decoded.Tables) != 1 || decoded.Tables[0].Name != "users" {
+		t.Fatalf("unexpected json schema: %+v", decoded)
+	}
+}
+
+func TestWriteStatusPrettyAndJSON(t *testing.T) {
+	status := Status{
+		Table:         "schema_migrations",
+		Exists:        true,
+		LatestApplied: "001",
+		Pending:       []string{"002"},
+		Warnings:      []string{"extra migration"},
+		Unknown:       true,
+	}
+	var pretty bytes.Buffer
+	if err := WriteStatusPretty(&pretty, status); err != nil {
+		t.Fatalf("pretty status: %v", err)
+	}
+	if !strings.Contains(pretty.String(), "Migration Status") || !strings.Contains(pretty.String(), "pending:") {
+		t.Fatalf("unexpected pretty output: %s", pretty.String())
+	}
+	var jsonBuf bytes.Buffer
+	if err := WriteStatusJSON(&jsonBuf, status); err != nil {
+		t.Fatalf("json status: %v", err)
+	}
+	var decoded Status
+	if err := json.Unmarshal(jsonBuf.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode status json: %v", err)
+	}
+	if decoded.Table != status.Table || len(decoded.Pending) != 1 {
+		t.Fatalf("unexpected json status: %+v", decoded)
 	}
 }

@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/faciam-dev/goquent/orm/manifest"
-	"github.com/faciam-dev/goquent/orm/review"
+	"github.com/recoweft/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/review"
 )
 
 func main() {
@@ -140,6 +140,7 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 	report, err := review.Run(review.Options{
 		Paths:                fs.Args(),
 		ShowSuppressed:       *showSuppressed,
+		ConfigPath:           *configPath,
 		ManifestPath:         *manifestPath,
 		RequireFreshManifest: *requireFreshManifest,
 		CurrentManifest:      currentManifestForReview,

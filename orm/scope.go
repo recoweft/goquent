@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 // Scope applies reusable query mutations for advanced read and write flows.
 type Scope func(*query.Query) *query.Query
+
+// RequiredPredicate describes a repository-level predicate guard.
+type RequiredPredicate = query.RequiredPredicate
 
 // CursorColumn describes an ordered column used by keyset cursor scopes.
 type CursorColumn = query.CursorColumn
@@ -32,6 +35,31 @@ func CursorAscAlias(alias string) CursorColumn { return query.CursorAscAlias(ali
 
 // CursorDescAlias returns a descending selected alias cursor column.
 func CursorDescAlias(alias string) CursorColumn { return query.CursorDescAlias(alias) }
+
+// RequirePredicate builds a predicate guard for table.column.
+func RequirePredicate(table, column string) RequiredPredicate {
+	return query.RequiredPredicate{Table: table, Column: column}
+}
+
+// RequirePredicates blocks query execution unless all required predicate
+// columns are present in the finalized QueryPlan.
+func RequirePredicates(required ...RequiredPredicate) Scope {
+	return func(q *query.Query) *query.Query {
+		return q.RequirePredicates(required...)
+	}
+}
+
+// RequireTenantScope blocks query execution unless the tenant predicate exists.
+// The default column is tenant_id.
+func RequireTenantScope(table string, column ...string) Scope {
+	col := "tenant_id"
+	if len(column) > 0 {
+		if trimmed := strings.TrimSpace(column[0]); trimmed != "" {
+			col = trimmed
+		}
+	}
+	return RequirePredicates(RequirePredicate(table, col))
+}
 
 // ApplyScopes applies scopes to q in order. Nil scopes are ignored.
 // If a scope returns nil, the current query is kept.
@@ -81,11 +109,27 @@ func CursorBefore(columns []CursorColumn, values ...any) Scope {
 	}
 }
 
+// TextSearch adds a grouped multi-column substring search scope.
+func TextSearch(columns []string, term string) Scope {
+	return func(q *query.Query) *query.Query {
+		return q.WhereTextSearch(columns, term)
+	}
+}
+
 func scopedQuery(base *query.Query, scopes ...Scope) (*query.Query, error) {
 	if base == nil {
 		return nil, fmt.Errorf("base query is nil")
 	}
 	return ApplyScopes(base, scopes...), nil
+}
+
+// PlanSelectBy applies scopes to base and returns a SELECT QueryPlan without executing it.
+func PlanSelectBy(ctx context.Context, base *query.Query, scopes ...Scope) (*QueryPlan, error) {
+	q, err := scopedQuery(base, scopes...)
+	if err != nil {
+		return nil, err
+	}
+	return q.Plan(ctx)
 }
 
 // SelectOneBy builds a scoped query and scans the first row into T.
@@ -125,6 +169,15 @@ func SelectAllBy[T any](ctx context.Context, db *DB, base *query.Query, scopes .
 		return nil, err
 	}
 	return SelectAll[T](ctx, db.RequireRawApproval("goquent generated scoped query"), plan.SQL, plan.Params...)
+}
+
+// PlanUpdateBy applies scopes to base and returns an UPDATE QueryPlan without executing it.
+func PlanUpdateBy(ctx context.Context, base *query.Query, data any, scopes ...Scope) (*QueryPlan, error) {
+	q, err := scopedQuery(base, scopes...)
+	if err != nil {
+		return nil, err
+	}
+	return q.PlanUpdate(ctx, data)
 }
 
 // UpdateBy applies scopes to base and executes an UPDATE using the resulting query.
@@ -172,6 +225,15 @@ func UpdateByReturningWithOptions[T any](ctx context.Context, db *DB, base *quer
 		return zero, err
 	}
 	return queryReturningOneWithOptions[T](ctx, db, sqlStr, o, plan.Params...)
+}
+
+// PlanDeleteBy applies scopes to base and returns a DELETE QueryPlan without executing it.
+func PlanDeleteBy(ctx context.Context, base *query.Query, scopes ...Scope) (*QueryPlan, error) {
+	q, err := scopedQuery(base, scopes...)
+	if err != nil {
+		return nil, err
+	}
+	return q.PlanDelete(ctx)
 }
 
 // DeleteBy applies scopes to base and executes a DELETE using the resulting query.

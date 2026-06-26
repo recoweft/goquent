@@ -3,7 +3,7 @@ package orm
 import (
 	"context"
 
-	"github.com/faciam-dev/goquent/orm/operation"
+	"github.com/recoweft/goquent/orm/operation"
 )
 
 type OperationSpec = operation.OperationSpec

@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"time"
 
-	qbapi "github.com/faciam-dev/goquent-query-builder/api"
+	qbapi "github.com/recoweft/goquent/orm/internal/querybuilder/api"
 )
 
 // OperationType describes the structural SQL operation represented by a plan.
@@ -44,19 +43,20 @@ const (
 )
 
 const (
-	WarningUpdateWithoutWhere      = "UPDATE_WITHOUT_WHERE"
-	WarningDeleteWithoutWhere      = "DELETE_WITHOUT_WHERE"
-	WarningSelectStarUsed          = "SELECT_STAR_USED"
-	WarningLimitMissing            = "LIMIT_MISSING"
-	WarningRawSQLUsed              = "RAW_SQL_USED"
-	WarningBulkUpdateDetected      = "BULK_UPDATE_DETECTED"
-	WarningBulkDeleteDetected      = "BULK_DELETE_DETECTED"
-	WarningDestructiveSQL          = "DESTRUCTIVE_SQL_DETECTED"
-	WarningWeakPredicate           = "WEAK_PREDICATE"
-	WarningSuppressionExpired      = "SUPPRESSION_EXPIRED"
-	WarningSuppressionNotAllowed   = "SUPPRESSION_NOT_ALLOWED"
-	WarningStaticReviewPartial     = "STATIC_REVIEW_PARTIAL"
-	WarningStaticReviewUnsupported = "STATIC_REVIEW_UNSUPPORTED"
+	WarningUpdateWithoutWhere       = "UPDATE_WITHOUT_WHERE"
+	WarningDeleteWithoutWhere       = "DELETE_WITHOUT_WHERE"
+	WarningSelectStarUsed           = "SELECT_STAR_USED"
+	WarningLimitMissing             = "LIMIT_MISSING"
+	WarningRawSQLUsed               = "RAW_SQL_USED"
+	WarningBulkUpdateDetected       = "BULK_UPDATE_DETECTED"
+	WarningBulkDeleteDetected       = "BULK_DELETE_DETECTED"
+	WarningDestructiveSQL           = "DESTRUCTIVE_SQL_DETECTED"
+	WarningWeakPredicate            = "WEAK_PREDICATE"
+	WarningSuppressionExpired       = "SUPPRESSION_EXPIRED"
+	WarningSuppressionNotAllowed    = "SUPPRESSION_NOT_ALLOWED"
+	WarningStaticReviewPartial      = "STATIC_REVIEW_PARTIAL"
+	WarningStaticReviewUnsupported  = "STATIC_REVIEW_UNSUPPORTED"
+	WarningRequiredPredicateMissing = "REQUIRED_PREDICATE_MISSING"
 )
 
 // SourceLocation points at source code when a plan/finding is derived from static analysis.
@@ -161,6 +161,15 @@ type QueryPlan struct {
 // MetadataTableRisk stores []TableRiskMetadata in QueryPlan.Metadata.
 const MetadataTableRisk = "table_risk_metadata"
 
+// MetadataRequiredPredicates stores []RequiredPredicate in QueryPlan.Metadata.
+const MetadataRequiredPredicates = "required_predicates"
+
+// RequiredPredicate describes a repository-level predicate guard.
+type RequiredPredicate struct {
+	Table  string `json:"table,omitempty"`
+	Column string `json:"column"`
+}
+
 // TableRiskMetadata gives the risk engine table key context without depending
 // on the manifest package.
 type TableRiskMetadata struct {
@@ -181,6 +190,39 @@ func AttachTableRiskMetadata(plan *QueryPlan, metadata []TableRiskMetadata) {
 		plan.Metadata = make(map[string]any, 1)
 	}
 	plan.Metadata[MetadataTableRisk] = append([]TableRiskMetadata(nil), metadata...)
+}
+
+// PlanHasPredicateColumn reports whether plan contains a predicate for column.
+//
+// If table is non-empty and the plan touches multiple tables, the predicate must
+// be qualified by that table or its alias. For single-table plans, unqualified
+// predicates are accepted.
+func PlanHasPredicateColumn(plan *QueryPlan, table, column string) bool {
+	table = strings.TrimSpace(table)
+	allowUnqualified := table == "" || countPlanTables(plan) <= 1
+	return hasPolicyPredicateColumn(plan, table, column, allowUnqualified)
+}
+
+// MissingRequiredPredicates returns required predicates not present in plan.
+func MissingRequiredPredicates(plan *QueryPlan, required []RequiredPredicate) []RequiredPredicate {
+	out := make([]RequiredPredicate, 0)
+	seen := make(map[string]struct{}, len(required))
+	for _, req := range required {
+		req.Table = strings.TrimSpace(req.Table)
+		req.Column = strings.TrimSpace(req.Column)
+		if req.Column == "" {
+			continue
+		}
+		key := normalizeTableName(req.Table) + "." + normalizeColumnName(req.Column)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		if !PlanHasPredicateColumn(plan, req.Table, req.Column) {
+			out = append(out, req)
+		}
+	}
+	return out
 }
 
 // RequiresApproval reports whether this plan needs explicit approval.
@@ -276,15 +318,15 @@ func (q *Query) planSelectBuilder(ctx context.Context, builder *qbapi.SelectQuer
 }
 
 func appendSelectBuilderMetadata(plan *QueryPlan, builder *qbapi.SelectQueryBuilder) {
-	src := builder.GetQuery()
-	appendTableRef(plan, src.Table.Name, "")
+	src := builder.Snapshot()
+	appendTableRef(plan, src.Table, "")
 
-	if src.Columns != nil && len(*src.Columns) > 0 {
-		for _, c := range *src.Columns {
+	if len(src.Columns) > 0 {
+		for _, c := range src.Columns {
 			plan.Columns = append(plan.Columns, ColumnRef{
 				Name:       c.Name,
-				Expression: c.Raw,
-				Raw:        c.Raw != "",
+				Expression: c.Expression,
+				Raw:        c.Raw,
 				Distinct:   c.Distinct,
 				Count:      c.Count,
 				Function:   c.Function,
@@ -294,23 +336,23 @@ func appendSelectBuilderMetadata(plan *QueryPlan, builder *qbapi.SelectQueryBuil
 		plan.Columns = append(plan.Columns, ColumnRef{Name: "*"})
 	}
 
-	if src.Limit.Limit > 0 {
-		v := src.Limit.Limit
+	if src.Limit > 0 {
+		v := src.Limit
 		plan.Limit = &v
 	}
-	if src.Offset.Offset > 0 {
-		v := src.Offset.Offset
+	if src.Offset > 0 {
+		v := src.Offset
 		plan.Offset = &v
 	}
 
 	appendJoinMetadata(plan, src.Joins)
-	appendPredicateMetadata(plan, src.ConditionGroups)
+	appendPredicateMetadata(plan, src.Predicates)
 }
 
 func appendSelectBuilderWriteMetadata(plan *QueryPlan, builder *qbapi.SelectQueryBuilder) {
-	src := builder.GetQuery()
+	src := builder.Snapshot()
 	appendJoinMetadata(plan, src.Joins)
-	appendPredicateMetadata(plan, src.ConditionGroups)
+	appendPredicateMetadata(plan, src.Predicates)
 }
 
 func columnRefsFromNames(names []string) []ColumnRef {
@@ -357,226 +399,40 @@ func appendTableRef(plan *QueryPlan, name, alias string) {
 	plan.Tables = append(plan.Tables, TableRef{Name: name, Alias: alias})
 }
 
-func appendJoinMetadata(plan *QueryPlan, joins any) {
-	if joins == nil {
-		return
-	}
-	// The concrete type comes from an internal dependency package. Use reflection
-	// only at this boundary so QueryPlan does not depend on that internal type.
-	jv := indirectValue(joins)
-	if !jv.IsValid() || jv.Kind() != reflect.Struct {
-		return
-	}
-
-	appendJoinSlice := func(field string, lateral bool) {
-		slice := indirectValue(jv.FieldByName(field))
-		if !slice.IsValid() || slice.Kind() != reflectSlice {
-			return
+func appendJoinMetadata(plan *QueryPlan, joins []qbapi.JoinSnapshot) {
+	for _, join := range joins {
+		ref := JoinRef{
+			Type:        join.Type,
+			Table:       join.Table,
+			Alias:       join.Alias,
+			LeftColumn:  join.LeftColumn,
+			Operator:    join.Operator,
+			RightColumn: join.RightColumn,
+			Subquery:    join.Subquery,
 		}
-		for i := 0; i < slice.Len(); i++ {
-			join := slice.Index(i)
-			ref := joinRefFromValue(join)
-			if lateral {
-				ref.Subquery = true
-			}
-			if ref.Table != "" || ref.Alias != "" {
-				plan.Joins = append(plan.Joins, ref)
-				appendTableRef(plan, ref.Table, ref.Alias)
-			}
-		}
-	}
-
-	appendJoinSlice("JoinClauses", false)
-	appendJoinSlice("LateralJoins", true)
-	appendJoinSlice("Joins", false)
-}
-
-func joinRefFromValue(join any) JoinRef {
-	jv := indirectValue(join)
-	if !jv.IsValid() || jv.Kind() != reflect.Struct {
-		return JoinRef{}
-	}
-	joinType, target := joinTarget(jv.FieldByName("TargetNameMap"))
-	ref := JoinRef{
-		Type:        joinType,
-		Table:       target,
-		LeftColumn:  stringField(jv, "SearchColumn"),
-		Operator:    stringField(jv, "SearchCondition"),
-		RightColumn: stringField(jv, "SearchTargetColumn"),
-		Subquery:    !isNilValue(jv.FieldByName("Query")),
-	}
-	if ref.Subquery {
-		ref.Alias = target
-		ref.Table = ""
-	}
-	return ref
-}
-
-func joinTarget(targetMap any) (string, string) {
-	mv := indirectValue(targetMap)
-	if !mv.IsValid() || mv.Kind() != reflectMap {
-		return "", ""
-	}
-	keys := mv.MapKeys()
-	sort.Slice(keys, func(i, j int) bool { return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface()) })
-	for _, k := range keys {
-		return strings.ToUpper(strings.ReplaceAll(fmt.Sprint(k.Interface()), "_", " ")), fmt.Sprint(mv.MapIndex(k).Interface())
-	}
-	return "", ""
-}
-
-func appendPredicateMetadata(plan *QueryPlan, groups any) {
-	gv := indirectValue(groups)
-	if !gv.IsValid() || gv.Kind() != reflectSlice {
-		return
-	}
-	for i := 0; i < gv.Len(); i++ {
-		group := gv.Index(i)
-		if indirectValue(group).Kind() != reflect.Struct {
+		if ref.Table == "" && ref.Alias == "" {
 			continue
 		}
-		conditions := indirectValue(group.FieldByName("Conditions"))
-		if !conditions.IsValid() || conditions.Kind() != reflectSlice {
-			continue
-		}
-		negated := boolField(group, "IsNot")
-		for j := 0; j < conditions.Len(); j++ {
-			p := predicateRefFromValue(conditions.Index(j))
-			p.Group = i
-			p.Negated = negated
-			plan.Predicates = append(plan.Predicates, p)
-		}
+		plan.Joins = append(plan.Joins, ref)
+		appendTableRef(plan, ref.Table, ref.Alias)
 	}
 }
 
-func predicateRefFromValue(cond any) PredicateRef {
-	cv := indirectValue(cond)
-	if !cv.IsValid() || cv.Kind() != reflect.Struct {
-		return PredicateRef{}
+func appendPredicateMetadata(plan *QueryPlan, predicates []qbapi.PredicateSnapshot) {
+	for _, predicate := range predicates {
+		plan.Predicates = append(plan.Predicates, PredicateRef{
+			Group:       predicate.Group,
+			Negated:     predicate.Negated,
+			Connector:   predicate.Connector,
+			Column:      predicate.Column,
+			Operator:    predicate.Operator,
+			ValueColumn: predicate.ValueColumn,
+			Raw:         predicate.Raw,
+			Function:    predicate.Function,
+			Subquery:    predicate.Subquery,
+			ValueCount:  predicate.ValueCount,
+		})
 	}
-	ref := PredicateRef{
-		Connector:   logicalOperator(intField(cv, "Operator")),
-		Column:      stringField(cv, "Column"),
-		Operator:    stringField(cv, "Condition"),
-		ValueColumn: stringField(cv, "ValueColumn"),
-		Raw:         stringField(cv, "Raw"),
-		Function:    stringField(cv, "Function"),
-		Subquery:    !isNilValue(cv.FieldByName("Query")) || !isNilValue(cv.FieldByName("Exists")),
-	}
-	ref.ValueCount = valueCount(cv)
-	return ref
-}
-
-func valueCount(cv reflect.Value) int {
-	if values := indirectValue(cv.FieldByName("Value")); values.IsValid() && values.Kind() == reflectSlice {
-		return values.Len()
-	}
-	if values := indirectValue(cv.FieldByName("ValueMap")); values.IsValid() && values.Kind() == reflectMap {
-		return values.Len()
-	}
-	if !isNilValue(cv.FieldByName("Between")) {
-		return 2
-	}
-	if !isNilValue(cv.FieldByName("FullText")) {
-		return 1
-	}
-	if jsonContains := indirectValue(cv.FieldByName("JsonContains")); jsonContains.IsValid() {
-		values := indirectValue(jsonContains.FieldByName("Values"))
-		if values.IsValid() && values.Kind() == reflectSlice {
-			return values.Len()
-		}
-	}
-	if !isNilValue(cv.FieldByName("JsonLength")) {
-		return 1
-	}
-	return 0
-}
-
-const (
-	reflectMap   = reflect.Map
-	reflectSlice = reflect.Slice
-)
-
-func indirectValue(v any) reflect.Value {
-	var rv reflect.Value
-	if value, ok := v.(reflect.Value); ok {
-		rv = value
-	} else {
-		rv = reflect.ValueOf(v)
-	}
-	for rv.IsValid() && (rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface) {
-		if rv.IsNil() {
-			return reflect.Value{}
-		}
-		rv = rv.Elem()
-	}
-	return rv
-}
-
-func isNilValue(v any) bool {
-	var rv reflect.Value
-	if value, ok := v.(reflect.Value); ok {
-		rv = value
-	} else {
-		rv = reflect.ValueOf(v)
-	}
-	if !rv.IsValid() {
-		return true
-	}
-	switch rv.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return rv.IsNil()
-	default:
-		return false
-	}
-}
-
-func stringField(v reflect.Value, field string) string {
-	rv := indirectValue(v)
-	if !rv.IsValid() || rv.Kind() != reflect.Struct {
-		return ""
-	}
-	f := rv.FieldByName(field)
-	if !f.IsValid() || f.Kind() != reflect.String {
-		return ""
-	}
-	return f.String()
-}
-
-func boolField(v reflect.Value, field string) bool {
-	rv := indirectValue(v)
-	if !rv.IsValid() || rv.Kind() != reflect.Struct {
-		return false
-	}
-	f := rv.FieldByName(field)
-	if !f.IsValid() || f.Kind() != reflect.Bool {
-		return false
-	}
-	return f.Bool()
-}
-
-func intField(v reflect.Value, field string) int {
-	rv := indirectValue(v)
-	if !rv.IsValid() || rv.Kind() != reflect.Struct {
-		return 0
-	}
-	f := rv.FieldByName(field)
-	if !f.IsValid() {
-		return 0
-	}
-	switch f.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return int(f.Int())
-	default:
-		return 0
-	}
-}
-
-func logicalOperator(op int) string {
-	if op == 1 {
-		return "OR"
-	}
-	return "AND"
 }
 
 func tableRefsString(refs []TableRef) string {

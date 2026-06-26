@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/manifest"
-	mcpserver "github.com/faciam-dev/goquent/orm/mcp"
+	"github.com/recoweft/goquent/orm/manifest"
+	mcpserver "github.com/recoweft/goquent/orm/mcp"
 )
 
 func runMCP(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
