@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/migration"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 type manifestUser struct {

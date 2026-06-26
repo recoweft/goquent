@@ -3,7 +3,7 @@ package migration
 import (
 	"strings"
 
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 // Schema is a minimal desired/current schema representation for diff planning.

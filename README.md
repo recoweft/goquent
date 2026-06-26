@@ -1,6 +1,6 @@
 # Goquent
 
-[![Docs](https://img.shields.io/badge/docs-API-blue.svg)](https://faciam-dev.github.io/goquent/)
+[![Docs](https://img.shields.io/badge/docs-API-blue.svg)](https://recoweft.github.io/goquent/)
 
 Goquent is an AI-safe ORM for Go. It helps humans and AI coding agents turn database operations into deterministic, reviewable artifacts: `QueryPlan`s, policy warnings, migration plans, manifests, and CI review output.
 

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/driver"
 )
 
 type rawQueryRowExecutor struct {

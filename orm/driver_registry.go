@@ -4,7 +4,7 @@ import (
 	sqldriver "database/sql/driver"
 	"sync"
 
-	"github.com/faciam-dev/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/driver"
 )
 
 var (

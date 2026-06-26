@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/faciam-dev/goquent/orm/internal/stringutil"
+	"github.com/recoweft/goquent/orm/internal/stringutil"
 )
 
 type decoderFn func(dst reflect.Value, src any, pol BoolScanPolicy) error

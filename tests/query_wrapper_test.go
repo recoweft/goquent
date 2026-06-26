@@ -1,10 +1,9 @@
 package tests
 
 import (
-	qbapi "github.com/faciam-dev/goquent-query-builder/api"
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 func TestJoinSubQueryWrapper(t *testing.T) {
@@ -33,7 +32,7 @@ func TestJoinQueryWrapper(t *testing.T) {
 
 	var row map[string]any
 	err := db.Table("users").
-		JoinQuery("profiles", func(b *qbapi.JoinClauseQueryBuilder) {
+		JoinQuery("profiles", func(b *query.JoinClause) {
 			b.On("users.id", "=", "profiles.user_id")
 		}).
 		Select("users.name", "profiles.bio").

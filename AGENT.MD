@@ -29,8 +29,8 @@ This repository adheres to standard Go directory practices. Place new packages u
 
 ## ORM Development Rules
 
-The `orm` package implements a lightweight ORM using
-[goquent-query-builder](https://github.com/faciam-dev/goquent-query-builder).
+The `orm` package implements a lightweight ORM using the internal SQL query
+builder under `orm/internal/querybuilder`.
 Follow these guidelines when extending or modifying this package:
 
 - Design for MySQL support first, but keep the driver abstraction ready for
@@ -40,7 +40,7 @@ Follow these guidelines when extending or modifying this package:
 ```
 driver   - connection handling and SQL dialect interface
 model    - struct to table/column mapping logic
-query    - wrapper around goquent builder and scanning
+query    - wrapper around the internal query builder and scanning
 scanner  - fast conversion from `sql.Rows` to structs or maps
 ```
 
@@ -65,7 +65,7 @@ err = orm.Table("users").Where("age", ">", 20).GetMaps(&rows)
 - Support struct scanning, `map[string]any`, and `[]map[string]any`.
 - Transactions should use `orm.Transaction(func(tx orm.Tx) error { ... })`.
 - Provide end-to-end tests in `tests/` using a MySQL 8 container. `go test ./...`
-  must pass with Go 1.22 or higher.
+  must pass with Go 1.25 or higher.
 - Document usage, benchmark results (`go test -bench`), and PostgreSQL
   extension plans in `README.md`. All comments must be in English.
 - Wrap SQL errors with package-level variables such as `orm.ErrNotFound` or

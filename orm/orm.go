@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/driver"
-	"github.com/faciam-dev/goquent/orm/model"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/model"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 // Executor abstracts sql.DB, sql.Tx, and compatible transaction wrappers.
@@ -53,6 +53,14 @@ func (db *DB) SQLDB() *sql.DB {
 		return nil
 	}
 	return db.drv.DB
+}
+
+// Dialect returns the SQL dialect configured for db.
+func (db *DB) Dialect() driver.Dialect {
+	if db == nil || db.drv == nil {
+		return nil
+	}
+	return db.drv.Dialect
 }
 
 // Database driver names.

@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm"
-	"github.com/faciam-dev/goquent/orm/driver"
 	mysql "github.com/go-sql-driver/mysql"
+	"github.com/recoweft/goquent/orm"
+	"github.com/recoweft/goquent/orm/driver"
 )
 
 func setupCustomDB(t testing.TB, drvName string) *orm.DB {

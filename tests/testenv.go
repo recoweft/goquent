@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm"
+	"github.com/recoweft/goquent/orm"
 )
 
 const (

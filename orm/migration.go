@@ -3,7 +3,7 @@ package orm
 import (
 	"context"
 
-	"github.com/faciam-dev/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/migration"
 )
 
 type MigrationStepType = migration.MigrationStepType

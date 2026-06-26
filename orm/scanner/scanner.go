@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/faciam-dev/goquent/orm/internal/stringutil"
+	"github.com/recoweft/goquent/orm/internal/stringutil"
 )
 
 // Struct scans current row into dest struct using column mapping.
@@ -33,11 +33,11 @@ func Struct(dest any, rows *sql.Rows) error {
 	}
 	scannerType := reflect.TypeOf((*sql.Scanner)(nil)).Elem()
 	for i, col := range cols {
-		f := fieldByColumn(v, col)
+		val := reflect.ValueOf(fields[i]).Elem().Interface()
+		f := fieldByColumn(v, col, val != nil)
 		if !f.IsValid() || !f.CanSet() {
 			continue
 		}
-		val := reflect.ValueOf(fields[i]).Elem().Interface()
 
 		// handle specialized bool types first
 		switch f.Type() {
@@ -175,11 +175,11 @@ func Structs(dest any, rows *sql.Rows) error {
 		}
 		elem := reflect.New(elemType).Elem()
 		for i, col := range cols {
-			f := fieldByColumn(elem, col)
+			val := reflect.ValueOf(fields[i]).Elem().Interface()
+			f := fieldByColumn(elem, col, val != nil)
 			if !f.IsValid() || !f.CanSet() {
 				continue
 			}
-			val := reflect.ValueOf(fields[i]).Elem().Interface()
 
 			switch f.Type() {
 			case reflect.TypeOf(true):
@@ -234,30 +234,68 @@ func Structs(dest any, rows *sql.Rows) error {
 	return rows.Err()
 }
 
-func fieldByColumn(v reflect.Value, col string) reflect.Value {
+func fieldByColumn(v reflect.Value, col string, allocateNested bool) reflect.Value {
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
 		sf := t.Field(i)
 		if sf.PkgPath != "" {
 			continue
 		}
-		name := sf.Tag.Get("db")
-		if name == "" || name == "-" {
-			if tag := sf.Tag.Get("orm"); tag != "" {
-				name = parseTag(tag)
-			}
+		if fieldUsesPrefix(sf) {
+			continue
 		}
-		if name == "" {
-			name = stringutil.ToSnake(sf.Name)
-		}
+		name := fieldColumnName(sf)
 		if name == col {
 			return v.Field(i)
+		}
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+		sf := t.Field(i)
+		if sf.PkgPath != "" {
+			continue
+		}
+		prefix, ok := fieldPrefix(sf)
+		if !ok {
+			continue
+		}
+		nestedCol, ok := strings.CutPrefix(col, prefix+"_")
+		if !ok || nestedCol == "" {
+			continue
+		}
+		nested := nestedStructValue(v.Field(i), allocateNested)
+		if !nested.IsValid() {
+			continue
+		}
+		if f := fieldByColumn(nested, nestedCol, allocateNested); f.IsValid() {
+			return f
 		}
 	}
 	return reflect.Value{}
 }
 
-func parseTag(tag string) string {
+func fieldColumnName(sf reflect.StructField) string {
+	name := sf.Tag.Get("db")
+	if name == "-" {
+		return "-"
+	}
+	if name != "" {
+		name = parseDBTagName(name)
+	} else if tag := sf.Tag.Get("orm"); tag != "" {
+		name = parseORMTag(tag)
+	}
+	if name == "" {
+		name = stringutil.ToSnake(sf.Name)
+	}
+	return name
+}
+
+func parseDBTagName(tag string) string {
+	parts := strings.Split(tag, ",")
+	return strings.TrimSpace(parts[0])
+}
+
+func parseORMTag(tag string) string {
 	for _, part := range strings.Split(tag, ",") {
 		kv := strings.SplitN(part, "=", 2)
 		if len(kv) == 2 && kv[0] == "column" {
@@ -265,6 +303,52 @@ func parseTag(tag string) string {
 		}
 	}
 	return ""
+}
+
+func fieldUsesPrefix(sf reflect.StructField) bool {
+	_, ok := fieldPrefix(sf)
+	return ok
+}
+
+func fieldPrefix(sf reflect.StructField) (string, bool) {
+	tag := sf.Tag.Get("db")
+	if tag == "" || tag == "-" || !tagHasOption(tag, "prefix") {
+		return "", false
+	}
+	name := parseDBTagName(tag)
+	if name == "" {
+		name = stringutil.ToSnake(sf.Name)
+	}
+	return name, true
+}
+
+func tagHasOption(tag, option string) bool {
+	for _, part := range strings.Split(tag, ",")[1:] {
+		if strings.TrimSpace(part) == option {
+			return true
+		}
+	}
+	return false
+}
+
+func nestedStructValue(v reflect.Value, allocate bool) reflect.Value {
+	switch v.Kind() {
+	case reflect.Struct:
+		return v
+	case reflect.Ptr:
+		if v.Type().Elem().Kind() != reflect.Struct {
+			return reflect.Value{}
+		}
+		if v.IsNil() {
+			if !allocate || !v.CanSet() {
+				return reflect.Value{}
+			}
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		return v.Elem()
+	default:
+		return reflect.Value{}
+	}
 }
 
 // bool parsing helpers with default compatibility policy

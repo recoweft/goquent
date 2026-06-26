@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm"
+	"github.com/recoweft/goquent/orm"
 )
 
 func TestExecAndQueryRow(t *testing.T) {

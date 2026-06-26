@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	ormdriver "github.com/faciam-dev/goquent/orm/driver"
+	ormdriver "github.com/recoweft/goquent/orm/driver"
 )
 
 func registerUsersPolicy(t *testing.T, policy TablePolicy) {
@@ -335,6 +335,97 @@ func TestRequiredFilterPolicySupportsParentScopes(t *testing.T) {
 	}
 	if warningCodeSet(plan.Warnings)[WarningRequiredFilterMissing] {
 		t.Fatalf("unexpected required filter warning=%#v", plan.Warnings)
+	}
+}
+
+func TestRequirePredicatesBlocksMissingRepositoryScope(t *testing.T) {
+	exec := &recordingExec{}
+	plan, err := New(exec, "documents", ormdriver.MySQLDialect{}).
+		Select("id").
+		RequirePredicates(RequiredPredicate{Table: "documents", Column: "tenant_id"}).
+		Limit(10).
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if !warningCodeSet(plan.Warnings)[WarningRequiredPredicateMissing] {
+		t.Fatalf("expected required predicate warning, got %#v", plan.Warnings)
+	}
+	if !plan.Blocked {
+		t.Fatalf("missing required predicate should block, warnings=%#v", plan.Warnings)
+	}
+	if len(MissingRequiredPredicates(plan, []RequiredPredicate{{Table: "documents", Column: "tenant_id"}})) != 1 {
+		t.Fatalf("expected missing predicate helper to report tenant_id")
+	}
+
+	err = New(exec, "documents", ormdriver.MySQLDialect{}).
+		Select("id").
+		RequirePredicates(RequiredPredicate{Table: "documents", Column: "tenant_id"}).
+		Limit(10).
+		GetMaps(&[]map[string]any{})
+	if !errors.Is(err, ErrBlockedOperation) {
+		t.Fatalf("GetMaps error=%v", err)
+	}
+	if exec.calls != 0 {
+		t.Fatalf("blocked required predicate query executed database call count=%d", exec.calls)
+	}
+}
+
+func TestRequirePredicatesPassesWhenScopePresent(t *testing.T) {
+	plan, err := New(&recordingExec{}, "documents", ormdriver.MySQLDialect{}).
+		Select("id").
+		RequirePredicates(RequiredPredicate{Table: "documents", Column: "tenant_id"}).
+		Where("tenant_id", "tenant-1").
+		Limit(10).
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if warningCodeSet(plan.Warnings)[WarningRequiredPredicateMissing] {
+		t.Fatalf("unexpected required predicate warning=%#v", plan.Warnings)
+	}
+	if !PlanHasPredicateColumn(plan, "documents", "tenant_id") {
+		t.Fatalf("expected PlanHasPredicateColumn to find tenant predicate")
+	}
+}
+
+func TestRequirePredicatesRequiresQualifiedPredicateForJoinedTables(t *testing.T) {
+	plan, err := New(&recordingExec{}, "users", ormdriver.MySQLDialect{}).
+		Select("users.id").
+		Join("memberships", "users.id", "=", "memberships.user_id").
+		RequirePredicates(
+			RequiredPredicate{Table: "users", Column: "tenant_id"},
+			RequiredPredicate{Table: "memberships", Column: "tenant_id"},
+		).
+		Where("tenant_id", "tenant-1").
+		Limit(10).
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if countWarnings(plan.Warnings, WarningRequiredPredicateMissing) != 2 {
+		t.Fatalf("expected both joined-table required predicates missing, got %#v", plan.Warnings)
+	}
+	if PlanHasPredicateColumn(plan, "users", "tenant_id") || PlanHasPredicateColumn(plan, "memberships", "tenant_id") {
+		t.Fatalf("unqualified tenant_id should not satisfy joined table predicate guards")
+	}
+
+	plan, err = New(&recordingExec{}, "users", ormdriver.MySQLDialect{}).
+		Select("users.id").
+		Join("memberships", "users.id", "=", "memberships.user_id").
+		RequirePredicates(
+			RequiredPredicate{Table: "users", Column: "tenant_id"},
+			RequiredPredicate{Table: "memberships", Column: "tenant_id"},
+		).
+		Where("users.tenant_id", "tenant-1").
+		Where("memberships.tenant_id", "tenant-1").
+		Limit(10).
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan qualified: %v", err)
+	}
+	if warningCodeSet(plan.Warnings)[WarningRequiredPredicateMissing] {
+		t.Fatalf("unexpected required predicate warning=%#v", plan.Warnings)
 	}
 }
 

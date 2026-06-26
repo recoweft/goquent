@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/manifest"
 )
 
 func TestMCPCommandInitialize(t *testing.T) {

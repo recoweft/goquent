@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	ormdriver "github.com/faciam-dev/goquent/orm/driver"
+	ormdriver "github.com/recoweft/goquent/orm/driver"
 )
 
 type recordingExec struct {
@@ -180,6 +180,64 @@ func TestWhereCursorSupportsTrustedExpression(t *testing.T) {
 	}
 	if len(plan.Params) != 1 || plan.Params[0] != "source:1" {
 		t.Fatalf("params=%#v", plan.Params)
+	}
+}
+
+func TestWhereTextSearchPostgresUsesILikeAcrossColumns(t *testing.T) {
+	plan, err := New(&recordingExec{}, "corpus_units", ormdriver.PostgresDialect{}).
+		Select("id").
+		Where("tenant_id", "tenant-1").
+		WhereTextSearch([]string{"title", "normalized_text", "article_no"}, "Article_10%").
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	for _, want := range []string{`"title" ILIKE`, `"normalized_text" ILIKE`, `"article_no" ILIKE`, `ESCAPE '!'`} {
+		if !strings.Contains(plan.SQL, want) {
+			t.Fatalf("expected %q in sql=%q", want, plan.SQL)
+		}
+	}
+	if len(plan.Params) != 4 || plan.Params[0] != "tenant-1" {
+		t.Fatalf("params=%#v", plan.Params)
+	}
+	for _, param := range plan.Params[1:] {
+		if param != "%Article!_10!%%" {
+			t.Fatalf("expected escaped search pattern, params=%#v", plan.Params)
+		}
+	}
+}
+
+func TestWhereTextSearchMySQLUsesLike(t *testing.T) {
+	plan, err := newPlanTestQuery(&recordingExec{}).
+		Select("id").
+		WhereTextSearch([]string{"name", "email"}, "alice!").
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if !strings.Contains(plan.SQL, "`name` LIKE") || !strings.Contains(plan.SQL, "`email` LIKE") {
+		t.Fatalf("expected LIKE text search, sql=%q", plan.SQL)
+	}
+	if len(plan.Params) != 2 || plan.Params[0] != "%alice!!%" || plan.Params[1] != "%alice!!%" {
+		t.Fatalf("params=%#v", plan.Params)
+	}
+}
+
+func TestWhereTextSearchRejectsInvalidInput(t *testing.T) {
+	_, err := newPlanTestQuery(&recordingExec{}).
+		Select("id").
+		WhereTextSearch([]string{"name"}, "   ").
+		Plan(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "text search term is required") {
+		t.Fatalf("expected empty term error, got %v", err)
+	}
+
+	_, err = newPlanTestQuery(&recordingExec{}).
+		Select("id").
+		WhereTextSearch([]string{"LOWER(name)"}, "alice").
+		Plan(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "invalid text search column") {
+		t.Fatalf("expected invalid column error, got %v", err)
 	}
 }
 

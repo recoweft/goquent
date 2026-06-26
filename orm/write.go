@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/faciam-dev/goquent/orm/driver"
-	"github.com/faciam-dev/goquent/orm/model"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/model"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 // WriteOpt configures write behavior.
@@ -678,6 +678,36 @@ func InsertManyReturning[R any, T any](ctx context.Context, db *DB, values []T, 
 	return queryReturningAll[R](ctx, db, sqlStr, args...)
 }
 
+// UpsertMany inserts or updates all values in one bulk UPSERT statement.
+//
+// It supports the same conflict-target options as Upsert. Empty slices return
+// an error instead of a no-op result. Map writes require Table, and every row
+// must provide the selected column set.
+func UpsertMany[T any](ctx context.Context, db *DB, values []T, opts ...WriteOpt) (sql.Result, error) {
+	o := applyWriteOpts(opts)
+	sqlStr, args, err := buildUpsertManyStatement(db, values, o)
+	if err != nil {
+		return nil, err
+	}
+	return execWriteStatement(ctx, db, sqlStr, args, o)
+}
+
+// UpsertManyReturning upserts all values and scans PostgreSQL RETURNING rows.
+func UpsertManyReturning[R any, T any](ctx context.Context, db *DB, values []T, opts ...WriteOpt) ([]R, error) {
+	if len(values) == 0 {
+		return nil, fmt.Errorf("goquent: no rows to upsert")
+	}
+	o := applyWriteOpts(opts)
+	if err := ensureReturningColumns[R](o); err != nil {
+		return nil, err
+	}
+	sqlStr, args, err := buildUpsertManyStatement(db, values, o)
+	if err != nil {
+		return nil, err
+	}
+	return queryReturningAll[R](ctx, db, sqlStr, args...)
+}
+
 func buildInsertStatement(db *DB, v any, o *writeOptions) (string, []any, error) {
 	if len(o.assignments) > 0 {
 		return "", nil, fmt.Errorf("assignment options are not supported for Insert")
@@ -800,6 +830,78 @@ func buildInsertManyStatement[T any](db *DB, values []T, o *writeOptions) (strin
 	return buildInsertManySQL(db, table, cols, len(values), args, o)
 }
 
+func buildUpsertManyStatement[T any](db *DB, values []T, o *writeOptions) (string, []any, error) {
+	if len(values) == 0 {
+		return "", nil, fmt.Errorf("goquent: no rows to upsert")
+	}
+	if !o.wherePK && !o.hasConflictTarget() {
+		return "", nil, fmt.Errorf("UpsertMany[T] requires WherePK, ConflictColumns, or ConflictConstraint")
+	}
+	if o.conflictDoNothing && (len(o.assignments) > 0 || len(o.upsertUpdateCols) > 0) {
+		return "", nil, fmt.Errorf("ConflictDoNothing cannot be combined with update or assignment options")
+	}
+
+	first := reflect.ValueOf(values[0])
+	if !first.IsValid() {
+		return "", nil, fmt.Errorf("unsupported type <nil>")
+	}
+	typ := first.Type()
+
+	var (
+		table  string
+		cols   []string
+		args   []any
+		pkCols []string
+		err    error
+	)
+	switch {
+	case isMapStringInterface(typ):
+		if o.table == "" {
+			return "", nil, fmt.Errorf("Table option required for map writes")
+		}
+		if o.wherePK && len(o.pkCols) == 0 {
+			return "", nil, fmt.Errorf("WherePK for map writes requires PK columns via PK option")
+		}
+		table = o.table
+		cols, args, pkCols, err = upsertManyMapColumnsArgsAndPK(values, o)
+	case typ.Kind() == reflect.Struct:
+		table = o.table
+		if table == "" {
+			table = model.TableName(values[0])
+		}
+		cols, args, pkCols, err = upsertManyStructColumnsArgsAndPK(values, typ, o)
+	default:
+		return "", nil, fmt.Errorf("unsupported type %s", typ)
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	if o.wherePK && len(pkCols) == 0 {
+		return "", nil, fmt.Errorf("WherePK requires pk values")
+	}
+	if len(cols) == 0 {
+		return "", nil, fmt.Errorf("no columns to insert")
+	}
+	if err := ensureConflictColumnsPresent(o.conflictCols, cols); err != nil {
+		return "", nil, err
+	}
+	sqlStr, err := buildInsertManyBaseSQL(db, table, cols, len(values), o)
+	if err != nil {
+		return "", nil, err
+	}
+	targetCols := conflictTargetColumns(o, pkCols)
+	sqlStr, assignmentArgs, err := appendUpsertConflictClause(db.drv.Dialect, sqlStr, cols, targetCols, o, len(args)+1)
+	if err != nil {
+		return "", nil, err
+	}
+	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
+	if err != nil {
+		return "", nil, err
+	}
+	args = append(args, assignmentArgs...)
+	return sqlStr, args, nil
+}
+
 func validateInsertManyOptions(o *writeOptions) error {
 	if len(o.assignments) > 0 {
 		return fmt.Errorf("assignment options are not supported for InsertMany")
@@ -841,6 +943,67 @@ func insertManyStructColumnsAndArgs[T any](values []T, typ reflect.Type, o *writ
 		return nil, nil, fmt.Errorf("no columns to insert")
 	}
 	return cols, args, nil
+}
+
+func upsertManyStructColumnsArgsAndPK[T any](values []T, typ reflect.Type, o *writeOptions) ([]string, []any, []string, error) {
+	meta, err := getTypeMeta(typ)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var cols []string
+	args := make([]any, 0, len(values))
+	for i, row := range values {
+		val := reflect.ValueOf(row)
+		if !val.IsValid() {
+			return nil, nil, nil, fmt.Errorf("goquent: UpsertMany row %d is nil", i)
+		}
+		if val.Type() != typ {
+			return nil, nil, nil, fmt.Errorf("goquent: UpsertMany row %d has type %s, expected %s", i, val.Type(), typ)
+		}
+		rowCols, rowArgs := upsertStructColumnsAndArgs(val, meta, o)
+		if i == 0 {
+			cols = rowCols
+		} else if !sameColumns(cols, rowCols) {
+			return nil, nil, nil, fmt.Errorf("goquent: UpsertMany requires identical columns in every row")
+		}
+		args = append(args, rowArgs...)
+	}
+	return cols, args, append([]string(nil), meta.PKCols...), nil
+}
+
+func upsertStructColumnsAndArgs(val reflect.Value, meta *typeMeta, o *writeOptions) ([]string, []any) {
+	cols := make([]string, 0, len(meta.Fields))
+	args := make([]any, 0, len(meta.Fields))
+	for _, fm := range meta.Fields {
+		fv := val.FieldByIndex(fm.IndexPath)
+		if fm.PK {
+			cols = append(cols, fm.Col)
+			args = append(args, fv.Interface())
+			continue
+		}
+		if o.isConflictColumn(fm.Col) {
+			cols = append(cols, fm.Col)
+			args = append(args, fv.Interface())
+			continue
+		}
+		if fm.Readonly {
+			continue
+		}
+		if len(o.cols) > 0 {
+			if _, ok := o.cols[fm.Col]; !ok {
+				continue
+			}
+		}
+		if _, ok := o.omit[fm.Col]; ok {
+			continue
+		}
+		if fm.OmitEmpty && fv.IsZero() {
+			continue
+		}
+		cols = append(cols, fm.Col)
+		args = append(args, fv.Interface())
+	}
+	return cols, args
 }
 
 func insertStructColumnsAndArgs(val reflect.Value, o *writeOptions) ([]string, []any, error) {
@@ -900,6 +1063,69 @@ func insertManyMapColumnsAndArgs[T any](values []T, o *writeOptions) ([]string, 
 	return cols, args, nil
 }
 
+func upsertManyMapColumnsArgsAndPK[T any](values []T, o *writeOptions) ([]string, []any, []string, error) {
+	first := reflect.ValueOf(values[0])
+	cols := mapUpsertManyColumnSet(first, o)
+	if len(cols) == 0 {
+		return nil, nil, nil, fmt.Errorf("no columns to insert")
+	}
+	pkCols := sortedPKColumns(o)
+	args := make([]any, 0, len(values)*len(cols))
+	for i, row := range values {
+		val := reflect.ValueOf(row)
+		if !val.IsValid() {
+			return nil, nil, nil, fmt.Errorf("goquent: UpsertMany map row %d is nil", i)
+		}
+		if !isMapStringInterface(val.Type()) {
+			return nil, nil, nil, fmt.Errorf("goquent: UpsertMany row %d has type %s, expected %s", i, val.Type(), first.Type())
+		}
+		if !sameColumns(cols, mapUpsertManyColumnSet(val, o)) {
+			return nil, nil, nil, fmt.Errorf("goquent: UpsertMany map row %d has inconsistent columns", i)
+		}
+		rowArgs, err := mapInsertManyRowArgs(val, cols, i)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		args = append(args, rowArgs...)
+	}
+	return cols, args, pkCols, nil
+}
+
+func mapUpsertManyColumnSet(val reflect.Value, o *writeOptions) []string {
+	cols := make([]string, 0, val.Len())
+	iter := val.MapRange()
+	for iter.Next() {
+		col := iter.Key().String()
+		if o.isPK(col) || o.isConflictColumn(col) {
+			cols = append(cols, col)
+			continue
+		}
+		if len(o.cols) > 0 {
+			if _, ok := o.cols[col]; !ok {
+				continue
+			}
+		}
+		if _, omitted := o.omit[col]; omitted {
+			continue
+		}
+		cols = append(cols, col)
+	}
+	sort.Strings(cols)
+	return cols
+}
+
+func sortedPKColumns(o *writeOptions) []string {
+	if len(o.pkCols) == 0 {
+		return nil
+	}
+	cols := make([]string, 0, len(o.pkCols))
+	for col := range o.pkCols {
+		cols = append(cols, col)
+	}
+	sort.Strings(cols)
+	return cols
+}
+
 func mapInsertManyColumnSet(val reflect.Value, o *writeOptions) []string {
 	if len(o.cols) > 0 {
 		cols := make([]string, 0, len(o.cols))
@@ -950,6 +1176,18 @@ func sameColumns(a, b []string) bool {
 }
 
 func buildInsertManySQL(db *DB, table string, cols []string, rowCount int, args []any, o *writeOptions) (string, []any, error) {
+	sqlStr, err := buildInsertManyBaseSQL(db, table, cols, rowCount, o)
+	if err != nil {
+		return "", nil, err
+	}
+	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
+	if err != nil {
+		return "", nil, err
+	}
+	return sqlStr, args, nil
+}
+
+func buildInsertManyBaseSQL(db *DB, table string, cols []string, rowCount int, o *writeOptions) (string, error) {
 	quotedCols := make([]string, len(cols))
 	for i, c := range cols {
 		quotedCols[i] = quote(db.drv.Dialect, c)
@@ -963,14 +1201,9 @@ func buildInsertManySQL(db *DB, table string, cols []string, rowCount int, args 
 	}
 	tableSQL, err := quoteWriteTable(db.drv.Dialect, table, o)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
-	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES %s", tableSQL, strings.Join(quotedCols, ", "), strings.Join(values, ", "))
-	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
-	if err != nil {
-		return "", nil, err
-	}
-	return sqlStr, args, nil
+	return fmt.Sprintf("INSERT INTO %s (%s) VALUES %s", tableSQL, strings.Join(quotedCols, ", "), strings.Join(values, ", ")), nil
 }
 
 // Update updates record v.
@@ -1177,8 +1410,8 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 	if !o.wherePK && !o.hasConflictTarget() {
 		return "", nil, fmt.Errorf("Upsert[T] requires WherePK, ConflictColumns, or ConflictConstraint")
 	}
-	if o.conflictDoNothing && len(o.assignments) > 0 {
-		return "", nil, fmt.Errorf("ConflictDoNothing cannot be combined with assignment options")
+	if o.conflictDoNothing && (len(o.assignments) > 0 || len(o.upsertUpdateCols) > 0) {
+		return "", nil, fmt.Errorf("ConflictDoNothing cannot be combined with update or assignment options")
 	}
 	val := reflect.ValueOf(v)
 	typ := val.Type()
@@ -1292,46 +1525,9 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 	}
 	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableSQL, strings.Join(quotedCols, ", "), strings.Join(ph, ", "))
 	targetCols := conflictTargetColumns(o, pkCols)
-	updateCols, err := upsertUpdateColumns(cols, targetCols, o)
+	sqlStr, assignmentArgs, err := appendUpsertConflictClause(db.drv.Dialect, sqlStr, cols, targetCols, o, len(args)+1)
 	if err != nil {
 		return "", nil, err
-	}
-	assignmentParts, assignmentArgs, err := buildWriteSetParts(db.drv.Dialect, nil, nil, o.assignments, len(args)+1)
-	if err != nil {
-		return "", nil, err
-	}
-	switch db.drv.Dialect.(type) {
-	case driver.MySQLDialect:
-		if strings.TrimSpace(o.conflictWhere) != "" || strings.TrimSpace(o.conflictConstraint) != "" || strings.TrimSpace(o.conflictTargetRaw) != "" {
-			return "", nil, fmt.Errorf("ConflictWhere, ConflictConstraint, and ConflictTargetRaw are not supported on dialect: %T", db.drv.Dialect)
-		}
-		if len(updateCols) > 0 || len(assignmentParts) > 0 {
-			assigns := make([]string, 0, len(updateCols)+len(assignmentParts))
-			for _, c := range updateCols {
-				assigns = append(assigns, fmt.Sprintf("%s=VALUES(%s)", quote(db.drv.Dialect, c), quote(db.drv.Dialect, c)))
-			}
-			assigns = append(assigns, assignmentParts...)
-			sqlStr += " ON DUPLICATE KEY UPDATE " + strings.Join(assigns, ", ")
-		} else {
-			sqlStr = strings.Replace(sqlStr, "INSERT", "INSERT IGNORE", 1)
-		}
-	case driver.PostgresDialect:
-		target, err := postgresConflictTarget(db.drv.Dialect, targetCols, o)
-		if err != nil {
-			return "", nil, err
-		}
-		if len(updateCols) > 0 || len(assignmentParts) > 0 {
-			assigns := make([]string, 0, len(updateCols)+len(assignmentParts))
-			for _, c := range updateCols {
-				assigns = append(assigns, fmt.Sprintf("%s=EXCLUDED.%s", quote(db.drv.Dialect, c), quote(db.drv.Dialect, c)))
-			}
-			assigns = append(assigns, assignmentParts...)
-			sqlStr += fmt.Sprintf(" ON CONFLICT %s DO UPDATE SET %s", target, strings.Join(assigns, ", "))
-		} else {
-			sqlStr += fmt.Sprintf(" ON CONFLICT %s DO NOTHING", target)
-		}
-	default:
-		return "", nil, fmt.Errorf("upsert not supported on dialect: %T", db.drv.Dialect)
 	}
 	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
 	if err != nil {
@@ -1339,6 +1535,48 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 	}
 	args = append(args, assignmentArgs...)
 	return sqlStr, args, nil
+}
+
+func appendUpsertConflictClause(d driver.Dialect, sqlStr string, cols []string, targetCols []string, o *writeOptions, assignmentStart int) (string, []any, error) {
+	updateCols, err := upsertUpdateColumns(cols, targetCols, o)
+	if err != nil {
+		return "", nil, err
+	}
+	assignmentParts, assignmentArgs, err := buildWriteSetParts(d, nil, nil, o.assignments, assignmentStart)
+	if err != nil {
+		return "", nil, err
+	}
+	switch d.(type) {
+	case driver.MySQLDialect:
+		if strings.TrimSpace(o.conflictWhere) != "" || strings.TrimSpace(o.conflictConstraint) != "" || strings.TrimSpace(o.conflictTargetRaw) != "" {
+			return "", nil, fmt.Errorf("ConflictWhere, ConflictConstraint, and ConflictTargetRaw are not supported on dialect: %T", d)
+		}
+		if len(updateCols) > 0 || len(assignmentParts) > 0 {
+			assigns := make([]string, 0, len(updateCols)+len(assignmentParts))
+			for _, c := range updateCols {
+				assigns = append(assigns, fmt.Sprintf("%s=VALUES(%s)", quote(d, c), quote(d, c)))
+			}
+			assigns = append(assigns, assignmentParts...)
+			return sqlStr + " ON DUPLICATE KEY UPDATE " + strings.Join(assigns, ", "), assignmentArgs, nil
+		}
+		return strings.Replace(sqlStr, "INSERT", "INSERT IGNORE", 1), assignmentArgs, nil
+	case driver.PostgresDialect:
+		target, err := postgresConflictTarget(d, targetCols, o)
+		if err != nil {
+			return "", nil, err
+		}
+		if len(updateCols) > 0 || len(assignmentParts) > 0 {
+			assigns := make([]string, 0, len(updateCols)+len(assignmentParts))
+			for _, c := range updateCols {
+				assigns = append(assigns, fmt.Sprintf("%s=EXCLUDED.%s", quote(d, c), quote(d, c)))
+			}
+			assigns = append(assigns, assignmentParts...)
+			return fmt.Sprintf("%s ON CONFLICT %s DO UPDATE SET %s", sqlStr, target, strings.Join(assigns, ", ")), assignmentArgs, nil
+		}
+		return fmt.Sprintf("%s ON CONFLICT %s DO NOTHING", sqlStr, target), assignmentArgs, nil
+	default:
+		return "", nil, fmt.Errorf("upsert not supported on dialect: %T", d)
+	}
 }
 
 func selectExistingInsertOnceRow[T any](ctx context.Context, db *DB, v any, o *writeOptions) (T, error) {

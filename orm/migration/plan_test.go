@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 func TestPlanSQLClassifiesAddColumnRisk(t *testing.T) {
@@ -160,6 +160,33 @@ func TestPlanSQLClassifiesSetNotNull(t *testing.T) {
 	}
 }
 
+func TestBackfillReviewModeAddsEvidenceGuidance(t *testing.T) {
+	plan, err := New(`ALTER TABLE users ALTER COLUMN email SET NOT NULL;`).
+		ReviewMode(ReviewModeBackfill).
+		Plan(context.Background())
+	if err != nil {
+		t.Fatalf("plan backfill review: %v", err)
+	}
+	if plan.Metadata["review_mode"] != string(ReviewModeBackfill) {
+		t.Fatalf("expected backfill metadata, got %#v", plan.Metadata)
+	}
+	if !hasWarning(plan.Warnings, WarningMigrationBackfillReview) {
+		t.Fatalf("expected backfill review warning, got %#v", plan.Warnings)
+	}
+	if !strings.Contains(strings.Join(plan.Steps[0].Preflight, "\n"), "zero-NULL") {
+		t.Fatalf("expected zero-NULL preflight, got %#v", plan.Steps[0].Preflight)
+	}
+}
+
+func TestReviewModeRejectsUnsupportedMode(t *testing.T) {
+	_, err := New(`ALTER TABLE users ADD COLUMN nickname text;`).
+		ReviewMode(ReviewMode("shadow")).
+		Plan(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "unsupported migration review mode") {
+		t.Fatalf("expected unsupported mode error, got %v", err)
+	}
+}
+
 func TestPlanSQLStatementSplittingAndJSON(t *testing.T) {
 	plan, err := PlanSQL(`
 -- comments should not become statements
@@ -266,6 +293,15 @@ func hasStep(steps []MigrationStep, typ MigrationStepType, name string) bool {
 			continue
 		}
 		if step.Column == name || step.Index == name || step.Table == name {
+			return true
+		}
+	}
+	return false
+}
+
+func hasWarning(warnings []query.Warning, code string) bool {
+	for _, warning := range warnings {
+		if warning.Code == code {
 			return true
 		}
 	}

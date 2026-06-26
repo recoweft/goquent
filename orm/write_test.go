@@ -10,12 +10,20 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/faciam-dev/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/query"
 )
+
+type capturedStatement struct {
+	query string
+	args  []any
+}
 
 type captureExecutor struct {
 	query           string
 	args            []any
+	statements      []capturedStatement
+	lastInsertID    int64
 	rowsAffected    int64
 	rowsAffectedSet bool
 }
@@ -30,22 +38,27 @@ func (e *captureExecutor) QueryRow(string, ...any) *sql.Row { return nil }
 
 func (e *captureExecutor) QueryRowContext(context.Context, string, ...any) *sql.Row { return nil }
 
-func (e *captureExecutor) Exec(string, ...any) (sql.Result, error) {
-	return captureResult{rowsAffected: e.rowsAffected, rowsAffectedSet: e.rowsAffectedSet}, nil
+func (e *captureExecutor) Exec(query string, args ...any) (sql.Result, error) {
+	e.query = query
+	e.args = append([]any(nil), args...)
+	e.statements = append(e.statements, capturedStatement{query: query, args: append([]any(nil), args...)})
+	return captureResult{lastInsertID: e.lastInsertID, rowsAffected: e.rowsAffected, rowsAffectedSet: e.rowsAffectedSet}, nil
 }
 
 func (e *captureExecutor) ExecContext(_ context.Context, query string, args ...any) (sql.Result, error) {
 	e.query = query
 	e.args = append([]any(nil), args...)
-	return captureResult{rowsAffected: e.rowsAffected, rowsAffectedSet: e.rowsAffectedSet}, nil
+	e.statements = append(e.statements, capturedStatement{query: query, args: append([]any(nil), args...)})
+	return captureResult{lastInsertID: e.lastInsertID, rowsAffected: e.rowsAffected, rowsAffectedSet: e.rowsAffectedSet}, nil
 }
 
 type captureResult struct {
+	lastInsertID    int64
 	rowsAffected    int64
 	rowsAffectedSet bool
 }
 
-func (captureResult) LastInsertId() (int64, error) { return 0, nil }
+func (r captureResult) LastInsertId() (int64, error) { return r.lastInsertID, nil }
 
 func (r captureResult) RowsAffected() (int64, error) {
 	if !r.rowsAffectedSet {
@@ -79,6 +92,41 @@ type genericWriteUser struct {
 }
 
 func (genericWriteUser) TableName() string { return "users" }
+
+type nestedDocumentTable struct {
+	ID       int64  `db:"id,pk"`
+	TenantID string `db:"tenant_id"`
+	Title    string `db:"title"`
+	Revision int64  `db:"revision"`
+}
+
+func (nestedDocumentTable) TableName() string { return "document_tables" }
+
+type nestedDocumentRow struct {
+	ID           int64  `db:"id,pk,omitempty"`
+	TenantID     string `db:"tenant_id"`
+	TableID      int64  `db:"table_id"`
+	StableRowKey string `db:"stable_row_key"`
+	Position     int    `db:"position"`
+}
+
+func (nestedDocumentRow) TableName() string { return "document_table_rows" }
+
+type nestedDocumentCell struct {
+	TenantID      string `db:"tenant_id"`
+	TableID       int64  `db:"table_id"`
+	RowID         int64  `db:"row_id"`
+	StableCellKey string `db:"stable_cell_key"`
+	ValueJSON     string `db:"value_json"`
+}
+
+func (nestedDocumentCell) TableName() string { return "document_table_cells" }
+
+func nestedWhere(col string, value any) Scope {
+	return func(q *query.Query) *query.Query {
+		return q.Where(col, value)
+	}
+}
 
 func hasArg(args []any, want any) bool {
 	for _, arg := range args {
@@ -485,6 +533,303 @@ func TestInsertManyRejectsConflictOptions(t *testing.T) {
 	)
 	if err == nil || !strings.Contains(err.Error(), "conflict/upsert options are not supported for InsertMany") {
 		t.Fatalf("expected conflict insert many error, got: %v", err)
+	}
+}
+
+func TestUpsertManyPostgresBuildsSingleStatement(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := UpsertMany(
+		context.Background(),
+		db,
+		[]map[string]any{
+			{
+				"tenant_id":  "tenant-1",
+				"field_key":  "weekly_hours",
+				"value_json": "{}",
+				"updated_at": "now",
+			},
+			{
+				"tenant_id":  "tenant-1",
+				"field_key":  "overtime_hours",
+				"value_json": "{}",
+				"updated_at": "later",
+			},
+		},
+		Table("profile_values"),
+		ConflictColumns("tenant_id", "field_key"),
+		UpdateColumns("value_json", "updated_at"),
+	)
+	if err != nil {
+		t.Fatalf("upsert many postgres: %v", err)
+	}
+	wantSQL := `INSERT INTO "profile_values" ("field_key", "tenant_id", "updated_at", "value_json") VALUES ($1, $2, $3, $4), ($5, $6, $7, $8) ON CONFLICT ("tenant_id", "field_key") DO UPDATE SET "value_json"=EXCLUDED."value_json", "updated_at"=EXCLUDED."updated_at"`
+	if exec.query != wantSQL {
+		t.Fatalf("unexpected query:\nwant %s\ngot  %s", wantSQL, exec.query)
+	}
+	wantArgs := []any{"weekly_hours", "tenant-1", "now", "{}", "overtime_hours", "tenant-1", "later", "{}"}
+	if !reflect.DeepEqual(exec.args, wantArgs) {
+		t.Fatalf("unexpected args: %#v", exec.args)
+	}
+}
+
+func TestUpsertManyStructKeepsPKWhenFiltered(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.MySQLDialect{})
+
+	_, err := UpsertMany(
+		context.Background(),
+		db,
+		[]genericWriteUser{
+			{ID: 1, Name: "alice", Age: 30},
+			{ID: 2, Name: "bob", Age: 31},
+		},
+		Columns("name"),
+		Omit("id"),
+		WherePK(),
+	)
+	if err != nil {
+		t.Fatalf("upsert many struct: %v", err)
+	}
+	wantSQL := "INSERT INTO `users` (`id`, `name`) VALUES (?, ?), (?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`)"
+	if exec.query != wantSQL {
+		t.Fatalf("unexpected query:\nwant %s\ngot  %s", wantSQL, exec.query)
+	}
+	wantArgs := []any{int64(1), "alice", int64(2), "bob"}
+	if !reflect.DeepEqual(exec.args, wantArgs) {
+		t.Fatalf("unexpected args: %#v", exec.args)
+	}
+}
+
+func TestUpsertManyConflictDoNothing(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := UpsertMany(
+		context.Background(),
+		db,
+		[]map[string]any{
+			{"tenant_id": "tenant-1", "idempotency_key": "idem-1", "payload_json": "{}"},
+			{"tenant_id": "tenant-1", "idempotency_key": "idem-2", "payload_json": "{}"},
+		},
+		Table("submission_attempts"),
+		ConflictColumns("tenant_id", "idempotency_key"),
+		ConflictDoNothing(),
+	)
+	if err != nil {
+		t.Fatalf("upsert many do nothing: %v", err)
+	}
+	if !strings.Contains(exec.query, `ON CONFLICT ("tenant_id", "idempotency_key") DO NOTHING`) {
+		t.Fatalf("expected DO NOTHING conflict action, got: %s", exec.query)
+	}
+	if strings.Contains(exec.query, "DO UPDATE") {
+		t.Fatalf("expected no conflict update, got: %s", exec.query)
+	}
+}
+
+func TestUpsertManyConflictDoNothingRejectsUpdateColumns(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := UpsertMany(
+		context.Background(),
+		db,
+		[]map[string]any{{"id": int64(9), "name": "alice"}},
+		Table("users"),
+		ConflictColumns("id"),
+		ConflictDoNothing(),
+		UpdateColumns("name"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "ConflictDoNothing cannot be combined") {
+		t.Fatalf("expected do-nothing update error, got: %v", err)
+	}
+}
+
+func TestUpsertManyReturningTypedStructScan(t *testing.T) {
+	db, mock := newReturningMockDB(t)
+	sqlText := `INSERT INTO "users" ("id", "name", "age") VALUES ($1, $2, $3), ($4, $5, $6) ON CONFLICT ("id") DO UPDATE SET "name"=EXCLUDED."name", "age"=EXCLUDED."age" RETURNING "id", "name", "age"`
+	mock.ExpectQuery(regexp.QuoteMeta(sqlText)).
+		WithArgs(int64(1), "alice", 30, int64(2), "bob", 31).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "age"}).
+			AddRow(1, "alice", 30).
+			AddRow(2, "bob", 31))
+
+	rows, err := UpsertManyReturning[genericWriteUser](
+		context.Background(),
+		db,
+		[]genericWriteUser{
+			{ID: 1, Name: "alice", Age: 30},
+			{ID: 2, Name: "bob", Age: 31},
+		},
+		WherePK(),
+	)
+	if err != nil {
+		t.Fatalf("upsert many returning: %v", err)
+	}
+	if len(rows) != 2 || rows[0].ID != 1 || rows[1].Name != "bob" {
+		t.Fatalf("unexpected rows: %+v", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestUpsertManyRejectsInconsistentColumns(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.PostgresDialect{})
+
+	_, err := UpsertMany(
+		context.Background(),
+		db,
+		[]map[string]any{
+			{"tenant_id": "tenant-1", "field_key": "weekly_hours", "value_json": "{}"},
+			{"tenant_id": "tenant-1", "field_key": "overtime_hours", "value_json": "{}", "extra": true},
+		},
+		Table("profile_values"),
+		ConflictColumns("tenant_id", "field_key"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "inconsistent columns") {
+		t.Fatalf("expected inconsistent columns error, got: %v", err)
+	}
+}
+
+func TestReplaceNestedCollectionMySQLBuildsOrderedPlan(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.MySQLDialect{})
+	exec.lastInsertID = 101
+
+	tenantID := "tenant-1"
+	tableID := int64(7)
+	rows := []nestedDocumentRow{
+		{TenantID: tenantID, TableID: tableID, StableRowKey: "r1", Position: 0},
+		{TenantID: tenantID, TableID: tableID, StableRowKey: "r2", Position: 1},
+	}
+
+	result, err := ReplaceNestedCollection[nestedDocumentTable, nestedDocumentRow, nestedDocumentCell](
+		context.Background(),
+		db,
+		NestedCollectionReplace[nestedDocumentTable, nestedDocumentRow, nestedDocumentCell]{
+			Parent: nestedDocumentTable{ID: tableID, TenantID: tenantID, Title: "Hours", Revision: 2},
+			ParentOpts: []WriteOpt{
+				WherePK(),
+				UpdateColumns("tenant_id", "title", "revision"),
+			},
+			DeleteBefore: []NestedDelete{
+				{Table: "document_table_cells", Scopes: []Scope{TenantScope(tenantID), nestedWhere("table_id", tableID)}},
+				{Table: "document_table_rows", Scopes: []Scope{TenantScope(tenantID), nestedWhere("table_id", tableID)}},
+			},
+			Children:      rows,
+			ChildIDColumn: "id",
+			AssignChildID: func(index int, id int64) {
+				rows[index].ID = id
+			},
+			Grandchildren: func(index int, row nestedDocumentRow, rowID int64) ([]nestedDocumentCell, error) {
+				return []nestedDocumentCell{{
+					TenantID:      row.TenantID,
+					TableID:       row.TableID,
+					RowID:         rowID,
+					StableCellKey: row.StableRowKey + ":c1",
+					ValueJSON:     `{"text":"ok"}`,
+				}}, nil
+			},
+			GrandchildMode: NestedWriteUpsert,
+			GrandchildOpts: []WriteOpt{
+				ConflictColumns("tenant_id", "table_id", "stable_cell_key"),
+				UpdateColumns("row_id", "value_json"),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("replace nested collection: %v", err)
+	}
+	if !reflect.DeepEqual(result.ChildIDs, []int64{101, 102}) {
+		t.Fatalf("unexpected child ids: %#v", result.ChildIDs)
+	}
+	if rows[0].ID != 101 || rows[1].ID != 102 {
+		t.Fatalf("assign child id did not update rows: %+v", rows)
+	}
+	if result.GrandchildCount != 2 {
+		t.Fatalf("expected two grandchildren, got %d", result.GrandchildCount)
+	}
+	if len(exec.statements) != 5 {
+		t.Fatalf("expected 5 statements, got %d: %#v", len(exec.statements), exec.statements)
+	}
+	wantFragments := []string{
+		"INSERT INTO `document_tables`",
+		"DELETE FROM `document_table_cells`",
+		"DELETE FROM `document_table_rows`",
+		"INSERT INTO `document_table_rows`",
+		"INSERT INTO `document_table_cells`",
+	}
+	for i, want := range wantFragments {
+		if !strings.Contains(exec.statements[i].query, want) {
+			t.Fatalf("statement %d should contain %q, got: %s", i, want, exec.statements[i].query)
+		}
+	}
+	if !strings.Contains(exec.statements[0].query, "ON DUPLICATE KEY UPDATE") {
+		t.Fatalf("parent should be upserted, got: %s", exec.statements[0].query)
+	}
+	if strings.Contains(exec.statements[3].query, "`id`") {
+		t.Fatalf("child insert should omit generated id, got: %s", exec.statements[3].query)
+	}
+	if !strings.Contains(exec.statements[4].query, "ON DUPLICATE KEY UPDATE") {
+		t.Fatalf("grandchildren should be upserted, got: %s", exec.statements[4].query)
+	}
+	if !hasArg(exec.statements[4].args, int64(101)) || !hasArg(exec.statements[4].args, int64(102)) {
+		t.Fatalf("grandchild args should include generated row ids, got: %#v", exec.statements[4].args)
+	}
+}
+
+func TestReplaceNestedCollectionPostgresCollectsChildIDsWithReturning(t *testing.T) {
+	db, mock := newReturningMockDB(t)
+	sqlText := `INSERT INTO "document_table_rows" ("tenant_id", "table_id", "stable_row_key", "position") VALUES ($1, $2, $3, $4), ($5, $6, $7, $8) RETURNING "id"`
+	mock.ExpectQuery(regexp.QuoteMeta(sqlText)).
+		WithArgs("tenant-1", int64(7), "r1", 0, "tenant-1", int64(7), "r2", 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(201).AddRow(202))
+
+	rows := []nestedDocumentRow{
+		{TenantID: "tenant-1", TableID: 7, StableRowKey: "r1", Position: 0},
+		{TenantID: "tenant-1", TableID: 7, StableRowKey: "r2", Position: 1},
+	}
+	var assigned []int64
+	result, err := ReplaceNestedCollection[struct{}, nestedDocumentRow, struct{}](
+		context.Background(),
+		db,
+		NestedCollectionReplace[struct{}, nestedDocumentRow, struct{}]{
+			SkipParent:    true,
+			Children:      rows,
+			ChildIDColumn: "id",
+			AssignChildID: func(_ int, id int64) {
+				assigned = append(assigned, id)
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("replace nested collection postgres: %v", err)
+	}
+	if !reflect.DeepEqual(result.ChildIDs, []int64{201, 202}) {
+		t.Fatalf("unexpected child ids: %#v", result.ChildIDs)
+	}
+	if !reflect.DeepEqual(assigned, []int64{201, 202}) {
+		t.Fatalf("unexpected assigned ids: %#v", assigned)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestReplaceNestedCollectionRejectsChildIDCollectionForUpsert(t *testing.T) {
+	db, _ := newCaptureWriteDB(driver.MySQLDialect{})
+
+	_, err := ReplaceNestedCollection[struct{}, nestedDocumentRow, struct{}](
+		context.Background(),
+		db,
+		NestedCollectionReplace[struct{}, nestedDocumentRow, struct{}]{
+			SkipParent:    true,
+			Children:      []nestedDocumentRow{{TenantID: "tenant-1", TableID: 7, StableRowKey: "r1"}},
+			ChildMode:     NestedWriteUpsert,
+			ChildIDColumn: "id",
+			AssignChildID: func(int, int64) {},
+			ChildOpts:     []WriteOpt{ConflictColumns("tenant_id", "table_id", "stable_row_key")},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "nested child IDs can only be collected") {
+		t.Fatalf("expected child id collection error, got: %v", err)
 	}
 }
 

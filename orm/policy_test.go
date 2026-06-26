@@ -3,7 +3,7 @@ package orm
 import (
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 type policyUser struct{}

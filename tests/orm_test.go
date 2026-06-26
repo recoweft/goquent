@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/recoweft/goquent/orm"
 )
 
 type User struct {

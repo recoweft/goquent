@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/manifest"
-	"github.com/faciam-dev/goquent/orm/migration"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 type stringListFlag []string
@@ -38,6 +38,8 @@ func runManifest(args []string, stdout, stderr io.Writer) int {
 			return runManifestVerify(args[1:], stdout, stderr)
 		case "diff":
 			return runManifestVerify(args[1:], stdout, stderr)
+		case "repository", "repo", "skeleton":
+			return runManifestRepository(args[1:], stdout, stderr)
 		case "-h", "--help", "help":
 			printManifestUsage(stdout)
 			return 0
@@ -93,6 +95,47 @@ func runManifestSchema(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if _, err := stdout.Write(append(b, '\n')); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	return 0
+}
+
+func runManifestRepository(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("goquent manifest repository", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	manifestPath := fs.String("manifest", "", "manifest JSON path")
+	tableName := fs.String("table", "", "table name to generate")
+	packageName := fs.String("package", "repository", "Go package name for generated code")
+	rowType := fs.String("row-type", "", "generated row struct name")
+	repositoryType := fs.String("repository-type", "", "generated repository type name")
+	fs.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: goquent manifest repository --manifest goquent.manifest.json --table users [flags]")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*manifestPath) == "" {
+		fmt.Fprintln(stderr, "goquent manifest repository requires --manifest")
+		return 2
+	}
+	m, err := manifest.Load(*manifestPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	src, err := manifest.GenerateRepositorySkeleton(m, manifest.RepositorySkeletonOptions{
+		PackageName:        *packageName,
+		TableName:          *tableName,
+		RowTypeName:        *rowType,
+		RepositoryTypeName: *repositoryType,
+	})
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	if _, err := stdout.Write(src); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
@@ -307,4 +350,5 @@ func printManifestUsage(w io.Writer) {
 	fmt.Fprintln(w, "  manifest schema   print the manifest JSON Schema")
 	fmt.Fprintln(w, "  manifest verify   verify a stored manifest against current inputs")
 	fmt.Fprintln(w, "  manifest diff     alias of verify for fingerprint diffs")
+	fmt.Fprintln(w, "  manifest repository generate a repository skeleton from a manifest table")
 }

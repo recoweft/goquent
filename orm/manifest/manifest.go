@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/internal/stringutil"
-	"github.com/faciam-dev/goquent/orm/migration"
-	"github.com/faciam-dev/goquent/orm/model"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/internal/stringutil"
+	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/model"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 const (

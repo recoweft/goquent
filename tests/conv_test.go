@@ -3,7 +3,7 @@ package tests
 import (
 	"testing"
 
-	"github.com/faciam-dev/goquent/orm/conv"
+	"github.com/recoweft/goquent/orm/conv"
 )
 
 func TestValue(t *testing.T) {

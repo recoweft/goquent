@@ -3,7 +3,7 @@
 # model
 
 ```go
-import "github.com/faciam-dev/goquent/orm/model"
+import "github.com/recoweft/goquent/orm/model"
 ```
 
 ## Index
@@ -12,7 +12,7 @@ import "github.com/faciam-dev/goquent/orm/model"
 
 
 <a name="TableName"></a>
-## func [TableName](<https://github.com/faciam-dev/goquent/blob/main/orm/model/model.go#L61>)
+## func [TableName](<https://github.com/recoweft/goquent/blob/main/orm/model/model.go#L61>)
 
 ```go
 func TableName(v any) string

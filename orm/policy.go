@@ -3,8 +3,8 @@ package orm
 import (
 	"strings"
 
-	"github.com/faciam-dev/goquent/orm/model"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/model"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 // ModelPolicyBuilder registers table policy metadata for a model/table.

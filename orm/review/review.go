@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/faciam-dev/goquent/orm/manifest"
-	"github.com/faciam-dev/goquent/orm/migration"
-	"github.com/faciam-dev/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/query"
 )
 
 // Finding is a review finding emitted by goquent review.
@@ -56,6 +56,7 @@ type ReviewReport struct {
 type Options struct {
 	Paths                []string
 	ShowSuppressed       bool
+	ConfigPath           string
 	ManifestPath         string
 	RequireFreshManifest bool
 	CurrentManifest      *manifest.Manifest
@@ -74,6 +75,7 @@ func Run(opts Options) (ReviewReport, error) {
 
 	var report ReviewReport
 	var errs []error
+	var reviewedFiles []string
 	if strings.TrimSpace(opts.ManifestPath) != "" || opts.RequireFreshManifest {
 		findings, status, err := reviewManifestFreshness(opts)
 		if err != nil {
@@ -90,6 +92,7 @@ func Run(opts Options) (ReviewReport, error) {
 			errs = append(errs, err)
 			continue
 		}
+		reviewedFiles = append(reviewedFiles, files...)
 		for _, file := range files {
 			findings, err := reviewFile(ctx, file)
 			if err != nil {
@@ -108,6 +111,7 @@ func Run(opts Options) (ReviewReport, error) {
 			}
 		}
 	}
+	report.Findings = append(report.Findings, lintConfigSuppressions(opts.ConfigPath, opts.ConfigSuppressions, reviewedFiles, report.SuppressedFindings)...)
 	report.Summary = summarize(report)
 	return report, errors.Join(errs...)
 }
@@ -329,7 +333,7 @@ func reviewPlanJSONFile(ctx reviewContext, path string) ([]Finding, error) {
 	if len(warnings) == 0 {
 		warnings = result.Warnings
 	}
-	findings := warningsToFindings(warnings, query.AnalysisPrecise, &query.SourceLocation{File: path, Line: 1})
+	findings := findingsFromPlanWarnings(&plan, warnings, query.AnalysisPrecise, &query.SourceLocation{File: path, Line: 1})
 	for _, finding := range warningsToFindings(plan.SuppressedWarnings, query.AnalysisPrecise, &query.SourceLocation{File: path, Line: 1}) {
 		finding.Suppressed = true
 		findings = append(findings, finding)
@@ -361,7 +365,43 @@ func findingsFromPlan(plan *query.QueryPlan, precision query.AnalysisPrecision, 
 	if plan == nil {
 		return nil
 	}
-	return warningsToFindings(plan.Warnings, precision, loc)
+	return findingsFromPlanWarnings(plan, plan.Warnings, precision, loc)
+}
+
+func findingsFromPlanWarnings(plan *query.QueryPlan, warnings []query.Warning, precision query.AnalysisPrecision, loc *query.SourceLocation) []Finding {
+	findings := warningsToFindings(warnings, precision, loc)
+	if len(findings) == 0 || plan == nil {
+		return findings
+	}
+	evidence := planEvidence(plan)
+	if len(evidence) == 0 {
+		return findings
+	}
+	for i := range findings {
+		if findings[i].Code == query.WarningRawSQLUsed || plan.Operation == query.OperationRaw {
+			findings[i].Evidence = append(findings[i].Evidence, evidence...)
+		}
+	}
+	return findings
+}
+
+func planEvidence(plan *query.QueryPlan) []query.Evidence {
+	var evidence []query.Evidence
+	if plan.Approval != nil && strings.TrimSpace(plan.Approval.Reason) != "" {
+		evidence = append(evidence, query.Evidence{Key: "approval_reason", Value: plan.Approval.Reason})
+	}
+	var tables []string
+	for _, table := range plan.Tables {
+		name := strings.TrimSpace(table.Name)
+		if name == "" {
+			continue
+		}
+		tables = append(tables, name)
+	}
+	if len(tables) > 0 {
+		evidence = append(evidence, query.Evidence{Key: "touched_tables", Value: tables})
+	}
+	return evidence
 }
 
 func warningsToFindings(warnings []query.Warning, precision query.AnalysisPrecision, loc *query.SourceLocation) []Finding {
