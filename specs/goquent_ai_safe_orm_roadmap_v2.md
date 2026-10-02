@@ -66,6 +66,55 @@ README and user-facing docs must follow this rule:
 
 ---
 
+### 0.4 Implementation audit (GQ-AI-01/PR1)
+
+Audited against main `8c41e211336c97f9f33c950b3ebc302df05b90e3` for
+[Issue #52](https://github.com/recoweft/goquent/issues/52).
+The task checkboxes below are historical planning lists, not a live completion
+ledger. This audit and [contracts v3](goquent_ai_contracts_v3.md) distinguish the
+current implementation from required future guarantees. “Implemented” applies
+only to the named feature, not its entire phase or all database entry points.
+Test execution outcomes are recorded separately in the PR/report.
+
+| Phase / feature | Status | Source/test evidence and remaining gap |
+| --- | --- | --- |
+| 1: QueryPlan structs, SQL/params, JSON/text output, non-executing DSL SELECT/INSERT/UPDATE/DELETE plans | Implemented | `orm/query/plan.go`, `query.go`, `plan_test.go`; plan snapshot and recording-executor assertions exist |
+| 1: Every execution uses the same complete plan | Partial | Query terminals generally plan/gate; generic writes in `orm/write.go` bypass QueryPlan; PostgreSQL InsertGetId omits gate, scoped RETURNING appends SQL after checking. GQ-AI-04/05 |
+| 1: Semantic metadata for all expressions/subqueries and versioned executable plans | Partial | Builder snapshots and flat PredicateRef exist; no complete condition proof or operation/version/executor binding. GQ-AI-02/05 |
+| 2: Built-in risk rules, block checks, reason/expiry approval, inline/API suppression | Implemented | `orm/query/risk.go`, `suppression.go`, `risk_test.go`; structural heuristics only, not external authorization |
+| 2: Configurable review rules/suppressions | Implemented | `orm/review/config.go`, `suppression_lint.go`, CLI config handling/tests; JSON review config exists, the unified YAML draft in section 9 does not |
+| 2: Fail-closed Strict profile and trusted high-risk external permission | Unimplemented | Gate consumes mutable plan fields/reason; no unified Strict profile/provider. GQ-AI-03/05/13 |
+| 3: Policy declaration, registry, soft-delete defaults, PII and required-column diagnostics | Implemented | `orm/policy.go`, `orm/query/policy.go`, corresponding policy tests; policy applicability excludes INSERT and raw operations |
+| 3: Tenant value/condition proofs, DB-isolated policy and uniform enforcement | Partial | Global registry and column-presence checks; values/OR/NOT/conflict branches not proved. GQ-AI-02/03/04 |
+| 4: CLI review of Go/SQL/plan JSON, pretty/JSON/GitHub output, manifest/precision gates | Implemented | `orm/review/*`, `cmd/goquent/main.go` and tests; current-input manifest gate rejects missing/unverified context |
+| 4: Type-aware exhaustive static review | Partial | `orm/review/go.go` matches AST method/chain shapes, not complete receiver identity/data flow; plan JSON may retain supplied warnings. GQ-AI-05/09 |
+| 4: Baseline adoption and SARIF | Unimplemented | No implemented baseline flag; `TestReviewCommandRejectsBadFormat` rejects SARIF. These remain optional future features, not new PR1 work |
+| 5: Migration SQL/step plans, schema diff, risk, dry-run/apply, live schema/status/drift/backfill guidance | Implemented | `orm/migration/{plan,parser,schema,schema_read,status,drift,review_mode}.go`, tests and CLI; apply is human-controlled |
+| 5: Complete dialect/schema semantics and verified preflight evidence | Partial | Supported parser/schema shapes and textual guidance do not prove arbitrary migration/data effects or evidence authenticity. GQ-AI-11 |
+| 6: Manifest v1, schema/policy/code/database fingerprints, load/validate/verify | Implemented | `orm/manifest/*`, tests, `examples/ai-safe-orm/goquent.manifest.json`; verification compares supplied inputs |
+| 6: Uniform freshness/trust and public-data sanitization | Partial | Review fresh gate exists; OperationSpec accepts absent attached verification; serialization is not a universally redacted public view. GQ-AI-03/05/06/07/11 |
+| 7: Narrow read-only OperationSpec, schema, manifest fields/filter/PII/ref checks and compiler | Implemented | `orm/operation/{spec,schema}.go`, `spec_test.go`, CLI/example; unknown value_ref rejected |
+| 7: Complete typed values, trusted tenant binding and structured diagnostics | Partial | Field/operator/ref presence checks are not full type or tenant-equality proof. GQ-AI-02/03/07 |
+| 8: Read-only MCP resources/tools/prompts and exposure allowlists | Implemented | `orm/mcp/{server,jsonrpc}.go`, tests; fixture/skeleton tools return content; explain_query is not live EXPLAIN |
+| 8: Sensitive metadata masking across all public output | Unimplemented | Manifest/plan/reason/evidence output is not a separate sanitized non-executable representation. GQ-AI-06 |
+| 9: Guides, example, playbook and PR review template | Implemented | `docs/`, `examples/ai-safe-orm/`, `.github/PULL_REQUEST_TEMPLATE/goquent-database-review.md` |
+| 9: Examples/release gates proving all new contracts | Partial | Existing examples show MVP paths; Strict, CRUD parity and new case guarantees require GQ-AI-14 after 01–13 |
+| Cross-cutting typed-column/update code generation | Unimplemented | Generic helpers/model metadata exist, not the typed column API sketches. GQ-AI-08 |
+| Cross-cutting idempotency, hooks, nested writes and row expectations | Partial | `orm/{write,idempotency,transaction_hooks,nested_write}.go` and tests implement recipes; no unified replay/cardinality/atomicity operation contract. GQ-AI-04/10 |
+| Cross-cutting measured performance plans and query observation | Unimplemented | QueryPlan has EstimatedRows/UsesIndex fields, not a general live EXPLAIN/observation pipeline. GQ-AI-12 |
+
+MySQL and PostgreSQL are both supported now; PostgreSQL is not a future extension.
+The actual repository is an ORM/library and CLI (`orm/`, `cmd/goquent/`, `tests/`),
+not an application with domain/usecase layers under a root `internal/`. The builder
+is internal to `orm`. `go.mod` declares Go 1.25.0 with toolchain go1.26.4;
+CI bootstraps 1.25.9 and runs both MySQL 8 and PostgreSQL 16. See the corrected
+[AGENT.MD](../AGENT.MD) for dependencies and development rules.
+
+PR1 adds documentation only. PR2 shared fixtures wait for PR1's main merge;
+new runtime safety tests belong to their owning issue. Existing unchecked lists,
+reason-based approvals and API sketches must not be advertised as current Strict
+guarantees. Compatibility changes and common case IDs are tracked in contracts v3.
+
 ## 1. Vision
 
 Goquent は、単なる CRUD ORM ではなく、**AI が生成した DB 操作を、型安全・説明可能・検証可能・承認可能にする ORM** を目指す。
@@ -1166,7 +1215,7 @@ baseline は新規 warning を見逃すためではなく、段階的導入の�
 A CLI flag is a current documented feature only when it is implemented, validated by tests, and
 shown in examples.
 
-- `goquent review --config` is future/reserved until config loading and validation are fully implemented.
+- `goquent review --config` currently loads JSON review configuration (manifest defaults, risk/precision gates, rule overrides and suppressions); see section 0.4. This is not the unified YAML configuration draft in section 9.
 - `goquent review --write-baseline` is optional/future and must not appear in the README main path until its adoption rules are specified.
 - SARIF output is optional/future unless implemented and tested. Even when implemented, it belongs in CI docs rather than the README primary path.
 
@@ -2293,9 +2342,10 @@ Manifest Verification
 
 ## 11.1 SQL dialect
 
-- PostgreSQL first でよいか
-- MySQL / SQLite をどの phase で対応するか
-- dialect ごとの risk rule をどう分けるか
+- MySQL and PostgreSQL are already implemented; preserve both dialects.
+- SQLite remains outside the current support contract.
+- Future semantic risk rules must preserve dialect-specific limits and compare
+  equivalent operation meaning rather than requiring identical SQL (contracts v3).
 
 ## 11.2 Query metadata extraction
 
