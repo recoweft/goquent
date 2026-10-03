@@ -710,7 +710,7 @@ func staticFinding(code string, level query.RiskLevel, message, hint string, loc
 }
 
 func sourceLocation(fset *token.FileSet, path string, pos token.Pos) *query.SourceLocation {
-	p := fset.Position(pos)
+	p := fset.PositionFor(pos, false)
 	return &query.SourceLocation{File: path, Line: p.Line, Column: p.Column}
 }
 
