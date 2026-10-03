@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -454,8 +456,11 @@ func applyFileSuppressions(ctx reviewContext, path string, findings []Finding) (
 		return findings, nil
 	}
 
+	return applyReviewSuppressions(findings, suppressions, time.Now().UTC()), nil
+}
+
+func applyReviewSuppressions(findings []Finding, suppressions []query.Suppression, now time.Time) []Finding {
 	var out []Finding
-	now := time.Now().UTC()
 	for _, finding := range findings {
 		suppression, ok := findSuppressionForFinding(finding, suppressions)
 		if !ok {
@@ -476,7 +481,7 @@ func applyFileSuppressions(ctx reviewContext, path string, findings []Finding) (
 		finding.Suppression = &suppression
 		out = append(out, finding)
 	}
-	return out, nil
+	return out
 }
 
 func suppressionsForFile(path string) ([]query.Suppression, error) {
@@ -484,19 +489,40 @@ func suppressionsForFile(path string) ([]query.Suppression, error) {
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(string(b), "\n")
 	var suppressions []query.Suppression
-	for i, line := range lines {
-		suppression, ok, err := query.ParseInlineSuppression(line)
+	parseComment := func(text string, startLine int) error {
+		for i, line := range strings.Split(text, "\n") {
+			suppression, ok, err := query.ParseInlineSuppression(line)
+			if err != nil {
+				return fmt.Errorf("%s:%d: %w", path, startLine+i, err)
+			}
+			if ok {
+				suppression.Location = &query.SourceLocation{File: path, Line: startLine + i}
+				suppressions = append(suppressions, suppression)
+			}
+		}
+		return nil
+	}
+	if strings.EqualFold(filepath.Ext(path), ".go") {
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, path, b, parser.ParseComments)
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
-			continue
+		for _, group := range file.Comments {
+			for _, comment := range group.List {
+				text := comment.Text
+				if strings.HasPrefix(text, "/*") {
+					text = strings.TrimSuffix(strings.TrimPrefix(text, "/*"), "*/")
+				}
+				// Physical positions keep //line directives from moving suppressions.
+				if err := parseComment(text, fset.PositionFor(comment.Pos(), false).Line); err != nil {
+					return nil, err
+				}
+			}
 		}
-		lineNo := i + 1
-		suppression.Location = &query.SourceLocation{File: path, Line: lineNo}
-		suppressions = append(suppressions, suppression)
+	} else if err := parseComment(string(b), 1); err != nil {
+		return nil, err
 	}
 	return suppressions, nil
 }
