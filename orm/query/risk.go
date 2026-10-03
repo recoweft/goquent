@@ -409,14 +409,14 @@ func selectIsAggregateOnly(plan *QueryPlan) bool {
 }
 
 func hasNoPredicate(plan *QueryPlan) bool {
-	return len(plan.Predicates) == 0 && !strings.Contains(strings.ToUpper(plan.SQL), " WHERE ")
+	return len(inspectionPredicates(plan)) == 0 && !strings.Contains(strings.ToUpper(plan.SQL), " WHERE ")
 }
 
 func hasPrimaryKeyLikePredicate(plan *QueryPlan) bool {
 	if hasMetadataNarrowPredicate(plan) {
 		return true
 	}
-	for _, predicate := range plan.Predicates {
+	for _, predicate := range inspectionPredicates(plan) {
 		col := strings.ToLower(strings.TrimSpace(predicate.Column))
 		col = strings.Trim(col, "`\"")
 		if col == "id" || strings.HasSuffix(col, ".id") {
@@ -449,8 +449,8 @@ func hasMetadataNarrowPredicate(plan *QueryPlan) bool {
 }
 
 func predicateColumnSet(plan *QueryPlan) map[string]struct{} {
-	out := make(map[string]struct{}, len(plan.Predicates)*2)
-	for _, predicate := range plan.Predicates {
+	out := make(map[string]struct{}, len(inspectionPredicates(plan))*2)
+	for _, predicate := range inspectionPredicates(plan) {
 		addPredicateColumn(out, predicate.Column)
 		addPredicateColumn(out, predicate.ValueColumn)
 	}
@@ -488,7 +488,7 @@ func hasWeakPredicate(plan *QueryPlan) bool {
 	if normalizedContainsWeakPredicate(plan.SQL) {
 		return true
 	}
-	for _, predicate := range plan.Predicates {
+	for _, predicate := range inspectionPredicates(plan) {
 		if normalizedContainsWeakPredicate(predicate.Raw) {
 			return true
 		}

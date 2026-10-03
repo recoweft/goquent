@@ -1,10 +1,22 @@
 package structs
 
+import "github.com/recoweft/goquent/orm/internal/valuecopy"
+
 func CloneQuery(q *Query) *Query {
 	if q == nil {
 		return nil
 	}
+	if err := ValidateQuery(q); err != nil {
+		return &Query{PredicateError: err}
+	}
 	out := *q
+	out.WhereTree = valuecopy.Node(q.WhereTree)
+	out.HavingTree = valuecopy.Node(q.HavingTree)
+	out.Unions = make([]Union, len(q.Unions))
+	for i, u := range q.Unions {
+		out.Unions[i] = u
+		out.Unions[i].Query = CloneQuery(u.Query)
+	}
 	out.Columns = cloneColumnsPtr(q.Columns)
 	out.Joins = CloneJoins(q.Joins)
 	out.ConditionGroups = cloneWhereGroups(q.ConditionGroups)
@@ -71,6 +83,7 @@ func cloneWhereGroups(groups []WhereGroup) []WhereGroup {
 
 func cloneWhere(where Where) Where {
 	out := where
+	out.Nested = cloneWhereGroups(where.Nested)
 	out.Value = cloneInterfaces(where.Value)
 	out.ValueMap = cloneAnyMap(where.ValueMap)
 	out.Query = CloneQuery(where.Query)
@@ -87,6 +100,8 @@ func cloneWhereBetween(v *WhereBetween) *WhereBetween {
 		return nil
 	}
 	out := *v
+	out.From, _ = valuecopy.Copy(v.From)
+	out.To, _ = valuecopy.Copy(v.To)
 	return &out
 }
 
@@ -123,6 +138,7 @@ func cloneJSONLength(v *JsonLength) *JsonLength {
 		return nil
 	}
 	out := *v
+	out.Value, _ = valuecopy.Copy(v.Value)
 	return &out
 }
 
@@ -161,6 +177,9 @@ func cloneOnPtr(ons *[]On) *[]On {
 	}
 	out := make([]On, len(*ons))
 	copy(out, *ons)
+	for i := range out {
+		out[i].Value, _ = valuecopy.Copy(out[i].Value)
+	}
 	return &out
 }
 
@@ -197,6 +216,9 @@ func cloneHavingPtr(having *[]Having) *[]Having {
 	}
 	out := make([]Having, len(*having))
 	copy(out, *having)
+	for i := range out {
+		out[i].Value, _ = valuecopy.Copy(out[i].Value)
+	}
 	return &out
 }
 
@@ -225,7 +247,7 @@ func cloneAnyMap(src map[string]any) map[string]any {
 	}
 	out := make(map[string]any, len(src))
 	for k, v := range src {
-		out[k] = v
+		out[k], _ = valuecopy.Copy(v)
 	}
 	return out
 }
@@ -236,7 +258,7 @@ func cloneInterfaceMap(src map[string]interface{}) map[string]interface{} {
 	}
 	out := make(map[string]interface{}, len(src))
 	for k, v := range src {
-		out[k] = v
+		out[k], _ = valuecopy.Copy(v)
 	}
 	return out
 }
@@ -250,11 +272,4 @@ func cloneStrings(src []string) []string {
 	return out
 }
 
-func cloneInterfaces(src []interface{}) []interface{} {
-	if src == nil {
-		return nil
-	}
-	out := make([]interface{}, len(src))
-	copy(out, src)
-	return out
-}
+func cloneInterfaces(src []interface{}) []interface{} { return valuecopy.Slice(src) }

@@ -326,7 +326,7 @@ func hasPredicateColumn(plan *QueryPlan, column string) bool {
 func hasPolicyPredicateColumn(plan *QueryPlan, table, column string, allowUnqualified bool) bool {
 	target := normalizeColumnName(column)
 	qualifiers := tableQualifierSet(plan, table)
-	for _, predicate := range plan.Predicates {
+	for _, predicate := range inspectionPredicates(plan) {
 		if predicateColumnMatches(predicate.Column, target, qualifiers, allowUnqualified) {
 			return true
 		}

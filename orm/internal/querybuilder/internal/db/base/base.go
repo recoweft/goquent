@@ -58,6 +58,11 @@ func (BaseQueryBuilder) Lock(sb *[]byte, lock *structs.Lock) {
 
 // Build builds the query.
 func (m BaseQueryBuilder) Build(sb *[]byte, q *structs.Query, number int, unions *[]structs.Union) ([]interface{}, error) {
+	if err := structs.ValidateQuery(q); err != nil {
+		return nil, err
+	}
+	q.WhereTree = nil
+	q.HavingTree = nil
 	values := make([]interface{}, 0)
 
 	// SELECT
@@ -77,14 +82,16 @@ func (m BaseQueryBuilder) Build(sb *[]byte, q *structs.Query, number int, unions
 	values = append(values, joinValues...)
 
 	// WHERE
-	whereValues, err := m.Where(sb, q.ConditionGroups)
+	whereValues, tree, err := RenderPredicates(sb, q.ConditionGroups, len(values), m.WhereBaseBuilder.RenderLeaf)
+	q.WhereTree = tree
 	if err != nil {
 		return []interface{}{}, err
 	}
 	values = append(values, whereValues...)
 
 	// GROUP BY / HAVING
-	groupByValues := m.GroupBy(sb, q.Group)
+	groupByValues, tree := m.GroupBySnapshot(sb, q.Group, len(values))
+	q.HavingTree = tree
 	values = append(values, groupByValues...)
 
 	// ORDER BY

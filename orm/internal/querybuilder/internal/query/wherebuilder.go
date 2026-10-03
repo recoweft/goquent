@@ -1,6 +1,7 @@
 package query
 
 import (
+	"github.com/recoweft/goquent/orm/predicate"
 	"time"
 
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/common/consts"
@@ -10,6 +11,7 @@ import (
 )
 
 type WhereBuilder[T any] struct {
+	depth     int
 	dbBuilder interfaces.QueryBuilderStrategy
 	query     *structs.Query
 	parent    *T
@@ -110,6 +112,7 @@ func (b *WhereBuilder[T]) whereOrOrWhereQuery(column string, condition string, q
 	*q.WhereBuilder.query.Conditions = []structs.Where{}
 
 	sq := &structs.Query{
+		PredicateError:  q.WhereBuilder.query.PredicateError,
 		ConditionGroups: q.WhereBuilder.query.ConditionGroups,
 		Table:           structs.Table{Name: q.selectQuery.Table},
 		Columns:         q.selectQuery.Columns,
@@ -161,25 +164,30 @@ func (b *WhereBuilder[T]) OrWhereNot(fn func(b *WhereBuilder[T])) *T {
 
 // addWhereGroup adds a where group with the specified operator
 func (b *WhereBuilder[T]) addWhereGroup(fn func(b *WhereBuilder[T]), operator int, isNot bool) *T {
-	if len(*b.query.Conditions) > 0 {
-		b.query.ConditionGroups = append(b.query.ConditionGroups, structs.WhereGroup{
-			Conditions:   *b.query.Conditions,
-			Operator:     operator,
-			IsDummyGroup: true,
-			IsNot:        false,
-		})
-		*b.query.Conditions = []structs.Where{}
+	if b.depth >= predicate.MaxDepth {
+		b.query.PredicateError = predicate.ErrDepth
+		return b.parent
 	}
-
-	fn(b)
-
-	b.query.ConditionGroups = append(b.query.ConditionGroups, structs.WhereGroup{
-		Conditions: *b.query.Conditions,
-		Operator:   operator,
-		IsNot:      isNot,
-	})
-	*b.query.Conditions = []structs.Where{}
-
+	parent := b.query
+	child := &structs.Query{Conditions: &[]structs.Where{}}
+	b.query = child
+	b.depth++
+	// Use the same callback wrapper, but isolate its clause storage. This also
+	// preserves nested group callbacks which previously flattened into the parent.
+	func() { defer func() { b.query = parent; b.depth-- }(); fn(b) }()
+	if child.PredicateError != nil {
+		parent.PredicateError = child.PredicateError
+	}
+	if len(*child.Conditions) > 0 {
+		child.ConditionGroups = append(child.ConditionGroups, structs.WhereGroup{Conditions: *child.Conditions, IsDummyGroup: true})
+	}
+	if len(*parent.Conditions) > 0 {
+		parent.ConditionGroups = append(parent.ConditionGroups, structs.WhereGroup{Conditions: *parent.Conditions, IsDummyGroup: true})
+		*parent.Conditions = nil
+	}
+	if len(child.ConditionGroups) > 0 {
+		parent.ConditionGroups = append(parent.ConditionGroups, structs.WhereGroup{Conditions: []structs.Where{{Nested: child.ConditionGroups}}, Operator: operator, IsNot: isNot})
+	}
 	return b.parent
 }
 
@@ -305,6 +313,7 @@ func (b *WhereBuilder[T]) addWhereInSubQuery(column string, operator int, condit
 	*q.WhereBuilder.query.Conditions = []structs.Where{}
 
 	sq := &structs.Query{
+		PredicateError:  q.WhereBuilder.query.PredicateError,
 		ConditionGroups: q.WhereBuilder.query.ConditionGroups,
 		Table:           structs.Table{Name: q.selectQuery.Table},
 		Columns:         q.selectQuery.Columns,
@@ -514,6 +523,7 @@ func (b *WhereBuilder[T]) addWhereExists(fn func(aq *SelectBuilder), condition s
 	*nb.WhereBuilder.query.Conditions = []structs.Where{}
 
 	sq := &structs.Query{
+		PredicateError:  nb.WhereBuilder.query.PredicateError,
 		ConditionGroups: nb.WhereBuilder.query.ConditionGroups,
 		Table:           structs.Table{Name: nb.selectQuery.Table},
 		Columns:         nb.selectQuery.Columns,
@@ -565,6 +575,7 @@ func (b *WhereBuilder[T]) addWhereExistsQuery(q *SelectBuilder, condition string
 	*q.WhereBuilder.query.Conditions = []structs.Where{}
 
 	sq := &structs.Query{
+		PredicateError:  q.WhereBuilder.query.PredicateError,
 		ConditionGroups: q.WhereBuilder.query.ConditionGroups,
 		Table:           structs.Table{Name: q.selectQuery.Table},
 		Columns:         q.selectQuery.Columns,

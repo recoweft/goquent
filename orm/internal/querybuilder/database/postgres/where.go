@@ -24,73 +24,20 @@ func NewWherePostgreSQLBuilder(util interfaces.SQLUtils, wg []structs.WhereGroup
 }
 
 func (wb *WherePostgreSQLBuilder) Where(sb *[]byte, wg []structs.WhereGroup) ([]interface{}, error) {
-	if len(wg) == 0 {
-		return []interface{}{}, nil
+	values, _, err := base.RenderPredicates(sb, wg, 0, wb.RenderLeaf)
+	return values, err
+}
+func (wb *WherePostgreSQLBuilder) RenderLeaf(sb *[]byte, c structs.Where) ([]any, error) {
+	switch {
+	case c.FullText != nil:
+		return wb.ProcessFullText(sb, c)
+	case c.JsonContains != nil:
+		return wb.ProcessJsonContains(sb, c), nil
+	case c.JsonLength != nil:
+		return wb.ProcessJsonLength(sb, c), nil
+	default:
+		return wb.whereBaseBuilder.RenderLeaf(sb, c)
 	}
-
-	// WHERE
-	if wb.whereBaseBuilder.HasCondition(wg) {
-		*sb = append(*sb, " WHERE "...)
-	}
-
-	values := make([]interface{}, 0)
-
-	for i, cg := range wg {
-		if len(cg.Conditions) == 0 {
-			continue
-		}
-
-		if i > 0 {
-			*sb = append(*sb, wb.WhereBaseBuilder.GetConditionGroupSeparator(cg, i)...)
-		}
-
-		*sb = append(*sb, wb.whereBaseBuilder.GetNotSeparator(cg)...)
-		*sb = append(*sb, wb.whereBaseBuilder.GetParenthesesOpen(cg)...)
-
-		for j, c := range cg.Conditions {
-			if j > 0 || (i > 0 && j == 0 && cg.IsDummyGroup) {
-				*sb = append(*sb, wb.whereBaseBuilder.GetConditionOperator(c)...)
-			}
-
-			switch {
-			case c.Query != nil:
-				subQueryValues, err := wb.whereBaseBuilder.ProcessSubQuery(sb, c)
-				if err != nil {
-					return nil, err
-				}
-				values = append(values, subQueryValues...)
-			case c.Exists != nil:
-				existsValues, err := wb.whereBaseBuilder.ProcessExistsQuery(sb, c)
-				if err != nil {
-					return nil, err
-				}
-				values = append(values, existsValues...)
-			case c.Between != nil:
-				values = append(values, wb.whereBaseBuilder.ProcessBetweenCondition(sb, c)...)
-			case c.FullText != nil:
-				v, err := wb.ProcessFullText(sb, c)
-				if err != nil {
-					return nil, err
-				}
-				values = append(values, v...)
-			case c.JsonContains != nil:
-				values = append(values, wb.ProcessJsonContains(sb, c)...)
-			case c.JsonLength != nil:
-				values = append(values, wb.ProcessJsonLength(sb, c)...)
-			case c.Function != "":
-				values = append(values, wb.whereBaseBuilder.ProcessFunction(sb, c)...)
-			default:
-				rawValues, err := wb.whereBaseBuilder.ProcessRawCondition(sb, c)
-				if err != nil {
-					return nil, err
-				}
-				values = append(values, rawValues...)
-			}
-		}
-		*sb = append(*sb, wb.whereBaseBuilder.GetParenthesesClose(cg)...)
-	}
-
-	return values, nil
 }
 
 func (wb *WherePostgreSQLBuilder) ProcessFullText(sb *[]byte, c structs.Where) ([]interface{}, error) {

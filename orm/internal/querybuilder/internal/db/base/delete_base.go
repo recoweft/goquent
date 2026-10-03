@@ -25,6 +25,10 @@ func (m *DeleteBaseBuilder) Delete(q *structs.DeleteQuery) *DeleteBaseBuilder {
 func (m *DeleteBaseBuilder) BuildDelete(q *structs.DeleteQuery) (string, []interface{}, error) {
 	//values := make([]interface{}, 0)
 
+	if err := structs.ValidateQuery(q.Query); err != nil {
+		return "", nil, err
+	}
+	q.Query.WhereTree = nil
 	ptr := poolBytes.Get().(*[]byte)
 	sb := *ptr
 	if len(sb) > 0 {
@@ -57,7 +61,8 @@ func (m *DeleteBaseBuilder) BuildDelete(q *structs.DeleteQuery) (string, []inter
 	// WHERE
 	if len(q.Query.ConditionGroups) > 0 {
 		wb := NewWhereBaseBuilder(m.u, q.Query.ConditionGroups)
-		whereValues, err := wb.Where(&sb, q.Query.ConditionGroups)
+		whereValues, tree, err := RenderPredicates(&sb, q.Query.ConditionGroups, len(values), wb.RenderLeaf)
+		q.Query.WhereTree = tree
 		if err != nil {
 			return "", nil, err
 		}

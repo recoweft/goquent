@@ -47,6 +47,7 @@ func (b *SelectBuilder) ApplyQueryState(q *structs.Query) {
 		clone = &structs.Query{}
 	}
 	b.query = clone
+	b.selectQuery.Union = &clone.Unions
 	b.selectQuery.Table = clone.Table.Name
 	b.selectQuery.Columns = clone.Columns
 	b.selectQuery.Limit = clone.Limit

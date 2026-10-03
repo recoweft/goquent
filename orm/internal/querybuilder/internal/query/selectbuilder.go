@@ -7,9 +7,11 @@ import (
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/common/memutils"
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/common/structs"
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/db/interfaces"
+	"github.com/recoweft/goquent/orm/internal/valuecopy"
 )
 
 type SelectBuilder struct {
+	BuiltQuery  *structs.Query
 	dbBuilder   interfaces.QueryBuilderStrategy
 	query       *structs.Query
 	selectQuery *structs.SelectQuery
@@ -270,70 +272,37 @@ func (b *SelectBuilder) LockForUpdate() *SelectBuilder {
 // It returns the generated query string and a slice of parameter values.
 func (b *SelectBuilder) Build() (string, []interface{}, error) {
 	b.dbBuilder.ResetPlaceholderCounter()
-
-	// last query to be built and add to the union
 	b.buildQuery()
-
-	*b.selectQuery.Union = append(*b.selectQuery.Union, structs.Union{
-		Query: b.query,
-		IsAll: false,
-	})
-
+	if err := structs.ValidateQuery(b.query); err != nil {
+		return "", nil, err
+	}
+	queries := make([]structs.Union, 0, len(*b.selectQuery.Union)+1)
+	for _, u := range *b.selectQuery.Union {
+		if err := structs.ValidateQuery(u.Query); err != nil {
+			return "", nil, err
+		}
+		queries = append(queries, structs.Union{Query: structs.CloneQuery(u.Query), IsAll: u.IsAll})
+	}
+	frozen := structs.CloneQuery(b.query)
+	queries = append(queries, structs.Union{Query: frozen})
 	ptr := bytebufPool.Get().(*[]byte)
-	sb := *ptr
-	if len(sb) > 0 {
-		sb = sb[:0]
-	}
-
-	estimatedSize := consts.StringBuffer_Short_Query_Grow
-	for i := range *b.selectQuery.Union {
-		if len((*b.selectQuery.Union)[i].Query.ConditionGroups) > 1 {
-			estimatedSize += len((*b.selectQuery.Union)[i].Query.ConditionGroups) * consts.StringBuffer_Where_Grow
-		}
-		if len(*(*b.selectQuery.Union)[i].Query.Columns) > 1 {
-			estimatedSize += len(*(*b.selectQuery.Union)[i].Query.Columns) * consts.StringBuffer_Column_Grow
-		}
-		if len(*(*b.selectQuery.Union)[i].Query.Joins.Joins) > 1 || len(*(*b.selectQuery.Union)[i].Query.Joins.JoinClauses) > 1 {
-			estimatedSize += len(*(*b.selectQuery.Union)[i].Query.Joins.Joins) * consts.StringBuffer_Join_Grow
-		}
-	}
-	// grow the buffer if necessary; sb was reset above so no data to preserve
-	if cap(sb) < estimatedSize {
-		sb = make([]byte, 0, estimatedSize)
-	}
-
-	vPtr := interfaceSlicePool.Get().(*[]interface{})
-	values := *vPtr
-	if len(values) > 0 {
-		values = values[0:0]
-	}
-
-	for i := range *b.selectQuery.Union {
-		v, err := b.dbBuilder.Build(&sb, (*b.selectQuery.Union)[i].Query, i, b.selectQuery.Union)
+	sb := (*ptr)[:0]
+	defer func() { memutils.ZeroBytes(sb); *ptr = sb[:0]; bytebufPool.Put(ptr) }()
+	vp := interfaceSlicePool.Get().(*[]interface{})
+	values := (*vp)[:0]
+	defer func() { memutils.ZeroInterfaces(values); *vp = values[:0]; interfaceSlicePool.Put(vp) }()
+	b.BuiltQuery = nil
+	for i, u := range queries {
+		v, err := b.dbBuilder.Build(&sb, u.Query, i, &queries)
 		if err != nil {
 			return "", nil, err
 		}
+		valuecopy.Shift(u.Query.WhereTree, len(values))
+		valuecopy.Shift(u.Query.HavingTree, len(values))
 		values = append(values, v...)
 	}
-
-	query := string(sb)
-
-	retVals := append([]interface{}(nil), values...)
-
-	// remove the last UNION
-	*b.selectQuery.Union = (*b.selectQuery.Union)[:len(*b.selectQuery.Union)-1]
-
-	memutils.ZeroBytes(sb)
-	sb = sb[:0]
-	*ptr = sb
-	bytebufPool.Put(ptr)
-
-	memutils.ZeroInterfaces(values)
-	values = values[:0]
-	*vPtr = values
-	interfaceSlicePool.Put(vPtr)
-
-	return query, retVals, nil
+	b.BuiltQuery = frozen
+	return string(sb), valuecopy.Slice(values), nil
 }
 
 func (b *SelectBuilder) buildQuery() {
@@ -351,6 +320,8 @@ func (b *SelectBuilder) buildQuery() {
 	// preprocess ORDER BY
 	o := b.OrderByBuilder.Order
 
+	b.query.Unions = *b.selectQuery.Union
+	b.query.PredicateError = b.WhereBuilder.query.PredicateError
 	b.query.Table = structs.Table{
 		Name: b.selectQuery.Table,
 	}

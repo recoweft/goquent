@@ -1,5 +1,7 @@
 package structs
 
+import "github.com/recoweft/goquent/orm/predicate"
+
 type Column struct {
 	Name     string
 	Raw      string
@@ -14,6 +16,7 @@ type Table struct {
 }
 
 type Where struct {
+	Nested       []WhereGroup
 	Column       string
 	Condition    string
 	Value        []interface{}
@@ -71,6 +74,10 @@ type WhereGroup struct {
 }
 
 type Query struct {
+	Unions          []Union
+	PredicateError  error
+	WhereTree       *predicate.Node
+	HavingTree      *predicate.Node
 	Columns         *[]Column
 	Table           Table
 	Joins           *Joins

@@ -52,6 +52,11 @@ func (m PostgreSQLQueryBuilder) Upsert(q *structs.InsertQuery) (string, []interf
 
 // Build builds the query.
 func (m PostgreSQLQueryBuilder) Build(sb *[]byte, q *structs.Query, number int, unions *[]structs.Union) ([]interface{}, error) {
+	if err := structs.ValidateQuery(q); err != nil {
+		return nil, err
+	}
+	q.WhereTree = nil
+	q.HavingTree = nil
 	// SELECT
 	*sb = append(*sb, "SELECT "...)
 	colValues, err := m.Select(sb, q.Columns, q.Table.Name, q.Joins)
@@ -68,7 +73,8 @@ func (m PostgreSQLQueryBuilder) Build(sb *[]byte, q *structs.Query, number int, 
 	values = append(values, joinValues...)
 
 	// WHERE
-	whereValues, err := m.Where(sb, q.ConditionGroups)
+	whereValues, tree, err := base.RenderPredicates(sb, q.ConditionGroups, len(values), m.WherePostgreSQLBuilder.RenderLeaf)
+	q.WhereTree = tree
 
 	if err != nil {
 		return []interface{}{}, err
@@ -76,7 +82,8 @@ func (m PostgreSQLQueryBuilder) Build(sb *[]byte, q *structs.Query, number int, 
 	values = append(values, whereValues...)
 
 	// GROUP BY / HAVING
-	groupByValues := m.GroupBy(sb, q.Group)
+	groupByValues, havingTree := m.GroupBySnapshot(sb, q.Group, len(values))
+	q.HavingTree = havingTree
 	values = append(values, groupByValues...)
 
 	// ORDER BY
