@@ -185,6 +185,7 @@ MCP is for schema, policy, manifest, review-rule, and planning context. It can r
 
 ## Documentation
 
+- [Public API inspection inventory and current/future contracts](specs/goquent_ai_contracts_v3.md)
 - [Documentation index](docs/index.md)
 - [AI agent playbook](docs/ai-agent-playbook.md)
 - [AI-safe ORM example](examples/ai-safe-orm)
