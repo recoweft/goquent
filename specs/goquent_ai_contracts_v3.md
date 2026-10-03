@@ -230,6 +230,9 @@ Strict must fail closed. Token/provider API design is left to 13.
 
 ## 4. Shared cases (documentary specification, not new tests)
 
+PR2 adds the [shared case register and validation guide](../tests/contracts/README.md).
+It mirrors this table and distinguishes executable evidence from documentary gaps.
+
 Use stable IDs when follow-up implementations intentionally change a verdict.
 Unless stated otherwise, inputs are Query DSL operations on `users`, default risk
 engine, no suppression/approval, and no policy. For tenant cases use `tenant_id`
@@ -284,6 +287,11 @@ case ID and explanation above.
 | Nested/idempotency/hooks | `tests/nested_write_test.go`; `orm/idempotency_test.go`, `transaction_hooks_test.go` | Arbitrary replay safety, callback atomicity or all MySQL ID allocation modes |
 | Plan JSON and diagnostics | `TestSelectPlanSnapshot`, `TestRunReviewsRawSQLAndQueryPlanJSON`, `TestRunReviewsMigrationPlanJSON`, `TestRunReviewsSuppressedWarningsFromQueryPlanJSON`, `TestWriteJSONAndPretty`; `cmd/goquent/main_test.go` | Versioned executable artifacts or redaction |
 | Manifest/OperationSpec/MCP | `orm/manifest/manifest_test.go`, `orm/operation/spec_test.go`, `orm/mcp/server_test.go`, CLI tests; `examples/ai-safe-orm/*.json` | Trusted tenant context or freshness without current evidence |
+
+The [PR2 compatibility harness](../tests/contracts/compatibility_test.go) reuses the
+example files and connects selected plan/diagnostic/load/verify paths. Its
+[coverage register](../tests/contracts/testdata/cases.json) maps the public API
+families and case IDs to existing tests; mappings alone are not execution evidence.
 
 Plan/diagnostic fixtures are largely inline Go literals/assertions or temporary
 JSON produced by existing tests; there is no separate shared golden-file harness

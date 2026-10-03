@@ -1,0 +1,22 @@
+[
+  {
+    "path": "examples/ai-safe-orm/goquent.manifest.json",
+    "sha256": "c7b01de1f85a9d618784ef75d82eff8b64d6b28fe254a2896924544340dc7457"
+  },
+  {
+    "path": "examples/ai-safe-orm/operation.json",
+    "sha256": "7099256123169d1dc76dd6d9a1ce546a5b98e80f214ed3b83de48786ebeb9801"
+  },
+  {
+    "path": "examples/ai-safe-orm/policies.json",
+    "sha256": "c30c37eb559a1c47b2781870850808516175b51a6ff47391483880494417d31b"
+  },
+  {
+    "path": "examples/ai-safe-orm/schema.json",
+    "sha256": "891519813ea1056a977ac69129db9f4b1096e713201629c2bdc646be26623a00"
+  },
+  {
+    "path": "examples/ai-safe-orm/values.json",
+    "sha256": "0769c4e0cd39793b5e658d8ce6a316e1852388a8c892305211bf56f96eb2e5d5"
+  }
+]

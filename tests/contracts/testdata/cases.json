@@ -1,0 +1,550 @@
+{
+  "baseline": "778ce9f1f97a37b0fb55bfe0edbe66ab9888ff4f",
+  "defaults": "Query DSL on users; default risk engine; no suppression, approval or policy unless stated. Tenant cases: tenant_id required in block mode; trusted T1 is a requirement, not a current trusted-context API. Allowed is gate acceptance, never authorization. All values are fictional.",
+  "cases": [
+    {
+      "id": "C01",
+      "input": "SELECT id,name WHERE id=10 LIMIT 1",
+      "current": "Low plan; no execution during Plan",
+      "required": "Preserve pure planning (01/04)",
+      "owners": [
+        "GQ-AI-01",
+        "GQ-AI-04"
+      ],
+      "analysis_limit": "LIMIT bounds output, not authorization",
+      "coverage": "executable",
+      "evidence": [
+        "orm/query/plan_test.go#TestSelectPlanSnapshot",
+        "tests/contracts/compatibility_test.go#TestSharedPlanSerializationAndReview"
+      ],
+      "assertion_scope": "Pure SELECT planning and selected snapshot fields; low is structural only."
+    },
+    {
+      "id": "C02",
+      "input": "SELECT * with no limit",
+      "current": "SELECT_STAR_USED and LIMIT_MISSING, medium",
+      "required": "Preserve diagnostics (04/09)",
+      "owners": [
+        "GQ-AI-04",
+        "GQ-AI-09"
+      ],
+      "analysis_limit": "No DB cost estimate",
+      "coverage": "executable",
+      "evidence": [
+        "orm/query/risk_test.go#TestRiskEngineSelectWarnings",
+        "tests/contracts/compatibility_test.go#TestSharedPlanSerializationAndReview"
+      ],
+      "assertion_scope": "Wildcard/missing-limit codes, medium risk and review transport; no cost estimate."
+    },
+    {
+      "id": "C03",
+      "input": "UPDATE/DELETE with no predicate, no soft-delete policy",
+      "current": "Blocked, non-suppressible missing-WHERE warning",
+      "required": "Preserve block (02/04)",
+      "owners": [
+        "GQ-AI-02",
+        "GQ-AI-04"
+      ],
+      "analysis_limit": "Default soft-delete predicate changes input; not a narrow-write proof",
+      "coverage": "partial",
+      "evidence": [
+        "orm/query/risk_test.go#TestRiskEngineBlocksUpdateAndDeleteWithoutWhere",
+        "orm/query/risk_test.go#TestSuppressionMVP"
+      ],
+      "assertion_scope": "UPDATE plan blocking, DELETE execution rejection without executor calls, and missing-WHERE non-suppression; not every terminal/dialect combination."
+    },
+    {
+      "id": "C04",
+      "input": "UPDATE WHERE tenant_id=T1, no key",
+      "current": "Medium bulk warning, allowed absent other policy violations",
+      "required": "Tenant-wide, never prove one row (02/03)",
+      "owners": [
+        "GQ-AI-02",
+        "GQ-AI-03"
+      ],
+      "analysis_limit": "Correct tenant still permits many rows",
+      "coverage": "partial",
+      "evidence": [
+        "orm/query/risk_test.go#TestRiskEngineDoesNotTreatForeignIDAsPrimaryKey"
+      ],
+      "assertion_scope": "Synthetic plan tests tenant-column bulk warning only, not DSL gate or trusted tenant binding."
+    },
+    {
+      "id": "C05",
+      "input": "UPDATE WHERE id > 0 or id IN (1,2)",
+      "current": "`id` occurrence suppresses bulk warning",
+      "required": "Broad/unknown, not single-row (02)",
+      "owners": [
+        "GQ-AI-02"
+      ],
+      "analysis_limit": "Column-name/operator-insensitive heuristic is insufficient",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C06",
+      "input": "UPDATE WHERE id=1 OR status='active'",
+      "current": "`id` occurrence can suppress bulk warning",
+      "required": "Every OR branch must satisfy scope; broad/unknown otherwise (02)",
+      "owners": [
+        "GQ-AI-02"
+      ],
+      "analysis_limit": "Flattened predicates lose implication",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C07",
+      "input": "UPDATE WHERE (tenant_id=T1 AND id=1) OR id=2",
+      "current": "Tenant presence can satisfy policy; ID heuristic narrows risk",
+      "required": "Reject unbound branch in Strict (02/03)",
+      "owners": [
+        "GQ-AI-02",
+        "GQ-AI-03"
+      ],
+      "analysis_limit": "OR must not escape tenant restriction",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C08",
+      "input": "tenant_id=T2, tenant_id!=T1, NOT(tenant_id=T1), or tenant_id=other_column",
+      "current": "Column presence can satisfy required/tenant checks",
+      "required": "Reject incorrect/unknown binding in Strict (02/03)",
+      "owners": [
+        "GQ-AI-02",
+        "GQ-AI-03"
+      ],
+      "analysis_limit": "No proof of equality to trusted value",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C09",
+      "input": "Tenant-scoped read without tenant context but literal tenant filter",
+      "current": "Presence check can pass",
+      "required": "Unverified/rejected in Strict until trusted tenant supplied (03)",
+      "owners": [
+        "GQ-AI-03"
+      ],
+      "analysis_limit": "Application JSON is not trusted context",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C10",
+      "input": "Composite unique key (tenant_id,external_key), range predicates mentioning both",
+      "current": "Attached key metadata can suppress bulk warning on presence alone",
+      "required": "Require conjunction/equality/full unique key (02)",
+      "owners": [
+        "GQ-AI-02"
+      ],
+      "analysis_limit": "Nullability, partial/expression indexes, dialect semantics matter",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C11",
+      "input": "NOT(id=1), id IS NOT NULL, raw expression or EXISTS child query",
+      "current": "SQL/snapshot produced; heuristics may allow; precision need not degrade",
+      "required": "Preserve condition meaning or mark unknown; no verified scope in Strict (02/09)",
+      "owners": [
+        "GQ-AI-02",
+        "GQ-AI-09"
+      ],
+      "analysis_limit": "General SQL theorem proving is not promised",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C12",
+      "input": "Raw DELETE FROM users via DB.Exec",
+      "current": "RAW_SQL_USED high; no approval rejects; reason permits raw gate",
+      "required": "Unknown semantics not verified by reason; trusted high-risk authorization required in Strict (04/13)",
+      "owners": [
+        "GQ-AI-04",
+        "GQ-AI-13"
+      ],
+      "analysis_limit": "No full SQL parser; TouchedTables does not fix this",
+      "coverage": "partial",
+      "evidence": [
+        "tests/raw_sql_test.go#TestRawSQLRequiresApproval",
+        "orm/query/plan_test.go#TestRawPlanSnapshot"
+      ],
+      "assertion_scope": "Raw approval rejection and raw plan metadata; does not establish semantic DELETE inspection or external authority."
+    },
+    {
+      "id": "C13",
+      "input": "Generic Update with WherePK or generic Upsert with conflict target",
+      "current": "Shape checks/trusted execution, no common plan/policy",
+      "required": "Common inspection for final operations/conflict branches (04)",
+      "owners": [
+        "GQ-AI-04"
+      ],
+      "analysis_limit": "PK option is not tenant binding",
+      "coverage": "partial",
+      "evidence": [
+        "tests/write_generic_test.go#TestUpdateStructWherePK",
+        "tests/write_generic_test.go#TestUpsertStruct"
+      ],
+      "assertion_scope": "Existing shape/execution recipes only; common inspection remains unverified."
+    },
+    {
+      "id": "C14",
+      "input": "Batch containing T1 and T2 rows",
+      "current": "Generic batch/DSL INSERT lack per-row tenant-value inspection",
+      "required": "Inspect all rows/branches with trusted context (03/04)",
+      "owners": [
+        "GQ-AI-03",
+        "GQ-AI-04"
+      ],
+      "analysis_limit": "Chunking/partial execution must be explicit",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C15",
+      "input": "PostgreSQL InsertGetId / UpdateByReturning",
+      "current": "Plan exists but gate omitted in first path; RETURNING appended after checking in both",
+      "required": "Inspect/gate final SQL and projection (04)",
+      "owners": [
+        "GQ-AI-04"
+      ],
+      "analysis_limit": "MySQL uses LastInsertId; generic RETURNING rejected",
+      "coverage": "partial",
+      "evidence": [
+        "tests/orm_postgres_test.go#TestPostgresInsertGetId",
+        "orm/scope_test.go#TestUpdateByReturningAppliesScopes"
+      ],
+      "assertion_scope": "ID and scoped RETURNING results; does not test/endorse omitted or pre-RETURNING gates."
+    },
+    {
+      "id": "C16",
+      "input": "Typed RETURNING with ExpectAffected(1), DB returns multiple rows",
+      "current": "First-row typed helper ignores expected count; ManyReturning scans all",
+      "required": "Inspect cardinality across paths; surface rollback status (04/10)",
+      "owners": [
+        "GQ-AI-04",
+        "GQ-AI-10"
+      ],
+      "analysis_limit": "RETURNING rows and driver RowsAffected differ",
+      "coverage": "partial",
+      "evidence": [
+        "orm/write_test.go#TestInsertManyReturningTypedStructScan"
+      ],
+      "assertion_scope": "ManyReturning scan only; multirow first-row cardinality and rollback contract unverified."
+    },
+    {
+      "id": "C17",
+      "input": "Generic write ExpectAffected(1), actual=2",
+      "current": "RowsAffectedError after execution",
+      "required": "Preserve error, define transactional rollback contract (10)",
+      "owners": [
+        "GQ-AI-10"
+      ],
+      "analysis_limit": "Autocommit may already have changed data",
+      "coverage": "executable",
+      "evidence": [
+        "orm/write_test.go#TestUpdateExpectAffectedMismatch"
+      ],
+      "assertion_scope": "Exec reports two rows and ExpectAffected(1) produces RowsAffectedError; rollback is not established."
+    },
+    {
+      "id": "C18",
+      "input": "Nested replacement, later callback fails",
+      "current": "Non-Tx can leave prior writes; Tx rolls DB back",
+      "required": "Composite plan and explicit atomicity/result contract (04/10)",
+      "owners": [
+        "GQ-AI-04",
+        "GQ-AI-10"
+      ],
+      "analysis_limit": "ID assignments/external effects persist",
+      "coverage": "partial",
+      "evidence": [
+        "tests/nested_write_test.go#TestMySQLReplaceNestedCollectionTx",
+        "orm/transaction_hooks_test.go#TestRunTransactionWithHooksRollsBackOnHookError"
+      ],
+      "assertion_scope": "Nested MySQL transaction recipe and hook rollback are related evidence, not full nested later-callback failure/atomicity proof."
+    },
+    {
+      "id": "C19",
+      "input": "Mutate plan params/target or supply JSON low/precise/approval/warnings",
+      "current": "Mutable plan; EnsurePlanExecutable trusts fields; review can consume supplied warnings",
+      "required": "Revalidate final operation and untrusted artifact (05/09)",
+      "owners": [
+        "GQ-AI-05",
+        "GQ-AI-09"
+      ],
+      "analysis_limit": "Serialized verdict is not evidence",
+      "coverage": "partial",
+      "evidence": [
+        "orm/review/review_test.go#TestRunReviewsSuppressedWarningsFromQueryPlanJSON"
+      ],
+      "assertion_scope": "Existing supplied-warning review compatibility only, never authenticity or permission. No new gap assertion."
+    },
+    {
+      "id": "C20",
+      "input": "Serialize secret in params, SQL literal, reason or metadata",
+      "current": "Values may appear in output",
+      "required": "Non-executable redacted public view (06)",
+      "owners": [
+        "GQ-AI-06"
+      ],
+      "analysis_limit": "Removing Params alone is incomplete",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C21",
+      "input": "OperationSpec unresolved value_ref / unsupported write",
+      "current": "Missing ref and non-select operation rejected",
+      "required": "Preserve narrow read-only scope; reject invalid values (07)",
+      "owners": [
+        "GQ-AI-07"
+      ],
+      "analysis_limit": "Present ref values still need type/trust validation",
+      "coverage": "executable",
+      "evidence": [
+        "orm/operation/spec_test.go#TestValidateRejectsUnsafeSpec"
+      ],
+      "assertion_scope": "Missing value_ref and unsupported write rejected; full value type/trust validation unverified."
+    },
+    {
+      "id": "C22",
+      "input": "OperationSpec manifest has no Verification, RequireFreshManifest=true",
+      "current": "Compile only checks attached stale verification; absence can pass",
+      "required": "Missing/unverified required context rejected in Strict (03/07)",
+      "owners": [
+        "GQ-AI-03",
+        "GQ-AI-07"
+      ],
+      "analysis_limit": "CLI review fresh gate is a different, stronger path",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C23",
+      "input": "review --require-fresh-manifest missing/stale/unverified",
+      "current": "Gate failure",
+      "required": "Preserve explicit verification requirement (05/11)",
+      "owners": [
+        "GQ-AI-05",
+        "GQ-AI-11"
+      ],
+      "analysis_limit": "Supplied fingerprints do not prove live DB equality",
+      "coverage": "executable",
+      "evidence": [
+        "orm/review/review_test.go#TestRunRequiresFreshManifestRejectsMissingAndUnverified",
+        "cmd/goquent/main_test.go#TestReviewCommandRequireFreshManifestWithoutManifestFails",
+        "cmd/goquent/manifest_test.go#TestReviewCommandCanFailOnStaleManifest"
+      ],
+      "assertion_scope": "Explicit review gate rejects missing/unverified/stale manifest; no live DB equality proof."
+    },
+    {
+      "id": "C24",
+      "input": "Dynamic helper/raw SQL or unrelated method named Update in Go source",
+      "current": "Partial/unsupported, omissions or false positives possible",
+      "required": "Type-aware identification; preserve uncertainty (09)",
+      "owners": [
+        "GQ-AI-09"
+      ],
+      "analysis_limit": "No whole-program/control-flow proof",
+      "coverage": "partial",
+      "evidence": [
+        "orm/review/review_test.go#TestRunReviewsGoSourcePartialAndUnsupported"
+      ],
+      "assertion_scope": "Dynamic partial/unsupported review evidence only; unrelated-method/type identity coverage unverified."
+    },
+    {
+      "id": "C25",
+      "input": "InsertOnceReturning/RunIdempotentCommand concurrent replay",
+      "current": "Existing-row/conflict recipes",
+      "required": "Define operation/key/payload and retry/result semantics (10)",
+      "owners": [
+        "GQ-AI-10"
+      ],
+      "analysis_limit": "Existing tests do not prove exactly-once effects",
+      "coverage": "partial",
+      "evidence": [
+        "orm/write_test.go#TestInsertOnceReturningExistingRow",
+        "orm/idempotency_test.go#TestRunIdempotentCommandLooksUpAfterConflict"
+      ],
+      "assertion_scope": "Existing/conflict recipes only; concurrent replay and exactly-once guarantees unverified."
+    },
+    {
+      "id": "C26",
+      "input": "Two DBs register different policy for same table",
+      "current": "Shared process-wide registry",
+      "required": "DB isolation and transaction inheritance (03)",
+      "owners": [
+        "GQ-AI-03"
+      ],
+      "analysis_limit": "Mutex protection is not tenant isolation",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+    },
+    {
+      "id": "C27",
+      "input": "sql.Tx/custom Executor wrapped by NewTxDB/NewDBWithExecutor",
+      "current": "Delegated path works; no new-transaction capability implied",
+      "required": "Preserve interface/ownership; bind context for inspected paths (03/04/05)",
+      "owners": [
+        "GQ-AI-03",
+        "GQ-AI-04",
+        "GQ-AI-05"
+      ],
+      "analysis_limit": "Direct executor/SQLDB access is outside interception",
+      "coverage": "partial",
+      "evidence": [
+        "orm/write_test.go#TestNewDBWithExecutorUsesExternalExecutor",
+        "tests/manual_transaction_test.go#TestManualTxCommit",
+        "tests/transaction_context_test.go#TestTransactionContextRollback",
+        "tests/contracts/compatibility_test.go#TestExternalTransactionOwnership"
+      ],
+      "assertion_scope": "Custom Executor delegation and owned manual/context transactions; external NewTxDB covered by shared test. Context binding across inspected paths remains unverified."
+    },
+    {
+      "id": "C28",
+      "input": "MySQL/PostgreSQL equivalent filtered operation",
+      "current": "Distinct placeholders/conflict/RETURNING behavior",
+      "required": "Same semantic safety requirement, dialect-specific limits (02/04/10)",
+      "owners": [
+        "GQ-AI-02",
+        "GQ-AI-04",
+        "GQ-AI-10"
+      ],
+      "analysis_limit": "Do not demand identical SQL/counts",
+      "coverage": "partial",
+      "evidence": [
+        "tests/contracts/compatibility_test.go#TestSharedPlanSerializationAndReview",
+        "tests/orm_postgres_test.go#TestPostgresSelectAllByWithScopes",
+        "tests/write_generic_test.go#TestUpdateStructWherePK"
+      ],
+      "assertion_scope": "Equivalent pure filtered plans in both dialects plus existing DB recipes; not all conflict/count/RETURNING semantics."
+    }
+  ],
+  "api_coverage": [
+    {
+      "section": "2.1",
+      "entries": [
+        "`Query.Plan`",
+        "`First`, `FirstMap`, `Get`, `GetMaps`",
+        "`Count`",
+        "`PlanInsert`, `PlanInsertBatch`",
+        "`Insert`, `InsertBatch`",
+        "`InsertGetId` (MySQL)",
+        "`InsertGetId` (PostgreSQL)",
+        "`InsertOrIgnore`",
+        "`Upsert`",
+        "`UpdateOrInsert`",
+        "`InsertUsing`",
+        "`PlanUpdate`, `PlanDelete`",
+        "`Update`, `Delete`",
+        "`Build`, `Dump`, `RawSQL`"
+      ],
+      "evidence_files": [
+        "orm/query/plan_test.go",
+        "orm/query/risk_test.go",
+        "orm/query/policy_test.go",
+        "tests/query_select_test.go",
+        "tests/query_wrapper_test.go",
+        "tests/query_extra_test.go"
+      ],
+      "coverage": "partial",
+      "analysis_limit": "Family-level regression evidence only: constructors/modifiers inherit terminal coverage. Full tree proofs, all builder/terminal combinations, upsert branch policy and final RETURNING gating are unverified. Build/Dump/RawSQL are rendering outside inspection."
+    },
+    {
+      "section": "2.2",
+      "entries": [
+        "`SelectOne`, `SelectAll`; compatibility `SelectStruct`, `SelectStructs`, `DB.SelectMap`, `DB.SelectMaps`",
+        "`PlanSelectBy`, `PlanUpdateBy`, `PlanDeleteBy`",
+        "`SelectOneBy`, `SelectAllBy`",
+        "`UpdateBy`, `DeleteBy`",
+        "`UpdateByReturning`, `UpdateByReturningWithOptions`",
+        "`Insert`, `Update`, `Upsert`",
+        "`InsertMany`, `UpsertMany`",
+        "`InsertReturning`, `UpdateReturning`, `UpsertReturning`",
+        "`InsertManyReturning`, `UpsertManyReturning`",
+        "`InsertOnceReturning`",
+        "`ReplaceNestedCollection`",
+        "`ReplaceNestedCollectionTx`",
+        "`RunIdempotentCommand`",
+        "`RunTransactionWithHooks`, `InsertHook`, `InsertManyHook`, `NewTransactionHook`"
+      ],
+      "evidence_files": [
+        "orm/write_test.go",
+        "orm/scope_test.go",
+        "orm/select_test.go",
+        "orm/select_bool_test.go",
+        "orm/convert_bool_test.go",
+        "orm/idempotency_test.go",
+        "orm/transaction_hooks_test.go",
+        "tests/nested_write_test.go",
+        "tests/write_generic_test.go",
+        "tests/select_generic_test.go",
+        "tests/orm_postgres_test.go"
+      ],
+      "coverage": "partial",
+      "analysis_limit": "Family-level regression evidence only: generic/scoped CRUD, scans/bool, batch/RETURNING and composite recipes. Shared policy, all typed cardinality checks, concurrent replay and external callback rollback are unverified. Hooks commit test has a known column-order flake; no skip or relaxation."
+    },
+    {
+      "section": "2.3",
+      "entries": [
+        "`DB.RawPlan`, `query.NewRawPlan`",
+        "`DB.Query`, `QueryContext`, `Exec`, `ExecContext`",
+        "`DB.QueryRowE`",
+        "`DB.QueryRow`, `QueryRowContext`",
+        "`RequireRawApproval`, `TouchedTables`",
+        "`NewDB`, `NewDBWithExecutor`, `NewTxDB`, `WrapTx`, `Open`, `OpenWithDriver`, `OpenWithDriverOptions`",
+        "`DB.Transaction`, `TransactionContext`, `Begin`, `BeginTx`; `Tx.Commit`, `Rollback`",
+        "`DB.SQLDB`, underlying `sql.Tx`/embedded driver Tx, `driver.Driver.DB`, direct `sql.DB`/`sql.Tx`/custom Executor calls",
+        "`RegisterDriver`, `RegisterDriverWithDialect`, `RegisterDialect`, `GetDriver`; `driver.Open` and transaction methods"
+      ],
+      "evidence_files": [
+        "orm/orm_raw_test.go",
+        "tests/raw_sql_test.go",
+        "tests/custom_driver_test.go",
+        "tests/transaction_context_test.go",
+        "tests/manual_transaction_test.go",
+        "tests/contracts/compatibility_test.go"
+      ],
+      "coverage": "partial",
+      "analysis_limit": "Family-level regression evidence only: raw gates, executors, driver and transaction recipes. Direct SQLDB/sql.Tx/Executor calls are outside interception. Universal context binding, ownership of WrapTx and every driver method are not certified."
+    },
+    {
+      "section": "2.4",
+      "entries": [
+        "`CompileOperationSpec`, `ValidateOperationSpec`, `operation.Compile/Validate`",
+        "`review.Run`, CLI `review`",
+        "`GenerateManifest`, `LoadManifest`, `ValidateManifest`, `VerifyManifest` and manifest equivalents",
+        "`NewMigrator`, `PlanMigrationSQL`, `PlanMigrationSteps`, `DiffSchemas`; migration plan/diff APIs and CLI plan/dry-run",
+        "`migration.ReadSchema`, `ReadStatus` and CLI live-schema operations",
+        "MCP resources, tools, prompts"
+      ],
+      "evidence_files": [
+        "orm/operation/spec_test.go",
+        "orm/review/review_test.go",
+        "orm/manifest/manifest_test.go",
+        "orm/mcp/server_test.go",
+        "orm/migration/plan_test.go",
+        "orm/migration/drift_test.go",
+        "cmd/goquent/main_test.go",
+        "cmd/goquent/manifest_test.go",
+        "cmd/goquent/operation_test.go"
+      ],
+      "coverage": "partial",
+      "analysis_limit": "Family-level regression evidence only: narrow operation/manifest/review/MCP/migration paths. Configuration/modifiers, in-memory projection/hydration/scanning carry no authorization; not every helper is mapped to an individual assertion. Live schema/apply, whole-program type analysis, redaction and future Strict remain outside this harness."
+    }
+  ]
+}
