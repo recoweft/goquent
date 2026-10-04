@@ -166,5 +166,20 @@ func copyScalarSlice[T any](c *Copier, v []T) (any, bool, int) {
 	c.memo[k] = &entry{source: v, value: out, ok: true}
 	return out, true, 0
 }
-func Slice(values []any) []any             { return New().Slice(values) }
-func (c *Copier) Slice(values []any) []any { v, _ := c.Copy(values); return v.([]any) }
+
+// Slice owns the outer argument list independently of payload copy budgets.
+// Library-owned lists must survive cleanup/reuse even when a payload cannot be
+// detached. The mandatory O(len(values)) outer allocation is not charged to the
+// recursive payload budget; all elements share this Copier's memo and budgets.
+// Use Copy for a slice that is itself a payload and may remain opaque.
+func Slice(values []any) []any { return New().Slice(values) }
+func (c *Copier) Slice(values []any) []any {
+	if values == nil {
+		return nil
+	}
+	out := make([]any, len(values))
+	for i, value := range values {
+		out[i], _ = c.Copy(value)
+	}
+	return out
+}

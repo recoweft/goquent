@@ -245,3 +245,43 @@ evidence/precision diagnostics. Raw parsing, all-value immutability, whole-plan
 artifact validation, join/subquery theorem proving and other issues are not
 claimed by PR1. See the PR's validation record for actual commands, skips,
 failures and CI head; test registration alone is not execution evidence.
+
+## Revision 4: argument-container ownership
+
+`valuecopy.Slice` / `Copier.Slice` are for library-owned argument lists, not
+arbitrary slice payloads. They always allocate an independent outer array
+(preserving nil versus empty). Previously, an outer list of 65,536 or more
+arguments exhausted the recursive copy slot budget and was returned unchanged.
+SELECT then zeroed that same pooled array in its deferred cleanup, destroying
+the returned arguments before the caller received them.
+
+Outer ownership now costs O(argument count) interface slots per list, outside
+the recursive payload allowance. There is no new statement-size or whole-process
+heap guarantee. This mandatory linear cost is needed to preserve every argument
+through cleanup and later builds; increasing the recursive limit would only move
+the bug. Each element is copied as a payload root (depth zero), sharing the same
+operation's memo and depth-64 / 65,536-slot / 8-MiB payload budgets. Recursive
+payload reservations still happen before allocation; no budget is reset per
+element. `Copy` of a slice payload still refuses oversized containers, preserving
+their original type/reference and unverified inspection state. Library argument
+lists are never cached as payload memo entries; even two `Slice` calls on one
+Copier own separate outer arrays, while safely copied child DAGs may share that
+operation's completed memo. Independent operations keep independent child copies.
+
+The shared helper covers SELECT's pool return, query-clone argument fields
+(selected expression values, WHERE/IN values, JSON contains values), and
+`newQueryPlan` Params (including raw plans). Snapshot/BuildSnapshot use these
+clones and the existing bounded Node/inspection copy; unverified payloads still
+propagate to dependent conditions and ancestors. UPDATE, DELETE, INSERT batch
+and INSERT SELECT already copy their outer arrays before ZeroInterfaces, and
+single-row INSERT constructs its returned values separately. Their cleanup does
+not depend on recursive-copy success. No pool cleanup or budget threshold is
+removed. Existing error exits that do not return pooled buffers are not an alias
+escape and were not refactored here.
+
+Output limits and typed JSON errors are unchanged. A large executable argument
+list can retain all values while String omits it and JSON rejects its expansion.
+No output marker becomes an execution value, and no Valuer, formatter or
+marshaler is evaluated by copying. These ownership guarantees do not imply
+cardinality, authorization, arbitrary custom payload immutability, or public
+Plan tamper detection. See [revision 4 validation](predicate-tree-revision4-validation.md).
