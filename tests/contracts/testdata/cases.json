@@ -78,9 +78,12 @@
         "GQ-AI-02"
       ],
       "analysis_limit": "Column-name/operator-insensitive heuristic is insufficient",
-      "coverage": "documentary",
-      "evidence": [],
-      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+      "coverage": "partial",
+      "evidence": [
+        "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+      ],
+      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
     },
     {
       "id": "C06",
@@ -91,9 +94,12 @@
         "GQ-AI-02"
       ],
       "analysis_limit": "Flattened predicates lose implication",
-      "coverage": "documentary",
-      "evidence": [],
-      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+      "coverage": "partial",
+      "evidence": [
+        "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+      ],
+      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
     },
     {
       "id": "C07",
@@ -105,9 +111,12 @@
         "GQ-AI-03"
       ],
       "analysis_limit": "OR must not escape tenant restriction",
-      "coverage": "documentary",
-      "evidence": [],
-      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+      "coverage": "partial",
+      "evidence": [
+        "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+      ],
+      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
     },
     {
       "id": "C08",
@@ -119,9 +128,12 @@
         "GQ-AI-03"
       ],
       "analysis_limit": "No proof of equality to trusted value",
-      "coverage": "documentary",
-      "evidence": [],
-      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+      "coverage": "partial",
+      "evidence": [
+        "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+      ],
+      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
     },
     {
       "id": "C09",
@@ -132,9 +144,12 @@
         "GQ-AI-03"
       ],
       "analysis_limit": "Application JSON is not trusted context",
-      "coverage": "documentary",
-      "evidence": [],
-      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+      "coverage": "partial",
+      "evidence": [
+        "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+      ],
+      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
     },
     {
       "id": "C10",
@@ -145,9 +160,12 @@
         "GQ-AI-02"
       ],
       "analysis_limit": "Nullability, partial/expression indexes, dialect semantics matter",
-      "coverage": "documentary",
-      "evidence": [],
-      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+      "coverage": "partial",
+      "evidence": [
+        "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+      ],
+      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
     },
     {
       "id": "C11",
@@ -159,9 +177,12 @@
         "GQ-AI-09"
       ],
       "analysis_limit": "General SQL theorem proving is not promised",
-      "coverage": "documentary",
-      "evidence": [],
-      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
+      "coverage": "partial",
+      "evidence": [
+        "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+      ],
+      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
     },
     {
       "id": "C12",
@@ -429,9 +450,11 @@
       "evidence": [
         "tests/contracts/compatibility_test.go#TestSharedPlanSerializationAndReview",
         "tests/orm_postgres_test.go#TestPostgresSelectAllByWithScopes",
-        "tests/write_generic_test.go#TestUpdateStructWherePK"
+        "tests/write_generic_test.go#TestUpdateStructWherePK",
+        "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
       ],
-      "assertion_scope": "Equivalent pure filtered plans in both dialects plus existing DB recipes; not all conflict/count/RETURNING semantics."
+      "assertion_scope": "Equivalent pure filtered plans in both dialects plus existing DB recipes; not all conflict/count/RETURNING semantics. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
     }
   ],
   "api_coverage": [

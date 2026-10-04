@@ -7,8 +7,9 @@ import (
 )
 
 type UpdateBuilder struct {
-	dbBuilder interfaces.QueryBuilderStrategy
-	query     *structs.UpdateQuery
+	BuiltQuery *structs.Query
+	dbBuilder  interfaces.QueryBuilderStrategy
+	query      *structs.UpdateQuery
 	OrderByBuilder[UpdateBuilder]
 	JoinBuilder[UpdateBuilder]
 	WhereBuilder[UpdateBuilder]
@@ -62,12 +63,16 @@ func (u *UpdateBuilder) Build() (string, []interface{}, error) {
 		u.WhereBuilder.query.Conditions = &[]structs.Where{}
 	}
 
+	u.query.Query.PredicateError = u.WhereBuilder.query.PredicateError
 	u.query.Query.Conditions = u.WhereBuilder.query.Conditions
 	u.query.Query.ConditionGroups = u.WhereBuilder.query.ConditionGroups
 	u.query.Query.Joins = u.JoinBuilder.Joins
 	u.query.Query.Order = u.OrderByBuilder.Order
 
-	query, values, err := u.dbBuilder.BuildUpdate(u.query)
+	frozen := *u.query
+	frozen.Query = structs.CloneQuery(u.query.Query)
+	query, values, err := u.dbBuilder.BuildUpdate(&frozen)
+	u.BuiltQuery = frozen.Query
 	return query, values, err
 }
 

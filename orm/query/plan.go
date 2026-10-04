@@ -9,6 +9,9 @@ import (
 	"time"
 
 	qbapi "github.com/recoweft/goquent/orm/internal/querybuilder/api"
+	"github.com/recoweft/goquent/orm/internal/valuecopy"
+	"github.com/recoweft/goquent/orm/internal/valueguard"
+	"github.com/recoweft/goquent/orm/predicate"
 )
 
 // OperationType describes the structural SQL operation represented by a plan.
@@ -137,25 +140,30 @@ type PredicateRef struct {
 
 // QueryPlan explains SQL and metadata before the query is executed.
 type QueryPlan struct {
-	Operation          OperationType     `json:"operation"`
-	SQL                string            `json:"sql"`
-	Params             []any             `json:"params"`
-	Tables             []TableRef        `json:"tables,omitempty"`
-	Columns            []ColumnRef       `json:"columns,omitempty"`
-	Joins              []JoinRef         `json:"joins,omitempty"`
-	Predicates         []PredicateRef    `json:"predicates,omitempty"`
-	Limit              *int64            `json:"limit,omitempty"`
-	Offset             *int64            `json:"offset,omitempty"`
-	EstimatedRows      *int64            `json:"estimated_rows,omitempty"`
-	UsesIndex          *bool             `json:"uses_index,omitempty"`
-	RiskLevel          RiskLevel         `json:"risk_level"`
-	Warnings           []Warning         `json:"warnings,omitempty"`
-	SuppressedWarnings []Warning         `json:"suppressed_warnings,omitempty"`
-	RequiredApproval   bool              `json:"required_approval"`
-	Blocked            bool              `json:"blocked,omitempty"`
-	Approval           *Approval         `json:"approval,omitempty"`
-	AnalysisPrecision  AnalysisPrecision `json:"analysis_precision"`
-	Metadata           map[string]any    `json:"metadata,omitempty"`
+	conditionSource     *predicate.Node
+	generatedConditions bool
+	WhereTree           *predicate.Node   `json:"where_tree,omitempty"`
+	HavingTree          *predicate.Node   `json:"having_tree,omitempty"`
+	Unverified          []string          `json:"unverified,omitempty"`
+	Operation           OperationType     `json:"operation"`
+	SQL                 string            `json:"sql"`
+	Params              []any             `json:"params"`
+	Tables              []TableRef        `json:"tables,omitempty"`
+	Columns             []ColumnRef       `json:"columns,omitempty"`
+	Joins               []JoinRef         `json:"joins,omitempty"`
+	Predicates          []PredicateRef    `json:"predicates,omitempty"`
+	Limit               *int64            `json:"limit,omitempty"`
+	Offset              *int64            `json:"offset,omitempty"`
+	EstimatedRows       *int64            `json:"estimated_rows,omitempty"`
+	UsesIndex           *bool             `json:"uses_index,omitempty"`
+	RiskLevel           RiskLevel         `json:"risk_level"`
+	Warnings            []Warning         `json:"warnings,omitempty"`
+	SuppressedWarnings  []Warning         `json:"suppressed_warnings,omitempty"`
+	RequiredApproval    bool              `json:"required_approval"`
+	Blocked             bool              `json:"blocked,omitempty"`
+	Approval            *Approval         `json:"approval,omitempty"`
+	AnalysisPrecision   AnalysisPrecision `json:"analysis_precision"`
+	Metadata            map[string]any    `json:"metadata,omitempty"`
 }
 
 // MetadataTableRisk stores []TableRiskMetadata in QueryPlan.Metadata.
@@ -189,7 +197,16 @@ func AttachTableRiskMetadata(plan *QueryPlan, metadata []TableRiskMetadata) {
 	if plan.Metadata == nil {
 		plan.Metadata = make(map[string]any, 1)
 	}
-	plan.Metadata[MetadataTableRisk] = append([]TableRiskMetadata(nil), metadata...)
+	copied := append([]TableRiskMetadata(nil), metadata...)
+	for i := range copied {
+		copied[i].PrimaryKeyColumns = append([]string(nil), metadata[i].PrimaryKeyColumns...)
+		copied[i].RequiredFilterColumns = append([]string(nil), metadata[i].RequiredFilterColumns...)
+		copied[i].UniqueIndexes = make([][]string, len(metadata[i].UniqueIndexes))
+		for j, index := range metadata[i].UniqueIndexes {
+			copied[i].UniqueIndexes[j] = append([]string(nil), index...)
+		}
+	}
+	plan.Metadata[MetadataTableRisk] = copied
 }
 
 // PlanHasPredicateColumn reports whether plan contains a predicate for column.
@@ -230,6 +247,23 @@ func (p *QueryPlan) RequiresApproval() bool {
 	return p != nil && p.RequiredApproval
 }
 
+// OutputError distinguishes display preflight failures from custom marshaler errors.
+type OutputError = valueguard.Error
+
+var ErrOutputCycle = valueguard.ErrCycle
+var ErrOutputDepth = valueguard.ErrDepth
+var ErrOutputBudget = valueguard.ErrBudget
+
+// MarshalJSON preserves ordinary output while rejecting unsafe built-in expansion.
+// A value receiver also covers json.Marshal(*plan). Nil pointers remain JSON null.
+func (p QueryPlan) MarshalJSON() ([]byte, error) {
+	type plain QueryPlan
+	if err := valueguard.Check(plain(p)); err != nil {
+		return nil, err
+	}
+	return json.Marshal(plain(p))
+}
+
 // ToJSON returns stable, indented JSON for the plan.
 func (p *QueryPlan) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(p, "", "  ")
@@ -241,6 +275,9 @@ func (p *QueryPlan) String() string {
 		return "<nil query plan>"
 	}
 
+	if err := valueguard.Check(*p); err != nil {
+		return "<query plan output omitted; unverified: " + err.Error() + ">"
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s query plan\n", p.Operation)
 	fmt.Fprintf(&b, "risk: %s\n", p.RiskLevel)
@@ -281,7 +318,7 @@ func newQueryPlan(op OperationType, sqlStr string, args []any) *QueryPlan {
 	return &QueryPlan{
 		Operation:         op,
 		SQL:               sqlStr,
-		Params:            append([]any(nil), args...),
+		Params:            valuecopy.Slice(args),
 		RiskLevel:         RiskLow,
 		AnalysisPrecision: AnalysisPrecise,
 	}
@@ -307,18 +344,18 @@ func (q *Query) planSelectBuilder(ctx context.Context, builder *qbapi.SelectQuer
 	if builder == q.builder {
 		q.applyPolicyPredicates()
 	}
-	sqlStr, args, err := builder.Build()
+	sqlStr, args, snapshot, err := builder.BuildSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationSelect, sqlStr, args)
-	appendSelectBuilderMetadata(plan, builder)
+	appendSelectSnapshotMetadata(plan, snapshot)
 	q.finalizePlan(plan)
 	return plan, nil
 }
 
-func appendSelectBuilderMetadata(plan *QueryPlan, builder *qbapi.SelectQueryBuilder) {
-	src := builder.Snapshot()
+func appendSelectSnapshotMetadata(plan *QueryPlan, src qbapi.QuerySnapshot) {
+	appendConditionTrees(plan, src)
 	appendTableRef(plan, src.Table, "")
 
 	if len(src.Columns) > 0 {
@@ -349,8 +386,8 @@ func appendSelectBuilderMetadata(plan *QueryPlan, builder *qbapi.SelectQueryBuil
 	appendPredicateMetadata(plan, src.Predicates)
 }
 
-func appendSelectBuilderWriteMetadata(plan *QueryPlan, builder *qbapi.SelectQueryBuilder) {
-	src := builder.Snapshot()
+func appendWriteSnapshotMetadata(plan *QueryPlan, src qbapi.QuerySnapshot) {
+	appendConditionTrees(plan, src)
 	appendJoinMetadata(plan, src.Joins)
 	appendPredicateMetadata(plan, src.Predicates)
 }
@@ -476,4 +513,38 @@ func predicateRefsString(refs []PredicateRef) string {
 		parts = append(parts, part)
 	}
 	return strings.Join(parts, ", ")
+}
+
+func appendConditionTrees(plan *QueryPlan, src qbapi.QuerySnapshot) {
+	plan.conditionSource = valuecopy.Node(src.WhereTree)
+	plan.generatedConditions = true
+	plan.WhereTree = src.WhereTree
+	plan.HavingTree = src.HavingTree
+	plan.Unverified = src.Unverified
+}
+
+// inspectionPredicates projects the generated tree for legacy column-presence
+// consumers. PredicateRef remains a display view, not an independently mutable
+// source. Legacy/manual/JSON plans retain their old input path; neither path
+// validates an edited plan or establishes semantic write scope.
+func inspectionPredicates(plan *QueryPlan) []PredicateRef {
+	if !plan.generatedConditions {
+		return plan.Predicates
+	}
+	var out []PredicateRef
+	var walk func(*predicate.Node)
+	walk = func(n *predicate.Node) {
+		if n == nil {
+			return
+		}
+		if len(n.Children) > 0 {
+			for _, c := range n.Children {
+				walk(c)
+			}
+			return
+		}
+		out = append(out, PredicateRef{Column: n.Column, Operator: n.Operator, ValueColumn: n.ValueColumn, Raw: n.Raw, Function: n.Function, Subquery: n.OpaqueReason == "subquery", ValueCount: len(n.Parameters)})
+	}
+	walk(plan.conditionSource)
+	return out
 }

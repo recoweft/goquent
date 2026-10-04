@@ -25,69 +25,20 @@ func NewWhereMySQLBuilder(util interfaces.SQLUtils, wg []structs.WhereGroup) *Wh
 }
 
 func (wb *WhereMySQLBuilder) Where(sb *[]byte, wg []structs.WhereGroup) ([]interface{}, error) {
-	if len(wg) == 0 {
-		return []interface{}{}, nil
+	values, _, err := base.RenderPredicates(sb, wg, 0, wb.RenderLeaf)
+	return values, err
+}
+func (wb *WhereMySQLBuilder) RenderLeaf(sb *[]byte, c structs.Where) ([]any, error) {
+	switch {
+	case c.FullText != nil:
+		return wb.ProcessFullText(sb, c), nil
+	case c.JsonContains != nil:
+		return wb.ProcessJsonContains(sb, c), nil
+	case c.JsonLength != nil:
+		return wb.ProcessJsonLength(sb, c), nil
+	default:
+		return wb.whereBaseBuilder.RenderLeaf(sb, c)
 	}
-
-	// WHERE
-	if wb.whereBaseBuilder.HasCondition(wg) {
-		*sb = append(*sb, " WHERE "...)
-	}
-
-	values := make([]interface{}, 0)
-
-	for i := range wg {
-		if len((wg)[i].Conditions) == 0 {
-			continue
-		}
-
-		if i > 0 {
-			*sb = append(*sb, wb.WhereBaseBuilder.GetConditionGroupSeparator((wg)[i], i)...)
-		}
-
-		*sb = append(*sb, wb.whereBaseBuilder.GetNotSeparator((wg)[i])...)
-		*sb = append(*sb, wb.whereBaseBuilder.GetParenthesesOpen((wg)[i])...)
-
-		for j := range (wg)[i].Conditions {
-			if j > 0 || (i > 0 && j == 0 && (wg)[i].IsDummyGroup) {
-				*sb = append(*sb, wb.whereBaseBuilder.GetConditionOperator((wg)[i].Conditions[j])...)
-			}
-
-			switch {
-			case (wg)[i].Conditions[j].Query != nil:
-				subQueryValues, err := wb.whereBaseBuilder.ProcessSubQuery(sb, (wg)[i].Conditions[j])
-				if err != nil {
-					return nil, err
-				}
-				values = append(values, subQueryValues...)
-			case (wg)[i].Conditions[j].Exists != nil:
-				existsValues, err := wb.whereBaseBuilder.ProcessExistsQuery(sb, (wg)[i].Conditions[j])
-				if err != nil {
-					return nil, err
-				}
-				values = append(values, existsValues...)
-			case (wg)[i].Conditions[j].Between != nil:
-				values = append(values, wb.whereBaseBuilder.ProcessBetweenCondition(sb, (wg)[i].Conditions[j])...)
-			case (wg)[i].Conditions[j].FullText != nil:
-				values = append(values, wb.ProcessFullText(sb, (wg)[i].Conditions[j])...)
-			case (wg)[i].Conditions[j].JsonContains != nil:
-				values = append(values, wb.ProcessJsonContains(sb, (wg)[i].Conditions[j])...)
-			case (wg)[i].Conditions[j].JsonLength != nil:
-				values = append(values, wb.ProcessJsonLength(sb, (wg)[i].Conditions[j])...)
-			case (wg)[i].Conditions[j].Function != "":
-				values = append(values, wb.whereBaseBuilder.ProcessFunction(sb, (wg)[i].Conditions[j])...)
-			default:
-				rawValues, err := wb.whereBaseBuilder.ProcessRawCondition(sb, (wg)[i].Conditions[j])
-				if err != nil {
-					return nil, err
-				}
-				values = append(values, rawValues...)
-			}
-		}
-		*sb = append(*sb, wb.whereBaseBuilder.GetParenthesesClose((wg)[i])...)
-	}
-
-	return values, nil
 }
 
 func (wb *WhereMySQLBuilder) ProcessFullText(sb *[]byte, c structs.Where) []interface{} {

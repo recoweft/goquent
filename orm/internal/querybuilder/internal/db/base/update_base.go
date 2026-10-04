@@ -51,6 +51,10 @@ func (m *UpdateBaseBuilder) Update(q *structs.UpdateQuery) *UpdateBaseBuilder {
 
 // UpdateBatch builds the Update query for Update.
 func (m *UpdateBaseBuilder) BuildUpdate(q *structs.UpdateQuery) (string, []interface{}, error) {
+	if err := structs.ValidateQuery(q.Query); err != nil {
+		return "", nil, err
+	}
+	q.Query.WhereTree = nil
 	ptr := poolBytes.Get().(*[]byte)
 	sb := *ptr
 	if len(sb) > 0 {
@@ -96,7 +100,8 @@ func (m *UpdateBaseBuilder) BuildUpdate(q *structs.UpdateQuery) (string, []inter
 	// WHERE
 	if len(q.Query.ConditionGroups) > 0 {
 		wb := NewWhereBaseBuilder(m.u, q.Query.ConditionGroups)
-		whereValues, err := wb.Where(&sb, q.Query.ConditionGroups)
+		whereValues, tree, err := RenderPredicates(&sb, q.Query.ConditionGroups, len(values), wb.RenderLeaf)
+		q.Query.WhereTree = tree
 		if err != nil {
 			return "", nil, err
 		}

@@ -1772,14 +1772,14 @@ func (q *Query) PlanUpdate(ctx context.Context, data any) (*QueryPlan, error) {
 	ub := newUpdateBuilder(q.dialect)
 	ub.Table(q.tableName()).Update(m)
 	copyBuilderState(q.builder, ub)
-	sqlStr, args, err := ub.Build()
+	sqlStr, args, snapshot, err := ub.BuildSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationUpdate, sqlStr, args)
 	appendTableRef(plan, q.tableName(), "")
 	plan.Columns = columnRefsFromNames(sortedMapKeys(m))
-	appendSelectBuilderWriteMetadata(plan, q.builder)
+	appendWriteSnapshotMetadata(plan, snapshot)
 	q.finalizePlan(plan)
 	return plan, nil
 }
@@ -1806,13 +1806,13 @@ func (q *Query) PlanDelete(ctx context.Context) (*QueryPlan, error) {
 	delBuilder := newDeleteBuilder(q.dialect)
 	delBuilder.Table(q.tableName()).Delete()
 	copyBuilderStateDelete(q.builder, delBuilder)
-	sqlStr, args, err := delBuilder.Build()
+	sqlStr, args, snapshot, err := delBuilder.BuildSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationDelete, sqlStr, args)
 	appendTableRef(plan, q.tableName(), "")
-	appendSelectBuilderWriteMetadata(plan, q.builder)
+	appendWriteSnapshotMetadata(plan, snapshot)
 	q.finalizePlan(plan)
 	return plan, nil
 }

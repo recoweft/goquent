@@ -171,6 +171,13 @@ affected row, or report unknown/broad. SQL three-valued logic, nullable unique
 keys and dialect-specific expressions constrain proofs. No new tree type or
 proof algorithm is specified as an implemented API here.
 
+The GQ-AI-02/PR1 [predicate foundation](../docs/predicate-tree.md) adds a
+SQL-emitted condition tree, detached supported values and explicit unverified
+paths. Existing column-presence diagnostics remain compatibility heuristics;
+semantic scope proofs are still PR2 work. C05–C11/C28 gain partial representation
+and DB-result evidence, not new authorization/cardinality determinations. The
+historical API inventory above remains the GQ-AI-01 baseline.
+
 ### 3.3 DB settings and trusted context — GQ-AI-03
 
 DB-scoped policy/risk/profile settings must be isolated and propagate explicitly

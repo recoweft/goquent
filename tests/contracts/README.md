@@ -109,3 +109,8 @@ by those assertions. Keep unknowns explicit. Never blindly refresh hashes or
 convert a known defect into a correct golden result. New guarantees belong to their
 GQ-AI owner; this package does not implement GQ-AI-02 onward, Strict, redaction,
 DB-scoped policies, condition trees or production write changes.
+
+GQ-AI-02/PR1 adds partial C05–C11/C28 representation and DB-result evidence in
+[predicate-tree.md](../../docs/predicate-tree.md). Existing current/required case
+text and all five example hashes are preserved. Cardinality and trusted tenant
+verdicts remain outside these new assertions.

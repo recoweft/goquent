@@ -6,10 +6,16 @@ import (
 
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/common/structs"
 	qbquery "github.com/recoweft/goquent/orm/internal/querybuilder/internal/query"
+	"github.com/recoweft/goquent/orm/internal/valuecopy"
+	"github.com/recoweft/goquent/orm/predicate"
 )
 
 // QuerySnapshot is a stable, detached metadata view of a SELECT builder.
 type QuerySnapshot struct {
+	WhereTree  *predicate.Node
+	HavingTree *predicate.Node
+	Unverified []string
+	Error      error
 	Table      string
 	Columns    []ColumnSnapshot
 	Limit      int64
@@ -55,7 +61,15 @@ type PredicateSnapshot struct {
 
 // Snapshot returns a detached metadata representation of the select query.
 func (qb *SelectQueryBuilder) Snapshot() QuerySnapshot {
-	return snapshotFromQuery(qb.snapshotQuery())
+	src := qb.snapshotQuery()
+	if err := structs.ValidateQuery(src); err != nil {
+		return QuerySnapshot{Error: err}
+	}
+	src.WhereTree, _ = structs.InspectPredicates(src.ConditionGroups)
+	src.HavingTree, _ = structs.InspectPredicates(structs.HavingGroups(src.Group))
+	snapshot := snapshotFromQuery(src)
+	snapshot.Unverified = append(snapshot.Unverified, "snapshot_not_rendered")
+	return snapshot
 }
 
 func (qb *SelectQueryBuilder) snapshotQuery() *structs.Query {
@@ -88,9 +102,11 @@ func snapshotFromQuery(query *structs.Query) QuerySnapshot {
 		return QuerySnapshot{}
 	}
 	snapshot := QuerySnapshot{
-		Table:  query.Table.Name,
-		Limit:  query.Limit.Limit,
-		Offset: query.Offset.Offset,
+		WhereTree:  valuecopy.Node(query.WhereTree),
+		HavingTree: valuecopy.Node(query.HavingTree),
+		Table:      query.Table.Name,
+		Limit:      query.Limit.Limit,
+		Offset:     query.Offset.Offset,
 	}
 	if query.Columns != nil {
 		for _, column := range *query.Columns {
@@ -105,7 +121,21 @@ func snapshotFromQuery(query *structs.Query) QuerySnapshot {
 		}
 	}
 	appendJoinSnapshots(&snapshot, query.Joins)
+	if len(snapshot.Joins) > 0 {
+		snapshot.Unverified = append(snapshot.Unverified, "join_conditions_not_inspected")
+	}
 	appendPredicateSnapshots(&snapshot, query.ConditionGroups)
+	if len(query.Unions) > 0 {
+		snapshot.Unverified = append(snapshot.Unverified, "union_branches_not_inspected")
+	}
+	if query.Columns != nil {
+		for _, c := range *query.Columns {
+			if c.Raw != "" {
+				snapshot.Unverified = append(snapshot.Unverified, "selected_expression_not_inspected")
+				break
+			}
+		}
+	}
 	return snapshot
 }
 
@@ -186,6 +216,16 @@ func joinTarget(targetMap map[string]string) (string, string) {
 func appendPredicateSnapshots(snapshot *QuerySnapshot, groups []structs.WhereGroup) {
 	for i, group := range groups {
 		for _, condition := range group.Conditions {
+			if condition.Nested != nil {
+				nested := QuerySnapshot{}
+				appendPredicateSnapshots(&nested, condition.Nested)
+				for _, p := range nested.Predicates {
+					p.Group = i
+					p.Negated = p.Negated || group.IsNot
+					snapshot.Predicates = append(snapshot.Predicates, p)
+				}
+				continue
+			}
 			snapshot.Predicates = append(snapshot.Predicates, PredicateSnapshot{
 				Group:       i,
 				Negated:     group.IsNot,
@@ -226,4 +266,28 @@ func logicalOperator(op int) string {
 		return "OR"
 	}
 	return "AND"
+}
+
+// BuildSnapshot captures SQL, parameters and inspection from one frozen build.
+func (qb *SelectQueryBuilder) BuildSnapshot() (string, []any, QuerySnapshot, error) {
+	sql, args, err := qb.Build()
+	if err != nil {
+		return "", nil, QuerySnapshot{Error: err}, err
+	}
+	snapshot := snapshotFromQuery(qb.builder.BuiltQuery)
+	return sql, args, snapshot, nil
+}
+func (qb *UpdateQueryBuilder) BuildSnapshot() (string, []any, QuerySnapshot, error) {
+	sql, args, err := qb.Build()
+	if err != nil {
+		return "", nil, QuerySnapshot{Error: err}, err
+	}
+	return sql, args, snapshotFromQuery(qb.builder.BuiltQuery), nil
+}
+func (qb *DeleteQueryBuilder) BuildSnapshot() (string, []any, QuerySnapshot, error) {
+	sql, args, err := qb.Build()
+	if err != nil {
+		return "", nil, QuerySnapshot{Error: err}, err
+	}
+	return sql, args, snapshotFromQuery(qb.builder.BuiltQuery), nil
 }

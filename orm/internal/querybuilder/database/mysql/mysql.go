@@ -49,6 +49,11 @@ func (m MySQLQueryBuilder) Upsert(q *structs.InsertQuery) (string, []interface{}
 
 // Build builds the query.
 func (m MySQLQueryBuilder) Build(sb *[]byte, q *structs.Query, number int, unions *[]structs.Union) ([]interface{}, error) {
+	if err := structs.ValidateQuery(q); err != nil {
+		return nil, err
+	}
+	q.WhereTree = nil
+	q.HavingTree = nil
 	// SELECT
 	*sb = append(*sb, "SELECT "...)
 	colValues, err := m.Select(sb, q.Columns, q.Table.Name, q.Joins)
@@ -68,7 +73,8 @@ func (m MySQLQueryBuilder) Build(sb *[]byte, q *structs.Query, number int, union
 
 	// WHERE
 	if len(q.ConditionGroups) > 0 {
-		whereValues, err := m.Where(sb, q.ConditionGroups)
+		whereValues, tree, err := base.RenderPredicates(sb, q.ConditionGroups, len(values), m.WhereMySQLBuilder.RenderLeaf)
+		q.WhereTree = tree
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +83,8 @@ func (m MySQLQueryBuilder) Build(sb *[]byte, q *structs.Query, number int, union
 
 	// GROUP BY / HAVING
 	if q.Group != nil && len(q.Group.Columns) > 0 {
-		groupByValues := m.GroupBy(sb, q.Group)
+		groupByValues, havingTree := m.GroupBySnapshot(sb, q.Group, len(values))
+		q.HavingTree = havingTree
 		values = append(values, groupByValues...)
 	}
 
