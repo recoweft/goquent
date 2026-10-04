@@ -49,6 +49,8 @@ can share immutable private context. There is no global registry or automatic
 promotion from `Query.PrimaryKey`, default `id`, `TableRiskMetadata`, public
 Metadata, manifest data, JSON `trusted`/`verified`, or serialized results.
 CLI/static/JSON review has no private builder/context evidence and reports unknown.
+This includes static chains with a dynamic table expression: an `id` predicate
+cannot suppress the bulk warning in the fallback path; its precision is partial.
 
 ## Supported types and comparison
 
@@ -105,6 +107,8 @@ key; flat PredicateRef fields are never proof inputs. Ordinary identifier tokens
 and at most schema.table paths are supported, with exact case/spelling/alias
 matching. Quoted/expression identifiers, ambiguous targets and joins are outside
 this initial proof. No theorem prover, DNF expansion or general SQL parser is added.
+Empty IN preserves existing SQL rendering (`IN ()`), which both tested databases
+reject. Its unknown verdict is not a claim of successful zero-row execution.
 
 ## Evidence, budgets and diagnostic compatibility
 

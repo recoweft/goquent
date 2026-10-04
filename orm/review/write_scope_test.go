@@ -1,12 +1,43 @@
 package review
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/recoweft/goquent/orm/query"
 )
+
+func TestDynamicTableWriteScopeIsUnknown(t *testing.T) {
+	for _, terminal := range []string{"Update(map[string]any{\"score\": 1})", "Delete()"} {
+		t.Run(terminal, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "dynamic.go")
+			body := fmt.Sprintf("package fixture\nfunc write(table string) { db.Table(table).Where(\"id\", 1).%s }\n", terminal)
+			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			report, err := Run(Options{Paths: []string{path}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, f := range report.Findings {
+				if f.Code != query.WarningBulkUpdateDetected && f.Code != query.WarningBulkDeleteDetected {
+					continue
+				}
+				if f.AnalysisPrecision != query.AnalysisPartial {
+					t.Fatalf("%+v", f)
+				}
+				for _, e := range f.Evidence {
+					if scope, ok := e.Value.(query.WriteScopeResult); e.Key == "write_scope" && ok && scope.Status == "unknown" {
+						return
+					}
+				}
+			}
+			t.Fatalf("missing unknown write diagnostic: %+v", report.Findings)
+		})
+	}
+}
 
 func TestSerializedWriteScopeCannotSuppressReinspection(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "write.json")

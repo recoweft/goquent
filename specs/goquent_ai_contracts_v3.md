@@ -176,7 +176,11 @@ SQL-emitted condition tree, detached supported values and explicit unverified
 paths. PR2 adds [conditional integer write scope](../docs/write-scope.md), private
 builder correspondence and explicit application-supplied key context. Bulk
 diagnostics no longer use column presence. Tenant/policy presence checks remain
-compatibility heuristics; schema freshness and authorization are not proven. C05–C11/C28 have the bounded PR2 evidence registered below, not authorization
+compatibility heuristics; schema freshness and authorization are not proven.
+Static review's dynamic-table fallback also reports unknown/partial bulk evidence
+instead of suppressing it for an id column. Empty IN stays unknown and retains
+existing `IN ()` rendering, rejected by both tested DBs rather than proving zero rows.
+C05–C11/C28 have the bounded PR2 evidence registered below, not authorization
 or a universal cardinality determination. The
 historical API inventory above remains the GQ-AI-01 baseline.
 

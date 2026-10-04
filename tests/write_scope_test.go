@@ -97,6 +97,7 @@ func TestWriteScopeDatabaseSemantics(t *testing.T) {
 						{"range", func(q *query.Query) *query.Query { return q.Where("tenant", 1).Where("id", ">", 0) }, "broad", 2, false},
 						{"ne", func(q *query.Query) *query.Query { return q.Where("tenant", 1).Where("id", "!=", 3) }, "broad", 2, false},
 						{"multi_in", func(q *query.Query) *query.Query { return q.Where("tenant", 1).WhereIn("id", []int{1, 2}) }, "broad", 2, false},
+						{"empty_in", func(q *query.Query) *query.Query { return q.Where("tenant", 1).WhereIn("id", []int{}) }, "unknown", -1, false},
 						{"same_or", func(q *query.Query) *query.Query {
 							return q.WhereGroup(func(q *query.Query) { q.Where("tenant", 1).Where("id", 1) }).OrWhereGroup(func(q *query.Query) { q.Where("tenant", uint8(1)).Where("id", int64(1)) })
 						}, "at_most_one", 1, false},
@@ -143,6 +144,14 @@ func TestWriteScopeDatabaseSemantics(t *testing.T) {
 										t.Fatalf("%s: %+v", op, r)
 									}
 									result, err := tx.Exec(p.SQL, p.Params...)
+									if tc.name == "empty_in" {
+										// Existing rendering emits IN (), rejected by both DBs.
+										// Unknown must not turn this into a zero-row proof.
+										if err == nil {
+											t.Fatal("empty IN unexpectedly executed")
+										}
+										return
+									}
 									if err != nil {
 										t.Fatalf("%s: %v", p.SQL, err)
 									}
