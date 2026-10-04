@@ -4617,6 +4617,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) WhereYear\(col, cond, year string\) \*Query](<#Query.WhereYear>)
   - [func \(q \*Query\) WithContext\(ctx context.Context\) \*Query](<#Query.WithContext>)
   - [func \(q \*Query\) WithDeleted\(\) \*Query](<#Query.WithDeleted>)
+  - [func \(q \*Query\) WithWriteKeyContext\(ctx WriteKeyContext\) \*Query](<#Query.WithWriteKeyContext>)
 - [type QueryPlan](<#QueryPlan>)
   - [func NewRawPlan\(sqlStr string, args ...any\) \*QueryPlan](<#NewRawPlan>)
   - [func \(p QueryPlan\) MarshalJSON\(\) \(\[\]byte, error\)](<#QueryPlan.MarshalJSON>)
@@ -4645,6 +4646,11 @@ import "github.com/recoweft/goquent/orm/query"
 - [type TableRef](<#TableRef>)
 - [type TableRiskMetadata](<#TableRiskMetadata>)
 - [type Warning](<#Warning>)
+- [type WriteKeyColumn](<#WriteKeyColumn>)
+- [type WriteKeyConstraint](<#WriteKeyConstraint>)
+- [type WriteKeyContext](<#WriteKeyContext>)
+- [type WriteScopeResult](<#WriteScopeResult>)
+  - [func AnalyzeWriteScope\(p \*QueryPlan\) WriteScopeResult](<#AnalyzeWriteScope>)
 
 
 ## Constants
@@ -4731,7 +4737,7 @@ var ErrOutputDepth = valueguard.ErrDepth
 func AttachTableRiskMetadata(plan *QueryPlan, metadata []TableRiskMetadata)
 ```
 
-AttachTableRiskMetadata attaches table key metadata used by risk checks.
+AttachTableRiskMetadata attaches legacy descriptive table metadata. Use Query.WithWriteKeyContext for explicit, conditional write key analysis.
 
 <a name="EnsurePlanExecutable"></a>
 ## func EnsurePlanExecutable
@@ -6190,6 +6196,15 @@ func (q *Query) WithDeleted() *Query
 
 WithDeleted disables the default soft\-delete filter for a policy table.
 
+<a name="Query.WithWriteKeyContext"></a>
+### func \(\*Query\) WithWriteKeyContext
+
+```go
+func (q *Query) WithWriteKeyContext(ctx WriteKeyContext) *Query
+```
+
+WithWriteKeyContext copies explicit, caller\-asserted key facts for this query. Do not construct this context directly from untrusted requests or plan JSON. It never reads a database or invokes custom values/Executor methods.
+
 <a name="QueryPlan"></a>
 ## type QueryPlan
 
@@ -6197,6 +6212,8 @@ QueryPlan explains SQL and metadata before the query is executed.
 
 ```go
 type QueryPlan struct {
+    WriteScope *WriteScopeResult `json:"write_scope,omitempty"`
+
     WhereTree          *predicate.Node   `json:"where_tree,omitempty"`
     HavingTree         *predicate.Node   `json:"having_tree,omitempty"`
     Unverified         []string          `json:"unverified,omitempty"`
@@ -6521,7 +6538,7 @@ type TableRef struct {
 <a name="TableRiskMetadata"></a>
 ## type TableRiskMetadata
 
-TableRiskMetadata gives the risk engine table key context without depending on the manifest package.
+TableRiskMetadata is legacy descriptive schema metadata used by review tools. It does not supply typed key evidence for write cardinality.
 
 ```go
 type TableRiskMetadata struct {
@@ -6551,6 +6568,85 @@ type Warning struct {
     RequiresReason bool            `json:"requires_reason"`
 }
 ```
+
+<a name="WriteKeyColumn"></a>
+## type WriteKeyColumn
+
+WriteKeyColumn declares a database integer column, not an inferred Go model type. Supported DBType names are documented in docs/write\-scope.md.
+
+```go
+type WriteKeyColumn struct {
+    Name     string
+    DBType   string
+    Bits     int
+    Unsigned bool
+    Nullable bool
+}
+```
+
+<a name="WriteKeyConstraint"></a>
+## type WriteKeyConstraint
+
+WriteKeyConstraint is an application assertion about an entire unique key. AllRows, Valid and NotDeferrable must be explicitly asserted. Partial and expression indexes and deferred constraints cannot establish a bound.
+
+```go
+type WriteKeyConstraint struct {
+    Name          string
+    Kind          string // "primary" or "unique"
+    Columns       []WriteKeyColumn
+    AllRows       bool
+    Valid         bool
+    NotDeferrable bool
+    Partial       bool
+    Expression    bool
+}
+```
+
+<a name="WriteKeyContext"></a>
+## type WriteKeyContext
+
+WriteKeyContext must originate in trusted application code for this Query's current executor/database. Database is the application's database identity; Goquent does not read or authenticate it. Table includes any required schema. Alias must match the target alias exactly \(empty for an unaliased target\). This assertion is not live schema verification, tenant binding or authorization.
+
+```go
+type WriteKeyContext struct {
+    Database    string
+    Dialect     string // "mysql" or "postgres"
+    Table       string
+    Alias       string
+    Constraints []WriteKeyConstraint
+    // contains filtered or unexported fields
+}
+```
+
+<a name="WriteScopeResult"></a>
+## type WriteScopeResult
+
+WriteScopeResult is conditional structural analysis, never authorization or measured affected rows. Re\-run AnalyzeWriteScope after editing public fields.
+
+```go
+type WriteScopeResult struct {
+    Status      string            `json:"status"` // at_most_one, broad, unknown
+    Reason      string            `json:"reason"`
+    Precision   AnalysisPrecision `json:"precision"`
+    Provenance  string            `json:"provenance"`
+    Assumptions []string          `json:"assumptions,omitempty"`
+    Key         string            `json:"key,omitempty"`
+    Database    string            `json:"asserted_database,omitempty"`
+    Dialect     string            `json:"dialect,omitempty"`
+    Table       string            `json:"table,omitempty"`
+    Alias       string            `json:"alias,omitempty"`
+    KeyColumns  []string          `json:"key_columns,omitempty"`
+}
+```
+
+<a name="AnalyzeWriteScope"></a>
+### func AnalyzeWriteScope
+
+```go
+func AnalyzeWriteScope(p *QueryPlan) WriteScopeResult
+```
+
+AnalyzeWriteScope rechecks correspondence against private builder evidence. Public result fields, Metadata, PrimaryKey and JSON cannot supply that evidence. Built\-in scalar parameters are compared without invoking driver.Valuer or any user method. Custom payloads and concurrent mutation are outside this proof.
 
 # review
 
