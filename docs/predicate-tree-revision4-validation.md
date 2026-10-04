@@ -87,8 +87,13 @@ no unrelated hook changes or test relaxations were made.
 
 ## CI and remaining limits
 
-New-head CI and exact pushed commit are recorded in the PR and RelayWeft report;
-revision-3 CI is not evidence for this correction. CI omits TEST_DB_DSN, so the
+Implementation commit `06236c0f83deedf761985f78d5283b9c7e533659` passed
+[CI run 37199676308](https://github.com/recoweft/goquent/actions/runs/37199676308)
+([test job 111428596886](https://github.com/recoweft/goquent/actions/runs/37199676308/job/111428596886)),
+completed 2026-10-04T11:44:51Z. The final affected-package rerun also passed.
+This evidence-only documentation follow-up changes no implementation or tests.
+The exact final pushed head and its own CI result are recorded in the PR and
+RelayWeft report; revision-3 CI is not evidence for this correction. CI omits TEST_DB_DSN, so the
 registered-driver claim comes from explicit local integration.
 
 Payload reference retention beyond the copy limits is intentional and unverified;
