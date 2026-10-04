@@ -40,6 +40,49 @@ func TestWriteScopeDatabaseSemantics(t *testing.T) {
 						t.Fatal(err)
 					}
 					ctx := query.WriteKeyContext{Database: "testdb", Dialect: config.name, Table: table, Constraints: []query.WriteKeyConstraint{{Name: "primary", Kind: "primary", AllRows: true, Valid: true, NotDeferrable: true, Columns: []query.WriteKeyColumn{{Name: "tenant", DBType: typ, Bits: bits}, {Name: "id", DBType: typ, Bits: bits}}}}}
+					t.Run("self_join_cross_alias_key_is_unknown", func(t *testing.T) {
+						c := ctx
+						c.Alias = "u"
+						q := db.Table(table+" as u").WithWriteKeyContext(c).
+							Join(table+" as v", "u.tenant", "=", "v.tenant").Where("u.tenant", 1).Where("v.id", 1)
+						p, err := q.PlanUpdate(context.Background(), map[string]any{"score": 7})
+						if err != nil {
+							t.Fatal(err)
+						}
+						if r := query.AnalyzeWriteScope(p); r.Status != "unknown" {
+							t.Fatalf("cross-alias write: %+v", r)
+						}
+						// Inspect the actual joined target set in both dialects.
+						// The two mentioned key columns belong to different aliases:
+						// both target ids 1 and 2 satisfy them. PostgreSQL joined
+						// UPDATE rendering itself remains outside the proof surface.
+						selected, err := q.Select("u.id").OrderBy("u.id", "asc").Plan(context.Background())
+						if err != nil {
+							t.Fatal(err)
+						}
+						rows, err := sqlDB.Query(selected.SQL, selected.Params...)
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer rows.Close()
+						count := 0
+						for rows.Next() {
+							var id int
+							if err := rows.Scan(&id); err != nil {
+								t.Fatal(err)
+							}
+							count++
+							if id != count {
+								t.Fatalf("id=%d want=%d", id, count)
+							}
+						}
+						if err := rows.Err(); err != nil {
+							t.Fatal(err)
+						}
+						if count != 2 {
+							t.Fatalf("target rows=%d", count)
+						}
+					})
 					cases := []struct {
 						name   string
 						build  func(*query.Query) *query.Query

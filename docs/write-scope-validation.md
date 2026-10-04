@@ -73,6 +73,10 @@ claim that historical unrelated instability is resolved.
 | AC5 | PR1 ownership/output regressions; unchanged execution parameter types/order and call timing; full compatibility suite. Migration and limitations documented. | Custom internals/concurrent mutation and other CRUD pipelines are not certified. |
 | AC6 | Repository implementation/tests/docs and specified PR preparation. | Actual PR/head/CI results are recorded in PR/controller report. Static review has unresolved findings. No merge or Issue closure. |
 
+The cross-alias self-JOIN test obtains two distinct target rows from a real
+SELECT in each database while the corresponding write plan remains unknown.
+It does not claim portable joined UPDATE execution support.
+
 The PostgreSQL deferred-unique negative test deliberately inserts duplicate values
 inside a deferred transaction and observes two deleted rows while scope stays
 unknown. It is separate from the common positive tests. A string UNIQUE containing
