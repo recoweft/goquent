@@ -136,11 +136,11 @@ func reviewGoquentChain(ctx reviewContext, sel *ast.SelectorExpr, call *ast.Call
 				loc,
 				query.AnalysisPrecise,
 			))
-		} else if !chainHasPrimaryKeyLikePredicate(calls) {
+		} else {
 			findings = append(findings, staticFinding(
 				query.WarningBulkUpdateDetected,
 				query.RiskMedium,
-				"UPDATE predicate is not primary-key-like and may affect multiple rows",
+				"UPDATE scope is unknown without builder and typed key evidence",
 				"confirm the intended row set or add a narrower predicate",
 				loc,
 				query.AnalysisPrecise,
@@ -156,11 +156,11 @@ func reviewGoquentChain(ctx reviewContext, sel *ast.SelectorExpr, call *ast.Call
 				loc,
 				query.AnalysisPrecise,
 			))
-		} else if !chainHasPrimaryKeyLikePredicate(calls) {
+		} else {
 			findings = append(findings, staticFinding(
 				query.WarningBulkDeleteDetected,
 				query.RiskMedium,
-				"DELETE predicate is not primary-key-like and may affect multiple rows",
+				"DELETE scope is unknown without builder and typed key evidence",
 				"confirm the intended row set or add a narrower predicate",
 				loc,
 				query.AnalysisPrecise,
@@ -186,6 +186,12 @@ func reviewGoquentChain(ctx reviewContext, sel *ast.SelectorExpr, call *ast.Call
 				loc,
 				query.AnalysisPrecise,
 			))
+		}
+	}
+	for i := range findings {
+		if findings[i].Code == query.WarningBulkUpdateDetected || findings[i].Code == query.WarningBulkDeleteDetected {
+			findings[i].AnalysisPrecision = query.AnalysisPartial
+			findings[i].Evidence = append(findings[i].Evidence, query.Evidence{Key: "write_scope", Value: query.AnalyzeWriteScope(nil)})
 		}
 	}
 	return findings

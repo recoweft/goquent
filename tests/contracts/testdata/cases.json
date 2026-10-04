@@ -72,7 +72,7 @@
     {
       "id": "C05",
       "input": "UPDATE WHERE id > 0 or id IN (1,2)",
-      "current": "`id` occurrence suppresses bulk warning",
+      "current": "Bulk warning; unknown without typed context, broad for supported typed range/multiple IN",
       "required": "Broad/unknown, not single-row (02)",
       "owners": [
         "GQ-AI-02"
@@ -81,14 +81,17 @@
       "coverage": "partial",
       "evidence": [
         "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
-        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics",
+        "orm/query/write_scope_test.go#TestWriteScopeLogic",
+        "orm/query/write_scope_test.go#TestWriteScopeEvidence",
+        "tests/write_scope_test.go#TestWriteScopeDatabaseSemantics"
       ],
-      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
+      "assertion_scope": "PR2 tests conditional signed-integer key bounds and unknown/broad diagnostics using private builder evidence and explicit application assertions. Actual MySQL/PostgreSQL writes cover the supported subset. Tenant authorization, unified Strict, arbitrary custom values, schema freshness and all-CRUD enforcement remain unverified/out of scope."
     },
     {
       "id": "C06",
       "input": "UPDATE WHERE id=1 OR status='active'",
-      "current": "`id` occurrence can suppress bulk warning",
+      "current": "Bulk warning; OR with a non-key branch has no single-row proof",
       "required": "Every OR branch must satisfy scope; broad/unknown otherwise (02)",
       "owners": [
         "GQ-AI-02"
@@ -97,14 +100,17 @@
       "coverage": "partial",
       "evidence": [
         "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
-        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics",
+        "orm/query/write_scope_test.go#TestWriteScopeLogic",
+        "orm/query/write_scope_test.go#TestWriteScopeEvidence",
+        "tests/write_scope_test.go#TestWriteScopeDatabaseSemantics"
       ],
-      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
+      "assertion_scope": "PR2 tests conditional signed-integer key bounds and unknown/broad diagnostics using private builder evidence and explicit application assertions. Actual MySQL/PostgreSQL writes cover the supported subset. Tenant authorization, unified Strict, arbitrary custom values, schema freshness and all-CRUD enforcement remain unverified/out of scope."
     },
     {
       "id": "C07",
       "input": "UPDATE WHERE (tenant_id=T1 AND id=1) OR id=2",
-      "current": "Tenant presence can satisfy policy; ID heuristic narrows risk",
+      "current": "Tenant presence still satisfies policy; unbound OR has no single-row proof",
       "required": "Reject unbound branch in Strict (02/03)",
       "owners": [
         "GQ-AI-02",
@@ -114,14 +120,17 @@
       "coverage": "partial",
       "evidence": [
         "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
-        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics",
+        "orm/query/write_scope_test.go#TestWriteScopeLogic",
+        "orm/query/write_scope_test.go#TestWriteScopeEvidence",
+        "tests/write_scope_test.go#TestWriteScopeDatabaseSemantics"
       ],
-      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
+      "assertion_scope": "PR2 tests conditional signed-integer key bounds and unknown/broad diagnostics using private builder evidence and explicit application assertions. Actual MySQL/PostgreSQL writes cover the supported subset. Tenant authorization, unified Strict, arbitrary custom values, schema freshness and all-CRUD enforcement remain unverified/out of scope."
     },
     {
       "id": "C08",
       "input": "tenant_id=T2, tenant_id!=T1, NOT(tenant_id=T1), or tenant_id=other_column",
-      "current": "Column presence can satisfy required/tenant checks",
+      "current": "Column presence can satisfy required/tenant checks; NOT/column comparison do not prove write scope",
       "required": "Reject incorrect/unknown binding in Strict (02/03)",
       "owners": [
         "GQ-AI-02",
@@ -131,9 +140,12 @@
       "coverage": "partial",
       "evidence": [
         "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
-        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics",
+        "orm/query/write_scope_test.go#TestWriteScopeLogic",
+        "orm/query/write_scope_test.go#TestWriteScopeEvidence",
+        "tests/write_scope_test.go#TestWriteScopeDatabaseSemantics"
       ],
-      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
+      "assertion_scope": "PR2 tests conditional signed-integer key bounds and unknown/broad diagnostics using private builder evidence and explicit application assertions. Actual MySQL/PostgreSQL writes cover the supported subset. Tenant authorization, unified Strict, arbitrary custom values, schema freshness and all-CRUD enforcement remain unverified/out of scope."
     },
     {
       "id": "C09",
@@ -154,7 +166,7 @@
     {
       "id": "C10",
       "input": "Composite unique key (tenant_id,external_key), range predicates mentioning both",
-      "current": "Attached key metadata can suppress bulk warning on presence alone",
+      "current": "Legacy metadata alone is unknown; typed full-key non-NULL equality can prove at most one",
       "required": "Require conjunction/equality/full unique key (02)",
       "owners": [
         "GQ-AI-02"
@@ -163,14 +175,17 @@
       "coverage": "partial",
       "evidence": [
         "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
-        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics",
+        "orm/query/write_scope_test.go#TestWriteScopeLogic",
+        "orm/query/write_scope_test.go#TestWriteScopeEvidence",
+        "tests/write_scope_test.go#TestWriteScopeDatabaseSemantics"
       ],
-      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
+      "assertion_scope": "PR2 tests conditional signed-integer key bounds and unknown/broad diagnostics using private builder evidence and explicit application assertions. Actual MySQL/PostgreSQL writes cover the supported subset. Tenant authorization, unified Strict, arbitrary custom values, schema freshness and all-CRUD enforcement remain unverified/out of scope."
     },
     {
       "id": "C11",
       "input": "NOT(id=1), id IS NOT NULL, raw expression or EXISTS child query",
-      "current": "SQL/snapshot produced; heuristics may allow; precision need not degrade",
+      "current": "NOT/NULL do not prove a key; Raw/subqueries are unknown with partial write-scope precision",
       "required": "Preserve condition meaning or mark unknown; no verified scope in Strict (02/09)",
       "owners": [
         "GQ-AI-02",
@@ -180,9 +195,12 @@
       "coverage": "partial",
       "evidence": [
         "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
-        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics",
+        "orm/query/write_scope_test.go#TestWriteScopeLogic",
+        "orm/query/write_scope_test.go#TestWriteScopeEvidence",
+        "tests/write_scope_test.go#TestWriteScopeDatabaseSemantics"
       ],
-      "assertion_scope": "Risk/authorization observations remain source-derived; their desired future guarantees are unverified. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
+      "assertion_scope": "PR2 tests conditional signed-integer key bounds and unknown/broad diagnostics using private builder evidence and explicit application assertions. Actual MySQL/PostgreSQL writes cover the supported subset. Tenant authorization, unified Strict, arbitrary custom values, schema freshness and all-CRUD enforcement remain unverified/out of scope."
     },
     {
       "id": "C12",
@@ -438,7 +456,7 @@
     {
       "id": "C28",
       "input": "MySQL/PostgreSQL equivalent filtered operation",
-      "current": "Distinct placeholders/conflict/RETURNING behavior",
+      "current": "Distinct SQL preserved; signed integer write bounds tested on both databases",
       "required": "Same semantic safety requirement, dialect-specific limits (02/04/10)",
       "owners": [
         "GQ-AI-02",
@@ -452,9 +470,12 @@
         "tests/orm_postgres_test.go#TestPostgresSelectAllByWithScopes",
         "tests/write_generic_test.go#TestUpdateStructWherePK",
         "orm/query/predicate_tree_test.go#TestPredicateTreeSemanticCases",
-        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics"
+        "tests/predicate_tree_test.go#TestPredicateTreeDatabaseSemantics",
+        "orm/query/write_scope_test.go#TestWriteScopeLogic",
+        "orm/query/write_scope_test.go#TestWriteScopeEvidence",
+        "tests/write_scope_test.go#TestWriteScopeDatabaseSemantics"
       ],
-      "assertion_scope": "Equivalent pure filtered plans in both dialects plus existing DB recipes; not all conflict/count/RETURNING semantics. GQ-AI-02/PR1 adds condition structure, SQL parameter correspondence and DB result-set evidence only; write-cardinality and trusted tenant guarantees remain unverified."
+      "assertion_scope": "PR2 tests conditional signed-integer key bounds and unknown/broad diagnostics using private builder evidence and explicit application assertions. Actual MySQL/PostgreSQL writes cover the supported subset. Tenant authorization, unified Strict, arbitrary custom values, schema freshness and all-CRUD enforcement remain unverified/out of scope."
     }
   ],
   "api_coverage": [

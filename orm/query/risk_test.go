@@ -75,7 +75,7 @@ func TestRiskEngineDoesNotTreatForeignIDAsPrimaryKey(t *testing.T) {
 	}
 }
 
-func TestRiskEngineUsesTableRiskMetadataForCompositeUniqueKeys(t *testing.T) {
+func TestRiskEngineDoesNotPromoteLegacyCompositeUniqueMetadata(t *testing.T) {
 	plan := &QueryPlan{
 		Operation: OperationUpdate,
 		SQL:       "UPDATE users SET name = ? WHERE tenant_id = ? AND external_id = ?",
@@ -92,8 +92,8 @@ func TestRiskEngineUsesTableRiskMetadataForCompositeUniqueKeys(t *testing.T) {
 	}})
 
 	result := DefaultRiskEngine.CheckQuery(plan)
-	if warningCodeSet(result.Warnings)[WarningBulkUpdateDetected] {
-		t.Fatalf("expected composite unique predicate to be narrow, got %#v", result.Warnings)
+	if !warningCodeSet(result.Warnings)[WarningBulkUpdateDetected] || plan.WriteScope.Status != "unknown" {
+		t.Fatalf("legacy metadata cannot establish typed builder evidence, got %#v", result.Warnings)
 	}
 }
 

@@ -335,6 +335,20 @@ func reviewPlanJSONFile(ctx reviewContext, path string) ([]Finding, error) {
 	if len(warnings) == 0 {
 		warnings = result.Warnings
 	}
+	if plan.Operation == query.OperationUpdate || plan.Operation == query.OperationDelete {
+		// Serialized diagnostics are display data, not cardinality evidence.
+		// Recomputed write diagnostics must survive unrelated input warnings.
+		warnings = append([]query.Warning(nil), warnings...)
+		for _, current := range result.Warnings {
+			filtered := warnings[:0]
+			for _, previous := range warnings {
+				if previous.Code != current.Code {
+					filtered = append(filtered, previous)
+				}
+			}
+			warnings = append(filtered, current)
+		}
+	}
 	findings := findingsFromPlanWarnings(&plan, warnings, query.AnalysisPrecise, &query.SourceLocation{File: path, Line: 1})
 	for _, finding := range warningsToFindings(plan.SuppressedWarnings, query.AnalysisPrecise, &query.SourceLocation{File: path, Line: 1}) {
 		finding.Suppressed = true
@@ -409,6 +423,14 @@ func planEvidence(plan *query.QueryPlan) []query.Evidence {
 func warningsToFindings(warnings []query.Warning, precision query.AnalysisPrecision, loc *query.SourceLocation) []Finding {
 	findings := make([]Finding, 0, len(warnings))
 	for _, warning := range warnings {
+		findingPrecision := precision
+		if warning.Code == query.WarningBulkUpdateDetected || warning.Code == query.WarningBulkDeleteDetected {
+			for _, evidence := range warning.Evidence {
+				if scope, ok := evidence.Value.(query.WriteScopeResult); evidence.Key == "write_scope" && ok {
+					findingPrecision = scope.Precision
+				}
+			}
+		}
 		findingLoc := loc
 		if warning.Location != nil {
 			copied := *warning.Location
@@ -424,7 +446,7 @@ func warningsToFindings(warnings []query.Warning, precision query.AnalysisPrecis
 			Location:          cloneLocation(findingLoc),
 			Hint:              warning.Hint,
 			Evidence:          append([]query.Evidence(nil), warning.Evidence...),
-			AnalysisPrecision: precision,
+			AnalysisPrecision: findingPrecision,
 		})
 	}
 	return findings
