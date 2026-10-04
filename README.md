@@ -4364,6 +4364,95 @@ type OrderSpec struct {
 }
 ```
 
+# predicate
+
+```go
+import "github.com/recoweft/goquent/orm/predicate"
+```
+
+Package predicate describes generated condition structure, not authorization.
+
+## Index
+
+- [Constants](<#constants>)
+- [Variables](<#variables>)
+- [type Node](<#Node>)
+  - [func \(n Node\) MarshalJSON\(\) \(\[\]byte, error\)](<#Node.MarshalJSON>)
+- [type Value](<#Value>)
+  - [func \(v Value\) MarshalJSON\(\) \(\[\]byte, error\)](<#Value.MarshalJSON>)
+
+
+## Constants
+
+<a name="MaxDepth"></a>MaxDepth limits nested condition groups and subqueries. Flat lists do not consume nesting depth. Builders return ErrDepth rather than omit a condition.
+
+```go
+const MaxDepth = 64
+```
+
+## Variables
+
+<a name="ErrDepth"></a>ErrDepth indicates that a condition or subquery exceeded MaxDepth.
+
+```go
+var ErrDepth = errors.New("predicate nesting exceeds 64 levels")
+```
+
+<a name="Node"></a>
+## type Node
+
+Node is a detached inspection view of the structure used to render SQL. Parameter indexes in rendered views are zero based in the enclosing statement's Params; unrendered snapshots omit them. Opaque nodes preserve SQL but are not parsed. Exported/serialized fields are descriptive and never trusted proof.
+
+```go
+type Node struct {
+    NamedValues    map[string]Value `json:"named_values,omitempty"`
+    BoundColumns   []string         `json:"bound_columns,omitempty"`
+    Kind           string           `json:"kind"`
+    Children       []*Node          `json:"children,omitempty"`
+    Column         string           `json:"column,omitempty"`
+    Operator       string           `json:"operator,omitempty"`
+    ValueColumn    string           `json:"value_column,omitempty"`
+    Raw            string           `json:"raw,omitempty"`
+    Function       string           `json:"function,omitempty"`
+    SQL            string           `json:"sql,omitempty"`
+    Parameters     []int            `json:"parameters,omitempty"`
+    Values         []Value          `json:"values,omitempty"`
+    OpaqueReason   string           `json:"opaque_reason,omitempty"`
+    Correspondence string           `json:"correspondence"`
+}
+```
+
+<a name="Node.MarshalJSON"></a>
+### func \(Node\) MarshalJSON
+
+```go
+func (n Node) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON applies the same built\-in output limits to standalone condition views as to plans. Unverified generated payloads remain omitted by the builder.
+
+<a name="Value"></a>
+## type Value
+
+Value records isolation separately from SQL parameter position. Unverified payloads are deliberately omitted: serializing them could call user code.
+
+```go
+type Value struct {
+    Isolation string `json:"isolation"`
+    Reason    string `json:"reason,omitempty"`
+    Data      any    `json:"data,omitempty"`
+}
+```
+
+<a name="Value.MarshalJSON"></a>
+### func \(Value\) MarshalJSON
+
+```go
+func (v Value) MarshalJSON() ([]byte, error)
+```
+
+
+
 # query
 
 ```go
@@ -4397,6 +4486,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(c \*JoinClause\) Where\(column, condition string, value any\) \*JoinClause](<#JoinClause.Where>)
 - [type JoinRef](<#JoinRef>)
 - [type OperationType](<#OperationType>)
+- [type OutputError](<#OutputError>)
 - [type PolicyMode](<#PolicyMode>)
 - [type PredicateRef](<#PredicateRef>)
 - [type Query](<#Query>)
@@ -4529,6 +4619,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) WithDeleted\(\) \*Query](<#Query.WithDeleted>)
 - [type QueryPlan](<#QueryPlan>)
   - [func NewRawPlan\(sqlStr string, args ...any\) \*QueryPlan](<#NewRawPlan>)
+  - [func \(p QueryPlan\) MarshalJSON\(\) \(\[\]byte, error\)](<#QueryPlan.MarshalJSON>)
   - [func \(p \*QueryPlan\) RequiresApproval\(\) bool](<#QueryPlan.RequiresApproval>)
   - [func \(p \*QueryPlan\) String\(\) string](<#QueryPlan.String>)
   - [func \(p \*QueryPlan\) ToJSON\(\) \(\[\]byte, error\)](<#QueryPlan.ToJSON>)
@@ -4613,6 +4704,24 @@ var (
     ErrAccessReasonRequired   = errors.New("goquent: access reason required")
     ErrBlockedOperation       = errors.New("goquent: blocked operation")
 )
+```
+
+<a name="ErrOutputBudget"></a>
+
+```go
+var ErrOutputBudget = valueguard.ErrBudget
+```
+
+<a name="ErrOutputCycle"></a>
+
+```go
+var ErrOutputCycle = valueguard.ErrCycle
+```
+
+<a name="ErrOutputDepth"></a>
+
+```go
+var ErrOutputDepth = valueguard.ErrDepth
 ```
 
 <a name="AttachTableRiskMetadata"></a>
@@ -4875,6 +4984,15 @@ const (
     OperationDelete OperationType = "delete"
     OperationRaw    OperationType = "raw"
 )
+```
+
+<a name="OutputError"></a>
+## type OutputError
+
+OutputError distinguishes display preflight failures from custom marshaler errors.
+
+```go
+type OutputError = valueguard.Error
 ```
 
 <a name="PolicyMode"></a>
@@ -6079,6 +6197,9 @@ QueryPlan explains SQL and metadata before the query is executed.
 
 ```go
 type QueryPlan struct {
+    WhereTree          *predicate.Node   `json:"where_tree,omitempty"`
+    HavingTree         *predicate.Node   `json:"having_tree,omitempty"`
+    Unverified         []string          `json:"unverified,omitempty"`
     Operation          OperationType     `json:"operation"`
     SQL                string            `json:"sql"`
     Params             []any             `json:"params"`
@@ -6098,6 +6219,7 @@ type QueryPlan struct {
     Approval           *Approval         `json:"approval,omitempty"`
     AnalysisPrecision  AnalysisPrecision `json:"analysis_precision"`
     Metadata           map[string]any    `json:"metadata,omitempty"`
+    // contains filtered or unexported fields
 }
 ```
 
@@ -6109,6 +6231,15 @@ func NewRawPlan(sqlStr string, args ...any) *QueryPlan
 ```
 
 NewRawPlan creates a plan for caller\-supplied SQL. It does not execute SQL.
+
+<a name="QueryPlan.MarshalJSON"></a>
+### func \(QueryPlan\) MarshalJSON
+
+```go
+func (p QueryPlan) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON preserves ordinary output while rejecting unsafe built\-in expansion. A value receiver also covers json.Marshal\(\*plan\). Nil pointers remain JSON null.
 
 <a name="QueryPlan.RequiresApproval"></a>
 ### func \(\*QueryPlan\) RequiresApproval
