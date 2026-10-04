@@ -34,6 +34,7 @@ type executor interface {
 
 // Query wraps goquent QueryBuilder and the executor.
 type Query struct {
+	writeKeys          *WriteKeyContext
 	builder            *qbapi.SelectQueryBuilder
 	exec               executor
 	ctx                context.Context
@@ -234,6 +235,7 @@ func (q *Query) finalizePlan(plan *QueryPlan) {
 		return
 	}
 	q.applyPolicyMetadata(plan)
+	q.sealWriteEvidence(plan)
 	finalizePlanWithPolicy(plan, q.approval, q.suppressions, q.policy)
 }
 

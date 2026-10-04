@@ -58,6 +58,13 @@ func (d defaultRiskEngine) CheckQuery(plan *QueryPlan) RiskResult {
 		return RiskResult{Level: RiskLow}
 	}
 
+	if plan.Operation == OperationUpdate || plan.Operation == OperationDelete {
+		scope := AnalyzeWriteScope(plan)
+		plan.WriteScope = &scope
+		if scope.Status == "unknown" && plan.AnalysisPrecision != AnalysisUnsupported {
+			plan.AnalysisPrecision = AnalysisPartial
+		}
+	}
 	var warnings []Warning
 	add := func(w Warning) {
 		warnings = append(warnings, w)
@@ -89,9 +96,9 @@ func (d defaultRiskEngine) CheckQuery(plan *QueryPlan) RiskResult {
 				false,
 				false,
 			))
-		} else if !hasPrimaryKeyLikePredicate(plan) {
+		} else if plan.WriteScope.Status != "at_most_one" {
 			add(newWarning(WarningBulkUpdateDetected, RiskMedium,
-				"UPDATE predicate is not primary-key-like and may affect multiple rows",
+				"UPDATE scope is not proven to affect at most one row",
 				"confirm the intended row set or add a narrower predicate",
 				true,
 				false,
@@ -105,9 +112,9 @@ func (d defaultRiskEngine) CheckQuery(plan *QueryPlan) RiskResult {
 				false,
 				false,
 			))
-		} else if !hasPrimaryKeyLikePredicate(plan) {
+		} else if plan.WriteScope.Status != "at_most_one" {
 			add(newWarning(WarningBulkDeleteDetected, RiskMedium,
-				"DELETE predicate is not primary-key-like and may affect multiple rows",
+				"DELETE scope is not proven to affect at most one row",
 				"confirm the intended row set or add a narrower predicate",
 				true,
 				false,
@@ -139,6 +146,11 @@ func (d defaultRiskEngine) CheckQuery(plan *QueryPlan) RiskResult {
 		))
 	}
 
+	for i := range warnings {
+		if warnings[i].Code == WarningBulkUpdateDetected || warnings[i].Code == WarningBulkDeleteDetected {
+			warnings[i].Evidence = append(warnings[i].Evidence, Evidence{Key: "write_scope", Value: *plan.WriteScope})
+		}
+	}
 	warnings = applyRiskConfig(warnings, d.config)
 	level, blocked := aggregateWarnings(warnings)
 	return RiskResult{
@@ -410,78 +422,6 @@ func selectIsAggregateOnly(plan *QueryPlan) bool {
 
 func hasNoPredicate(plan *QueryPlan) bool {
 	return len(inspectionPredicates(plan)) == 0 && !strings.Contains(strings.ToUpper(plan.SQL), " WHERE ")
-}
-
-func hasPrimaryKeyLikePredicate(plan *QueryPlan) bool {
-	if hasMetadataNarrowPredicate(plan) {
-		return true
-	}
-	for _, predicate := range inspectionPredicates(plan) {
-		col := strings.ToLower(strings.TrimSpace(predicate.Column))
-		col = strings.Trim(col, "`\"")
-		if col == "id" || strings.HasSuffix(col, ".id") {
-			return true
-		}
-	}
-	return false
-}
-
-func hasMetadataNarrowPredicate(plan *QueryPlan) bool {
-	if plan == nil || plan.Metadata == nil {
-		return false
-	}
-	metadata, ok := plan.Metadata[MetadataTableRisk].([]TableRiskMetadata)
-	if !ok || len(metadata) == 0 {
-		return false
-	}
-	predicateCols := predicateColumnSet(plan)
-	for _, table := range metadata {
-		if hasAllPredicateColumns(predicateCols, table.PrimaryKeyColumns) {
-			return true
-		}
-		for _, indexCols := range table.UniqueIndexes {
-			if hasAllPredicateColumns(predicateCols, indexCols) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func predicateColumnSet(plan *QueryPlan) map[string]struct{} {
-	out := make(map[string]struct{}, len(inspectionPredicates(plan))*2)
-	for _, predicate := range inspectionPredicates(plan) {
-		addPredicateColumn(out, predicate.Column)
-		addPredicateColumn(out, predicate.ValueColumn)
-	}
-	return out
-}
-
-func addPredicateColumn(out map[string]struct{}, column string) {
-	column = normalizeColumnName(column)
-	if column == "" {
-		return
-	}
-	out[column] = struct{}{}
-	if _, name := splitColumnReference(column); name != "" {
-		out[name] = struct{}{}
-	}
-}
-
-func hasAllPredicateColumns(predicateCols map[string]struct{}, keyCols []string) bool {
-	if len(keyCols) == 0 {
-		return false
-	}
-	for _, col := range keyCols {
-		col = normalizeColumnName(col)
-		if col == "" {
-			return false
-		}
-		if _, ok := predicateCols[col]; !ok {
-			return false
-		}
-	}
-	return true
 }
 
 func hasWeakPredicate(plan *QueryPlan) bool {

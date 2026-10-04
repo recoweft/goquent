@@ -173,9 +173,11 @@ proof algorithm is specified as an implemented API here.
 
 The GQ-AI-02/PR1 [predicate foundation](../docs/predicate-tree.md) adds a
 SQL-emitted condition tree, detached supported values and explicit unverified
-paths. Existing column-presence diagnostics remain compatibility heuristics;
-semantic scope proofs are still PR2 work. C05–C11/C28 gain partial representation
-and DB-result evidence, not new authorization/cardinality determinations. The
+paths. PR2 adds [conditional integer write scope](../docs/write-scope.md), private
+builder correspondence and explicit application-supplied key context. Bulk
+diagnostics no longer use column presence. Tenant/policy presence checks remain
+compatibility heuristics; schema freshness and authorization are not proven. C05–C11/C28 have the bounded PR2 evidence registered below, not authorization
+or a universal cardinality determination. The
 historical API inventory above remains the GQ-AI-01 baseline.
 
 ### 3.3 DB settings and trusted context — GQ-AI-03
@@ -254,13 +256,13 @@ only existing cases named in section 5 have executable evidence.
 | C02 SELECT * with no limit | SELECT_STAR_USED and LIMIT_MISSING, medium | Preserve diagnostics (04/09) | No DB cost estimate |
 | C03 UPDATE/DELETE with no predicate, no soft-delete policy | Blocked, non-suppressible missing-WHERE warning | Preserve block (02/04) | Default soft-delete predicate changes input; not a narrow-write proof |
 | C04 UPDATE WHERE tenant_id=T1, no key | Medium bulk warning, allowed absent other policy violations | Tenant-wide, never prove one row (02/03) | Correct tenant still permits many rows |
-| C05 UPDATE WHERE id > 0 or id IN (1,2) | `id` occurrence suppresses bulk warning | Broad/unknown, not single-row (02) | Column-name/operator-insensitive heuristic is insufficient |
-| C06 UPDATE WHERE id=1 OR status='active' | `id` occurrence can suppress bulk warning | Every OR branch must satisfy scope; broad/unknown otherwise (02) | Flattened predicates lose implication |
-| C07 UPDATE WHERE (tenant_id=T1 AND id=1) OR id=2 | Tenant presence can satisfy policy; ID heuristic narrows risk | Reject unbound branch in Strict (02/03) | OR must not escape tenant restriction |
-| C08 tenant_id=T2, tenant_id!=T1, NOT(tenant_id=T1), or tenant_id=other_column | Column presence can satisfy required/tenant checks | Reject incorrect/unknown binding in Strict (02/03) | No proof of equality to trusted value |
+| C05 UPDATE WHERE id > 0 or id IN (1,2) | Bulk warning; unknown without typed context, broad for supported typed range/multiple IN | Broad/unknown, not single-row (02) | Column-name/operator-insensitive heuristic is insufficient |
+| C06 UPDATE WHERE id=1 OR status='active' | Bulk warning; OR with a non-key branch has no single-row proof | Every OR branch must satisfy scope; broad/unknown otherwise (02) | Flattened predicates lose implication |
+| C07 UPDATE WHERE (tenant_id=T1 AND id=1) OR id=2 | Tenant presence still satisfies policy; unbound OR has no single-row proof | Reject unbound branch in Strict (02/03) | OR must not escape tenant restriction |
+| C08 tenant_id=T2, tenant_id!=T1, NOT(tenant_id=T1), or tenant_id=other_column | Column presence can satisfy required/tenant checks; NOT/column comparison do not prove write scope | Reject incorrect/unknown binding in Strict (02/03) | No proof of equality to trusted value |
 | C09 Tenant-scoped read without tenant context but literal tenant filter | Presence check can pass | Unverified/rejected in Strict until trusted tenant supplied (03) | Application JSON is not trusted context |
-| C10 Composite unique key (tenant_id,external_key), range predicates mentioning both | Attached key metadata can suppress bulk warning on presence alone | Require conjunction/equality/full unique key (02) | Nullability, partial/expression indexes, dialect semantics matter |
-| C11 NOT(id=1), id IS NOT NULL, raw expression or EXISTS child query | SQL/snapshot produced; heuristics may allow; precision need not degrade | Preserve condition meaning or mark unknown; no verified scope in Strict (02/09) | General SQL theorem proving is not promised |
+| C10 Composite unique key (tenant_id,external_key), range predicates mentioning both | Legacy metadata alone is unknown; typed full-key non-NULL equality can prove at most one | Require conjunction/equality/full unique key (02) | Nullability, partial/expression indexes, dialect semantics matter |
+| C11 NOT(id=1), id IS NOT NULL, raw expression or EXISTS child query | NOT/NULL do not prove a key; Raw/subqueries are unknown with partial write-scope precision | Preserve condition meaning or mark unknown; no verified scope in Strict (02/09) | General SQL theorem proving is not promised |
 | C12 Raw DELETE FROM users via DB.Exec | RAW_SQL_USED high; no approval rejects; reason permits raw gate | Unknown semantics not verified by reason; trusted high-risk authorization required in Strict (04/13) | No full SQL parser; TouchedTables does not fix this |
 | C13 Generic Update with WherePK or generic Upsert with conflict target | Shape checks/trusted execution, no common plan/policy | Common inspection for final operations/conflict branches (04) | PK option is not tenant binding |
 | C14 Batch containing T1 and T2 rows | Generic batch/DSL INSERT lack per-row tenant-value inspection | Inspect all rows/branches with trusted context (03/04) | Chunking/partial execution must be explicit |
@@ -277,7 +279,7 @@ only existing cases named in section 5 have executable evidence.
 | C25 InsertOnceReturning/RunIdempotentCommand concurrent replay | Existing-row/conflict recipes | Define operation/key/payload and retry/result semantics (10) | Existing tests do not prove exactly-once effects |
 | C26 Two DBs register different policy for same table | Shared process-wide registry | DB isolation and transaction inheritance (03) | Mutex protection is not tenant isolation |
 | C27 sql.Tx/custom Executor wrapped by NewTxDB/NewDBWithExecutor | Delegated path works; no new-transaction capability implied | Preserve interface/ownership; bind context for inspected paths (03/04/05) | Direct executor/SQLDB access is outside interception |
-| C28 MySQL/PostgreSQL equivalent filtered operation | Distinct placeholders/conflict/RETURNING behavior | Same semantic safety requirement, dialect-specific limits (02/04/10) | Do not demand identical SQL/counts |
+| C28 MySQL/PostgreSQL equivalent filtered operation | Distinct SQL preserved; signed integer write bounds tested on both databases | Same semantic safety requirement, dialect-specific limits (02/04/10) | Do not demand identical SQL/counts |
 
 New executable guarantees belong in their owning issue. PR2 may share documentary
 cases and baseline fixtures after PR1 merges; it must not freeze gaps as desired

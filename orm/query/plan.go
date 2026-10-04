@@ -140,6 +140,8 @@ type PredicateRef struct {
 
 // QueryPlan explains SQL and metadata before the query is executed.
 type QueryPlan struct {
+	writeEvidence       *writeEvidence
+	WriteScope          *WriteScopeResult `json:"write_scope,omitempty"`
 	conditionSource     *predicate.Node
 	generatedConditions bool
 	WhereTree           *predicate.Node   `json:"where_tree,omitempty"`
@@ -178,8 +180,8 @@ type RequiredPredicate struct {
 	Column string `json:"column"`
 }
 
-// TableRiskMetadata gives the risk engine table key context without depending
-// on the manifest package.
+// TableRiskMetadata is legacy descriptive schema metadata used by review tools.
+// It does not supply typed key evidence for write cardinality.
 type TableRiskMetadata struct {
 	Table                 string     `json:"table"`
 	PrimaryKeyColumns     []string   `json:"primary_key_columns,omitempty"`
@@ -189,7 +191,8 @@ type TableRiskMetadata struct {
 	RequiredFilterColumns []string   `json:"required_filter_columns,omitempty"`
 }
 
-// AttachTableRiskMetadata attaches table key metadata used by risk checks.
+// AttachTableRiskMetadata attaches legacy descriptive table metadata.
+// Use Query.WithWriteKeyContext for explicit, conditional write key analysis.
 func AttachTableRiskMetadata(plan *QueryPlan, metadata []TableRiskMetadata) {
 	if plan == nil || len(metadata) == 0 {
 		return
