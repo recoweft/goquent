@@ -12,11 +12,12 @@ func InspectPredicates(groups []WhereGroup) (*predicate.Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	copier := valuecopy.New()
 	var walk func(*Predicate) *predicate.Node
 	val := func(v any) predicate.Value {
-		data, ok := valuecopy.Copy(v)
+		data, ok := copier.Copy(v)
 		if !ok {
-			return predicate.Value{Isolation: "unverified", Reason: "unsupported_or_recursive_value"}
+			return predicate.Value{Isolation: "unverified", Reason: valuecopy.UnverifiedReason}
 		}
 		return predicate.Value{Isolation: "detached", Data: data}
 	}

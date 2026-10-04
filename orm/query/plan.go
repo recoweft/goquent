@@ -10,6 +10,7 @@ import (
 
 	qbapi "github.com/recoweft/goquent/orm/internal/querybuilder/api"
 	"github.com/recoweft/goquent/orm/internal/valuecopy"
+	"github.com/recoweft/goquent/orm/internal/valueguard"
 	"github.com/recoweft/goquent/orm/predicate"
 )
 
@@ -246,6 +247,23 @@ func (p *QueryPlan) RequiresApproval() bool {
 	return p != nil && p.RequiredApproval
 }
 
+// OutputError distinguishes display preflight failures from custom marshaler errors.
+type OutputError = valueguard.Error
+
+var ErrOutputCycle = valueguard.ErrCycle
+var ErrOutputDepth = valueguard.ErrDepth
+var ErrOutputBudget = valueguard.ErrBudget
+
+// MarshalJSON preserves ordinary output while rejecting unsafe built-in expansion.
+// A value receiver also covers json.Marshal(*plan). Nil pointers remain JSON null.
+func (p QueryPlan) MarshalJSON() ([]byte, error) {
+	type plain QueryPlan
+	if err := valueguard.Check(plain(p)); err != nil {
+		return nil, err
+	}
+	return json.Marshal(plain(p))
+}
+
 // ToJSON returns stable, indented JSON for the plan.
 func (p *QueryPlan) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(p, "", "  ")
@@ -257,6 +275,9 @@ func (p *QueryPlan) String() string {
 		return "<nil query plan>"
 	}
 
+	if err := valueguard.Check(*p); err != nil {
+		return "<query plan output omitted; unverified: " + err.Error() + ">"
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s query plan\n", p.Operation)
 	fmt.Fprintf(&b, "risk: %s\n", p.RiskLevel)

@@ -1,4 +1,8 @@
-# GQ-AI-02/PR1 validation record
+# GQ-AI-02/PR1 original validation record
+
+Historical evidence for head `fa773b1707f1d94ed0464f03cbcebd3e7e38f9fb`.
+For the revision-3 bounded-copy/output correction, see
+[predicate-tree-revision3-validation.md](predicate-tree-revision3-validation.md).
 
 Environment: `/home/murai/github/goquent`, WSL2, Ubuntu 24.04.4,
 Go `go1.26.4 linux/amd64`. Baseline main:

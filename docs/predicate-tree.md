@@ -82,7 +82,7 @@ assuming SELECT and write emitters support the same expression set.
 
 ## Value isolation contract
 
-The adopted same-revision decision is A (questions
+The original adopted value-isolation decision is A (questions
 `d4e3ea76-c310-4ef0-8805-fb5968770593` and
 `2335c128-ddcf-4f06-adb6-f988cd5cd0e6`). No new argument types are accepted or
 converted by this work; downstream drivers/Executors still decide validity.
@@ -91,13 +91,13 @@ converted by this work; downstream drivers/Executors still decide validity.
 | --- | --- |
 | nil, bool, string, built-in signed/unsigned integers (except uintptr), float32/64, time.Time | Value copy; original Go type and SQL NULL behavior preserved |
 | Exact built-in scalar slices (including byte slice and time.Time slice) | New backing storage, nil versus empty preserved |
-| `[]any`, `map[string]any` | Recursive copy to 64 container levels; the entire dependent value is unverified if any descendant cannot be isolated |
-| Named custom types, pointers (including typed nil), arbitrary structs, Valuer/Marshaler, unsupported containers | Passed through unchanged; `isolation: unverified`, reason `unsupported_or_recursive_value`; external state can still change |
-| Cyclic or deeper containers | Bounded copying stops at an unverified retained reference; no recursive reflection, JSON round-trip, normalization or assertion of immutability |
+| `[]any`, `map[string]any` | Operation-local memoized copy, limited to 64 value edges and the budgets below; the entire dependent value is unverified if any descendant cannot be isolated |
+| Named custom types, pointers (including typed nil), arbitrary structs, Valuer/Marshaler, unsupported containers | Passed through unchanged; `isolation: unverified`, reason `unsupported_recursive_deep_or_oversized_value`; external state can still change |
+| Cyclic, deeper or over-budget containers | Bounded copying stops at an unverified retained reference; no recursive reflection, JSON round-trip, normalization or assertion of immutability |
 
 Unverified payloads are omitted from condition-value JSON to avoid invoking user
-serialization code. This does not redact or change the existing Plan.Params
-serialization contract. Values that the existing SQL emitter transforms (for
+serialization code. Ordinary, in-budget Plan.Params serialization is unchanged. Revision 3 adopts
+the output-limit exception below; this is not redaction. Values that the existing SQL emitter transforms (for
 example internal JSON formatting) are recorded as its actual returned argument;
 that expression is still opaque. Unknown values must not support key-binding or
 equality proofs, even if a current printed value looks equal.
@@ -107,6 +107,87 @@ HAVING values, join maps and supported values are copied. Attached table key/ind
 metadata is also detached. Independent snapshots/Plans do not share their mutable
 supported values. Valuer evaluation timing, its error, and the original custom
 Executor argument type remain unchanged.
+
+## Revision 3: bounded copy and output
+
+Revision 3 of work `43118939-d7f2-420a-863f-873803cbeda3` adopts output option A
+from consultation `a3530f66-b133-4885-bd48-3f07ac6ba805`. The earlier validation
+record describes the original implementation, not evidence for this correction.
+
+Copying uses an active-path marker and a completed-copy memo. A back edge keeps
+the original reference and marks its dependent value unverified immediately.
+Completed acyclic children are reused, including their isolation result and
+height (a deeper occurrence must still pass the depth check). Identical map
+identities and slice views (type, starting address, length) share one copy within
+an operation. Overlapping but nonidentical slices are independent copies; capacity
+and arbitrary alias topology are not guaranteed. Source objects remain reachable
+while the memo lives, preventing GC/address reuse between arguments. Each new
+copy, snapshot or Plan owns fresh memo state; there is no global cache.
+
+Before allocation, a copier reserves at most **65,536 slots** and **8 MiB of
+payload allowance**. A recursive container costs one slot plus its length and
+16 bytes per slice element or 64 bytes per map entry; a scalar slice costs one
+slot and length times its element size. Empty/nil/scalar values keep their types;
+immutable strings are not duplicated. Overflow is checked before multiplication
+or allocation. These conservative allowances bound newly copied payload and
+traversal, not exact Go heap accounting. The limits allow ordinary SQL parameters
+and multi-megabyte binary values while stopping adversarial width as well as
+branching recursion. The root has depth zero and values at depth 64 are accepted;
+deeper values retain their references and become unverified.
+
+A copier is shared across all values in a query-clone traversal (including its
+subqueries/joins), a predicate rendering/inspection pass, a Node-copy traversal,
+or an argument-slice copy. Limits are **per copy pass**, not reset for each
+argument and not a process-wide or entire-statement heap quota. Existing SQL and
+clause construction, separate WHERE/HAVING passes, UNION builds and the finite
+successive snapshot/Plan copies still have their own storage. Their cost can grow
+with the explicitly supplied SQL/clause count. Unsupported or budget-exhausted
+payloads remain opaque references; no condition or execution argument is dropped.
+`valuecopy.Node` also memoizes shared condition nodes and propagates value-copy
+failure to ancestor correspondence. Normal builder trees are depth validated;
+this does not add public-plan mutation validation.
+
+Output has a **separate** preflight: **65,536 expanded nodes**, **8 MiB of estimated
+output cost**, and **256 traversal edges**. The larger depth includes library
+struct/pointer/slice wrappers around the builder's 64 condition-group levels.
+Each visited item costs 32 estimated bytes, plus six times a string's byte length
+for worst-case JSON escaping. Map keys count as items. Library field names and
+caller-selected indentation are not exact byte accounting; 8 MiB is an estimate,
+not a promise about final JSON bytes or runtime heap. Node count and depth also
+bound standard formatting overhead. Memoized subtree costs are added for **every**
+reference, so a compact DAG may copy successfully but fail output preflight.
+The preflight itself visits each distinct supported subtree once and stops before
+large serialization allocations. It never calls Valuer, Marshaler, Stringer,
+Formatter or any other user method.
+
+`QueryPlan.String` returns an explicit reason-bearing omitted/unverified marker
+on failure; no payload is formatted to create that marker. `ToJSON`,
+`json.Marshal(plan)`, value-form `json.Marshal(*plan)` and `json.MarshalIndent`
+return an error, never a successful null/empty replacement. `errors.As` to
+`*query.OutputError` distinguishes preflight errors; `errors.Is` recognizes
+`query.ErrOutputCycle`, `ErrOutputDepth` or `ErrOutputBudget`, including through
+`json.MarshalerError`. A nil Plan still serializes as `null` and String returns
+`<nil query plan>`. Normal JSON fields, indentation, nil/empty distinctions and
+String output remain unchanged; no reference-ID encoding is introduced.
+
+The preflight covers all exported library-owned Plan and predicate fields,
+including WHERE/HAVING values, named values, Metadata, both warning lists and
+Evidence. Standalone predicate Node/Value JSON also applies the guard. Unnamed
+slices/arrays and string-keyed maps are traversed; named user types, user structs,
+non-string-keyed maps and arbitrary user pointers are opaque. Their existing
+formatting/marshaling methods still run at the normal output stage. Their
+recursion, allocations and output sizes are **not bounded** by this contract.
+Neither arbitrary direct formatting of `Value.Data`/`Params` by caller code nor
+other APIs such as SQL interpolation are covered. No whole-Plan/all-user-value
+resource guarantee, masking, concurrent-mutation safety or tamper detection is
+claimed. After mutation a new output call always performs a fresh check.
+
+For migration, reduce oversized values/metadata or graph expansion before asking
+for output, and handle the typed output error. Do not catch it and execute a
+truncated condition. Display errors do not reject Plan generation or DB execution;
+SQL, Params, custom Executor types and Valuer evaluation/error timing remain on
+their existing paths. Unverified values remain unavailable as equality or key
+proofs; semantic cardinality remains PR2 work.
 
 ## Depth and compatibility changes
 

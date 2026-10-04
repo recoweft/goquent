@@ -22,6 +22,7 @@ func RenderPredicates(sb *[]byte, groups []structs.WhereGroup, offset int, rende
 	}
 	*sb = append(*sb, " WHERE "...)
 	values := []any{}
+	copier := valuecopy.New()
 	var walk func(*structs.Predicate) (*predicate.Node, error)
 	walk = func(n *structs.Predicate) (*predicate.Node, error) {
 		start := len(*sb)
@@ -81,11 +82,11 @@ func RenderPredicates(sb *[]byte, groups []structs.WhereGroup, offset int, rende
 			}
 			for _, arg := range args {
 				out.Parameters = append(out.Parameters, offset+len(values))
-				copied, ok := valuecopy.Copy(arg)
+				copied, ok := copier.Copy(arg)
 				v := predicate.Value{Isolation: "detached", Data: copied}
 				if !ok {
 					out.Correspondence = "unverified"
-					v = predicate.Value{Isolation: "unverified", Reason: "unsupported_or_recursive_value"}
+					v = predicate.Value{Isolation: "unverified", Reason: valuecopy.UnverifiedReason}
 				}
 				out.Values = append(out.Values, v)
 				values = append(values, copied)
