@@ -4,12 +4,13 @@ import (
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/common/consts"
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/common/structs"
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/db/interfaces"
+	"github.com/recoweft/goquent/orm/internal/valuecopy"
 )
 
 type UpdateBuilder struct {
-	BuiltQuery *structs.Query
-	dbBuilder  interfaces.QueryBuilderStrategy
-	query      *structs.UpdateQuery
+	BuiltStatement *structs.UpdateQuery
+	dbBuilder      interfaces.QueryBuilderStrategy
+	query          *structs.UpdateQuery
 	OrderByBuilder[UpdateBuilder]
 	JoinBuilder[UpdateBuilder]
 	WhereBuilder[UpdateBuilder]
@@ -70,9 +71,14 @@ func (u *UpdateBuilder) Build() (string, []interface{}, error) {
 	u.query.Query.Order = u.OrderByBuilder.Order
 
 	frozen := *u.query
+	frozen.Values = make(map[string]any, len(u.query.Values))
+	copier := valuecopy.New()
+	for k, v := range u.query.Values {
+		frozen.Values[k], _ = copier.Copy(v)
+	}
 	frozen.Query = structs.CloneQuery(u.query.Query)
 	query, values, err := u.dbBuilder.BuildUpdate(&frozen)
-	u.BuiltQuery = frozen.Query
+	u.BuiltStatement = &frozen
 	return query, values, err
 }
 

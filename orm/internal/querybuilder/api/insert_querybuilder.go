@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/db/interfaces"
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/query"
+	"sort"
 )
 
 type InsertQueryBuilder struct {
@@ -64,4 +65,46 @@ func (ib *InsertQueryBuilder) RawSql() (string, error) {
 
 func (ib *InsertQueryBuilder) Build() (string, []interface{}, error) {
 	return ib.builder.Build()
+}
+
+// InsertSnapshot describes the exact input used by BuildSnapshot.
+type InsertSnapshot struct {
+	Table         string
+	Columns       []string
+	BatchSize     int
+	UniqueColumns []string
+	UpdateColumns []string
+}
+
+func (ib *InsertQueryBuilder) BuildSnapshot() (string, []any, InsertSnapshot, error) {
+	sql, args, err := ib.Build()
+	if err != nil {
+		return "", nil, InsertSnapshot{}, err
+	}
+	src := ib.builder.BuiltQuery
+	out := InsertSnapshot{Table: src.Table, BatchSize: len(src.ValuesBatch)}
+	names := make(map[string]bool)
+	for k := range src.Values {
+		names[k] = true
+	}
+	for _, row := range src.ValuesBatch {
+		for k := range row {
+			names[k] = true
+		}
+	}
+	for _, col := range src.Columns {
+		names[col] = true
+	}
+	for k := range names {
+		out.Columns = append(out.Columns, k)
+	}
+	sort.Strings(out.Columns)
+	if src.Query != nil {
+		out.Columns = append([]string(nil), src.Columns...)
+	}
+	if src.Upsert != nil {
+		out.UniqueColumns = append([]string(nil), src.Upsert.UniqueColumns...)
+		out.UpdateColumns = append([]string(nil), src.Upsert.UpdateColumns...)
+	}
+	return sql, args, out, nil
 }

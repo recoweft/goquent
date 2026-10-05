@@ -190,3 +190,7 @@ err = requestDB.Table("orders").Select("id").Where("id", orderID).First(&order)
 
 Construct a new request derivation for each authorized tenant. Keeping the old
 NewExecutionContext call under this option intentionally fails closed.
+
+For GQ-AI-04/PR1 execution integration and the current entry boundaries, see
+[planned Query execution](planned-query-execution.md). The historical table above
+describes the PR65 baseline; generic and compound coverage remains deferred.

@@ -12,16 +12,17 @@ import (
 
 // QuerySnapshot is a stable, detached metadata view of a SELECT builder.
 type QuerySnapshot struct {
-	WhereTree  *predicate.Node
-	HavingTree *predicate.Node
-	Unverified []string
-	Error      error
-	Table      string
-	Columns    []ColumnSnapshot
-	Limit      int64
-	Offset     int64
-	Joins      []JoinSnapshot
-	Predicates []PredicateSnapshot
+	AssignmentColumns []string
+	WhereTree         *predicate.Node
+	HavingTree        *predicate.Node
+	Unverified        []string
+	Error             error
+	Table             string
+	Columns           []ColumnSnapshot
+	Limit             int64
+	Offset            int64
+	Joins             []JoinSnapshot
+	Predicates        []PredicateSnapshot
 }
 
 // ColumnSnapshot describes a selected column or expression.
@@ -320,14 +321,24 @@ func (qb *UpdateQueryBuilder) BuildSnapshot() (string, []any, QuerySnapshot, err
 	if err != nil {
 		return "", nil, QuerySnapshot{Error: err}, err
 	}
-	return sql, args, snapshotFromQuery(qb.builder.BuiltQuery), nil
+	built := qb.builder.BuiltStatement
+	snapshot := snapshotFromQuery(built.Query)
+	snapshot.Table = built.Table
+	for col := range built.Values {
+		snapshot.AssignmentColumns = append(snapshot.AssignmentColumns, col)
+	}
+	sort.Strings(snapshot.AssignmentColumns)
+	return sql, args, snapshot, nil
 }
 func (qb *DeleteQueryBuilder) BuildSnapshot() (string, []any, QuerySnapshot, error) {
 	sql, args, err := qb.Build()
 	if err != nil {
 		return "", nil, QuerySnapshot{Error: err}, err
 	}
-	return sql, args, snapshotFromQuery(qb.builder.BuiltQuery), nil
+	built := qb.builder.BuiltStatement
+	snapshot := snapshotFromQuery(built.Query)
+	snapshot.Table = built.Table
+	return sql, args, snapshot, nil
 }
 
 // GroupWhere wraps the complete predicate list before appending mandatory ANDs.

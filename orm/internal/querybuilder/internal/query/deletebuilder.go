@@ -7,9 +7,9 @@ import (
 )
 
 type DeleteBuilder struct {
-	BuiltQuery *structs.Query
-	dbBuilder  interfaces.QueryBuilderStrategy
-	query      *structs.DeleteQuery
+	BuiltStatement *structs.DeleteQuery
+	dbBuilder      interfaces.QueryBuilderStrategy
+	query          *structs.DeleteQuery
 	WhereBuilder[DeleteBuilder]
 	JoinBuilder[DeleteBuilder]
 	OrderByBuilder[DeleteBuilder]
@@ -71,7 +71,7 @@ func (d *DeleteBuilder) Build() (string, []interface{}, error) {
 	frozen := *d.query
 	frozen.Query = structs.CloneQuery(d.query.Query)
 	query, values, err := d.dbBuilder.BuildDelete(&frozen)
-	d.BuiltQuery = frozen.Query
+	d.BuiltStatement = &frozen
 	return query, values, err
 }
 

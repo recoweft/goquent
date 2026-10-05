@@ -247,6 +247,7 @@ func (q *Query) finalizePlan(plan *QueryPlan) {
 	q.sealWriteEvidence(plan)
 	finalizePlanWithSettings(plan, q.approval, q.suppressions, q.policy, q.settings)
 	q.finalizeTenantPolicy(plan)
+	q.sealExecution(plan)
 }
 
 func (q *Query) applyPolicyPredicates() {
@@ -291,32 +292,9 @@ func (q *Query) applyPolicyMetadata(plan *QueryPlan) {
 	}
 }
 
-// queryRows executes Query or QueryContext based on whether ctx is set.
-func (q *Query) queryRows(sqlStr string, args ...any) (*sql.Rows, error) {
-	if q.ctx != nil {
-		return q.exec.QueryContext(q.ctx, sqlStr, args...)
-	}
-	return q.exec.Query(sqlStr, args...)
-}
-
-func (q *Query) queryRow(sqlStr string, args ...any) *sql.Row {
-	if q.ctx != nil {
-		return q.exec.QueryRowContext(q.ctx, sqlStr, args...)
-	}
-	return q.exec.QueryRow(sqlStr, args...)
-}
-
 func (q *Query) nextParamName(prefix string) string {
 	q.paramSeq++
 	return fmt.Sprintf("__goquent_%s_%d", prefix, q.paramSeq)
-}
-
-// execStmt executes Exec or ExecContext depending on ctx.
-func (q *Query) execStmt(sqlStr string, args ...any) (sql.Result, error) {
-	if q.ctx != nil {
-		return q.exec.ExecContext(q.ctx, sqlStr, args...)
-	}
-	return q.exec.Exec(sqlStr, args...)
 }
 
 // Select sets selected identifier columns. Use SelectRaw for SQL expressions.
@@ -413,80 +391,50 @@ func (q *Query) cursorColumnSQL(column CursorColumn) string {
 
 // First scans the first result into dest struct.
 func (q *Query) First(dest any) error {
-	plan, err := q.Plan(q.ctx)
+	p, err := q.Plan(q.ctx)
 	if err != nil {
 		return err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return err
-	}
-	rows, err := q.queryRows(plan.SQL, plan.Params...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	return scanner.Struct(dest, rows)
+	return q.executeRows(p, func(rows *sql.Rows) error { return scanner.Struct(dest, rows) })
 }
 
 // FirstMap scans first row into map.
 func (q *Query) FirstMap(dest *map[string]any) error {
-	plan, err := q.Plan(q.ctx)
+	p, err := q.Plan(q.ctx)
 	if err != nil {
 		return err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
+	return q.executeRows(p, func(rows *sql.Rows) error {
+		m, err := scanner.Map(rows)
+		if err == nil {
+			*dest = m
+		}
 		return err
-	}
-	rows, err := q.queryRows(plan.SQL, plan.Params...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	m, err := scanner.Map(rows)
-	if err != nil {
-		return err
-	}
-	*dest = m
-	return nil
+	})
 }
 
 // GetMaps scans all rows into slice of maps.
 func (q *Query) GetMaps(dest *[]map[string]any) error {
-	plan, err := q.Plan(q.ctx)
+	p, err := q.Plan(q.ctx)
 	if err != nil {
 		return err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
+	return q.executeRows(p, func(rows *sql.Rows) error {
+		m, err := scanner.Maps(rows)
+		if err == nil {
+			*dest = m
+		}
 		return err
-	}
-	rows, err := q.queryRows(plan.SQL, plan.Params...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	m, err := scanner.Maps(rows)
-	if err != nil {
-		return err
-	}
-	*dest = m
-	return nil
+	})
 }
 
 // Get scans all rows into the slice pointed to by dest.
 func (q *Query) Get(dest any) error {
-	plan, err := q.Plan(q.ctx)
+	p, err := q.Plan(q.ctx)
 	if err != nil {
 		return err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return err
-	}
-	rows, err := q.queryRows(plan.SQL, plan.Params...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	return scanner.Structs(dest, rows)
+	return q.executeRows(p, func(rows *sql.Rows) error { return scanner.Structs(dest, rows) })
 }
 
 // Limit sets a limit.
@@ -533,18 +481,8 @@ func (q *Query) Count(cols ...string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return 0, err
-	}
-
-	var row *sql.Row
-	if q.ctx != nil {
-		row = q.exec.QueryRowContext(q.ctx, plan.SQL, plan.Params...)
-	} else {
-		row = q.exec.QueryRow(plan.SQL, plan.Params...)
-	}
 	var c int64
-	if err := row.Scan(&c); err != nil {
+	if err := q.executeRow(plan, &c); err != nil {
 		return 0, err
 	}
 	return c, nil
@@ -1549,10 +1487,7 @@ func (q *Query) Insert(data any) (sql.Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return nil, err
-	}
-	return q.execStmt(plan.SQL, plan.Params...)
+	return q.executeResult(plan)
 }
 
 // PlanInsert builds an INSERT plan for data without executing it.
@@ -1572,13 +1507,13 @@ func (q *Query) PlanInsert(ctx context.Context, data any) (*QueryPlan, error) {
 	}
 	m = rows[0]
 	ib.Table(q.tableName()).Insert(m)
-	sqlStr, args, err := ib.Build()
+	sqlStr, args, snapshot, err := ib.BuildSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
-	plan.Columns = columnRefsFromNames(sortedMapKeys(m))
+	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
+	plan.Columns = columnRefsFromNames(snapshot.Columns)
 	q.finalizePlan(plan)
 	return plan, nil
 }
@@ -1600,7 +1535,7 @@ func (q *Query) InsertGetId(data any) (int64, error) {
 			return 0, err
 		}
 		var id int64
-		if err := q.queryRow(plan.SQL, plan.Params...).Scan(&id); err != nil {
+		if err := q.executeRow(plan, &id); err != nil {
 			return 0, err
 		}
 		return id, nil
@@ -1623,10 +1558,7 @@ func (q *Query) InsertBatch(data []map[string]any) (sql.Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return nil, err
-	}
-	return q.execStmt(plan.SQL, plan.Params...)
+	return q.executeResult(plan)
 }
 
 // PlanInsertBatch builds a batch INSERT plan without executing it.
@@ -1641,14 +1573,14 @@ func (q *Query) PlanInsertBatch(ctx context.Context, data []map[string]any) (*Qu
 		return nil, err
 	}
 	ib.Table(q.tableName()).InsertBatch(data)
-	sqlStr, args, err := ib.Build()
+	sqlStr, args, snapshot, err := ib.BuildSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
-	plan.Columns = columnRefsFromNames(sortedBatchMapKeys(data))
-	plan.Metadata = map[string]any{"batch_size": len(data)}
+	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
+	plan.Columns = columnRefsFromNames(snapshot.Columns)
+	plan.Metadata = map[string]any{"batch_size": snapshot.BatchSize}
 	q.finalizePlan(plan)
 	return plan, nil
 }
@@ -1659,10 +1591,7 @@ func (q *Query) InsertOrIgnore(data []map[string]any) (sql.Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return nil, err
-	}
-	return q.execStmt(plan.SQL, plan.Params...)
+	return q.executeResult(plan)
 }
 
 func (q *Query) planInsertOrIgnore(ctx context.Context, data []map[string]any) (*QueryPlan, error) {
@@ -1676,14 +1605,14 @@ func (q *Query) planInsertOrIgnore(ctx context.Context, data []map[string]any) (
 		return nil, err
 	}
 	ib.Table(q.tableName()).InsertOrIgnore(data)
-	sqlStr, args, err := ib.Build()
+	sqlStr, args, snapshot, err := ib.BuildSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
-	plan.Columns = columnRefsFromNames(sortedBatchMapKeys(data))
-	plan.Metadata = map[string]any{"insert_mode": "ignore", "batch_size": len(data)}
+	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
+	plan.Columns = columnRefsFromNames(snapshot.Columns)
+	plan.Metadata = map[string]any{"insert_mode": "ignore", "batch_size": snapshot.BatchSize}
 	q.finalizePlan(plan)
 	return plan, nil
 }
@@ -1694,10 +1623,7 @@ func (q *Query) Upsert(data []map[string]any, unique []string, updateCols []stri
 	if err != nil {
 		return nil, err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return nil, err
-	}
-	return q.execStmt(plan.SQL, plan.Params...)
+	return q.executeResult(plan)
 }
 
 func (q *Query) planUpsert(ctx context.Context, data []map[string]any, unique []string, updateCols []string) (*QueryPlan, error) {
@@ -1714,14 +1640,14 @@ func (q *Query) planUpsert(ctx context.Context, data []map[string]any, unique []
 		return nil, err
 	}
 	ib.Table(q.tableName()).Upsert(data, unique, updateCols)
-	sqlStr, args, err := ib.Build()
+	sqlStr, args, snapshot, err := ib.BuildSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
-	plan.Columns = columnRefsFromNames(sortedBatchMapKeys(data))
-	plan.Metadata = map[string]any{"insert_mode": "upsert", "unique_columns": unique, "update_columns": updateCols}
+	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
+	plan.Columns = columnRefsFromNames(snapshot.Columns)
+	plan.Metadata = map[string]any{"insert_mode": "upsert", "unique_columns": snapshot.UniqueColumns, "update_columns": snapshot.UpdateColumns}
 	q.finalizePlan(plan)
 	return plan, nil
 }
@@ -1732,10 +1658,7 @@ func (q *Query) UpdateOrInsert(cond map[string]any, values map[string]any) (sql.
 	if err != nil {
 		return nil, err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return nil, err
-	}
-	return q.execStmt(plan.SQL, plan.Params...)
+	return q.executeResult(plan)
 }
 
 func (q *Query) planUpdateOrInsert(ctx context.Context, cond map[string]any, values map[string]any) (*QueryPlan, error) {
@@ -1755,21 +1678,14 @@ func (q *Query) planUpdateOrInsert(ctx context.Context, cond map[string]any, val
 		return q.planUpsert(ctx, []map[string]any{merged}, sortedMapKeys(cond), sortedMapKeys(values))
 	}
 	ib.Table(q.tableName()).UpdateOrInsert(cond, values)
-	sqlStr, args, err := ib.Build()
+	sqlStr, args, snapshot, err := ib.BuildSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
-	merged := make(map[string]any, len(cond)+len(values))
-	for k, v := range cond {
-		merged[k] = v
-	}
-	for k, v := range values {
-		merged[k] = v
-	}
-	plan.Columns = columnRefsFromNames(sortedMapKeys(merged))
-	plan.Metadata = map[string]any{"insert_mode": "update_or_insert", "condition_columns": sortedMapKeys(cond), "update_columns": sortedMapKeys(values)}
+	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
+	plan.Columns = columnRefsFromNames(snapshot.Columns)
+	plan.Metadata = map[string]any{"insert_mode": "update_or_insert", "condition_columns": snapshot.UniqueColumns, "update_columns": snapshot.UpdateColumns}
 	q.finalizePlan(plan)
 	return plan, nil
 }
@@ -1780,10 +1696,7 @@ func (q *Query) InsertUsing(columns []string, sub *Query) (sql.Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return nil, err
-	}
-	return q.execStmt(plan.SQL, plan.Params...)
+	return q.executeResult(plan)
 }
 
 func (q *Query) planInsertUsing(ctx context.Context, columns []string, sub *Query) (*QueryPlan, error) {
@@ -1796,13 +1709,13 @@ func (q *Query) planInsertUsing(ctx context.Context, columns []string, sub *Quer
 		return nil, tenantError("insert_using_unsupported")
 	}
 	ib.Table(q.tableName()).InsertUsing(columns, sub.builder)
-	sqlStr, args, err := ib.Build()
+	sqlStr, args, snapshot, err := ib.BuildSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: q.tableName()})
-	plan.Columns = columnRefsFromNames(columns)
+	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
+	plan.Columns = columnRefsFromNames(snapshot.Columns)
 	plan.Metadata = map[string]any{"insert_mode": "insert_using"}
 	q.finalizePlan(plan)
 	return plan, nil
@@ -1814,10 +1727,7 @@ func (q *Query) Update(data any) (sql.Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return nil, err
-	}
-	return q.execStmt(plan.SQL, plan.Params...)
+	return q.executeResult(plan)
 }
 
 // PlanUpdate builds an UPDATE plan for data without executing it.
@@ -1848,8 +1758,8 @@ func (q *Query) PlanUpdate(ctx context.Context, data any) (*QueryPlan, error) {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationUpdate, sqlStr, args)
-	appendTableRef(plan, q.tableName(), "")
-	plan.Columns = columnRefsFromNames(sortedMapKeys(m))
+	appendTableRef(plan, snapshot.Table, "")
+	plan.Columns = columnRefsFromNames(snapshot.AssignmentColumns)
 	appendWriteSnapshotMetadata(plan, snapshot)
 	q.finalizePlan(plan)
 	return plan, nil
@@ -1861,10 +1771,7 @@ func (q *Query) Delete() (sql.Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := ensurePlanExecutable(plan); err != nil {
-		return nil, err
-	}
-	return q.execStmt(plan.SQL, plan.Params...)
+	return q.executeResult(plan)
 }
 
 // PlanDelete builds a DELETE plan without executing it.
@@ -1886,7 +1793,7 @@ func (q *Query) PlanDelete(ctx context.Context) (*QueryPlan, error) {
 		return nil, err
 	}
 	plan := newQueryPlan(OperationDelete, sqlStr, args)
-	appendTableRef(plan, q.tableName(), "")
+	appendTableRef(plan, snapshot.Table, "")
 	appendWriteSnapshotMetadata(plan, snapshot)
 	q.finalizePlan(plan)
 	return plan, nil

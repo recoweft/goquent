@@ -141,6 +141,7 @@ type PredicateRef struct {
 
 // QueryPlan explains SQL and metadata before the query is executed.
 type QueryPlan struct {
+	execution           *plannedExecution
 	tenantEvidence      *tenantEvidence
 	TenantPolicy        *TenantPolicyResult `json:"tenant_policy,omitempty"`
 	writeEvidence       *writeEvidence
@@ -419,21 +420,6 @@ func columnRefsFromNames(names []string) []ColumnRef {
 func sortedMapKeys(m map[string]any) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func sortedBatchMapKeys(rows []map[string]any) []string {
-	seen := make(map[string]struct{})
-	for _, row := range rows {
-		for k := range row {
-			seen[k] = struct{}{}
-		}
-	}
-	keys := make([]string, 0, len(seen))
-	for k := range seen {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
