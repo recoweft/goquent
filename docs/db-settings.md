@@ -1,9 +1,10 @@
 # DB settings and application execution context
 
 GQ-AI-03/PR1, [Issue #60](https://github.com/recoweft/goquent/issues/60).
-This foundation isolates configuration and retains application data. It does not
-implement tenant authentication, trusted-value predicate proofs, unified Strict,
-or inspection of all public CRUD. Those remain PR2 and GQ-AI-04.
+This foundation isolates configuration and retains application data.
+GQ-AI-03/PR2 adds an opt-in [conditional tenant/policy gate](tenant-policy.md),
+separate application tenant/schema supply APIs and bounded integer comparisons.
+Authentication, unified Strict and all-public-CRUD enforcement remain outside it.
 
 ## Immutable snapshots
 
@@ -69,8 +70,8 @@ or string-length limits; see `orm/internal/valuecopy`. Failure returns
 `ErrUnsupportedExecutionContext` and retains no partial snapshot/reference.
 
 This is storage support, not a promise that every supported value can serve as a
-SQL tenant scalar. PR2 must define acceptable tenant comparisons and reject
-missing/unconfirmed/unprovable bindings under Strict. Context is available through
+SQL tenant scalar. PR2 accepts only the explicit application supply path and
+supported SQL integer comparisons in its opt-in gate; see tenant-policy.md. Context is available through
 `db.Settings().ExecutionContext()` and `q.Settings().ExecutionContext()`; it is
 not placed in public plan metadata or OperationSpec JSON as inspection evidence.
 
@@ -144,8 +145,8 @@ SELECT/Count and the existing insert/update/delete plans use local risk config
 and table policies, including joined tables. Soft-delete predicates use the same
 local policy snapshot. Scope helpers retain the base Query snapshot. DB RawPlan
 and raw gates use local risk config; TouchedTables remains a post-finalization
-annotation, not semantic policy inspection. Existing tenant/required-filter
-checks still inspect column presence; they do not compare the retained tenant.
+annotation, not semantic policy inspection. Compatibility tenant/required-filter checks still inspect column presence.
+WithTenantPolicy opts covered Query paths into the separate conditional checks.
 
 OperationSpec compilation has no DB argument and continues to use standalone
 query construction plus supplied manifest checks. Static review/MCP and explicit
@@ -156,14 +157,20 @@ RETURNING paths retain the exclusions in contracts v3. Supplying settings does
 not mean these paths are policy-enforced. A separately supplied scoped Query and
 DB are still not bound by identity; GQ-AI-04/05 own that integration.
 
-PR2 owns all-branch trusted tenant equality, OR/NOT/NULL/column-comparison meaning,
-outer-AND automatic predicates, alias/join/subquery/CTE proof limits, INSERT/UPDATE/
-UPSERT tenant semantics, immutable columns, PII/RETURNING and logical deletion.
-GQ-AI-04 owns all public CRUD enforcement. Unified Strict is still unimplemented.
-Its required contract remains fail-closed for missing/unverifiable context and
-non-bypassable tenant violations; reason strings and suppressions cannot supply
-external authorization. Compatibility policy modes keep their existing heuristic
-meaning. BoolStrict is a scanning mode and does not implement safety Strict.
+PR2's `NewApplicationTenantContext` preserves a private supply-path marker with
+its value; `NewApplicationSchema` owns a bounded assertion snapshot. Configure
+`WithTenantPolicy(databaseIdentity, schema, automatic)` together with
+`WithExecutionContext` after application authentication/authorization. The former
+requires matching application DB/dialect/table facts; neither API verifies the
+live DB. See [migration, scalar limits, coverage and examples](tenant-policy.md).
+Old NewExecutionContext callers are not silently promoted. Input roundtrips and
+explicit old/empty replacements lose the marker. Derived Settings/DB/Tx carry
+both supplies together, without exposing a trust setter in operation metadata.
+
+Compatibility PolicyMode behavior remains heuristic. Query InsertGetId on
+PostgreSQL intentionally gains the missing execution gate even in compatibility
+mode. BoolStrict remains a scanning option. Unified Strict and GQ-AI-04's full
+CRUD pipeline and GQ-AI-13's external permits remain unfinished.
 
 Regression evidence is in `orm/settings_test.go`, `orm/query/settings_test.go`
 and `tests/settings_test.go`; C26/C27 in the shared case register describe the

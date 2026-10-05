@@ -36,6 +36,7 @@ type ColumnSnapshot struct {
 
 // JoinSnapshot describes a JOIN visible in the builder metadata.
 type JoinSnapshot struct {
+	OnTree      *predicate.Node
 	Type        string
 	Table       string
 	Alias       string
@@ -120,6 +121,13 @@ func snapshotFromQuery(query *structs.Query) QuerySnapshot {
 			})
 		}
 	}
+	if query.Order != nil {
+		for _, o := range *query.Order {
+			if o.Raw != "" {
+				snapshot.Unverified = append(snapshot.Unverified, "order_expression_not_inspected")
+			}
+		}
+	}
 	appendJoinSnapshots(&snapshot, query.Joins)
 	if len(snapshot.Joins) > 0 {
 		snapshot.Unverified = append(snapshot.Unverified, "join_conditions_not_inspected")
@@ -194,6 +202,36 @@ func joinSnapshotFromClause(join structs.JoinClause, lateral bool) JoinSnapshot 
 	if out.Subquery {
 		out.Alias = target
 		out.Table = ""
+	}
+	var children []*predicate.Node
+	unsupported := false
+	if join.On != nil {
+		for _, on := range *join.On {
+			right, ok := on.Value.(string)
+			if !ok || on.Operator != 0 {
+				unsupported = true
+			}
+			children = append(children, &predicate.Node{Kind: "column", Column: on.Column, Operator: on.Condition, ValueColumn: right, Correspondence: "generated"})
+		}
+	}
+	if join.Conditions != nil {
+		for _, c := range *join.Conditions {
+			if c.Operator != 0 || len(c.Value) != 1 {
+				unsupported = true
+				continue
+			}
+			v, ok := valuecopy.Copy(c.Value[0])
+			isolation := "detached"
+			if !ok {
+				isolation = "unsupported"
+				unsupported = true
+			}
+			children = append(children, &predicate.Node{Kind: "comparison", Column: c.Column, Operator: c.Condition, Values: []predicate.Value{{Data: v, Isolation: isolation}}, Correspondence: "generated"})
+		}
+	}
+	out.OnTree = &predicate.Node{Kind: "and", Children: children, Correspondence: "generated"}
+	if unsupported {
+		out.OnTree.OpaqueReason = "join_disjunction_or_value_unsupported"
 	}
 	return out
 }
@@ -290,4 +328,14 @@ func (qb *DeleteQueryBuilder) BuildSnapshot() (string, []any, QuerySnapshot, err
 		return "", nil, QuerySnapshot{Error: err}, err
 	}
 	return sql, args, snapshotFromQuery(qb.builder.BuiltQuery), nil
+}
+
+// GroupWhere wraps the complete predicate list before appending mandatory ANDs.
+// Call on a detached builder so planning never alters caller conditions.
+func (qb *SelectQueryBuilder) GroupWhere() {
+	q := qb.snapshotQuery()
+	if len(q.ConditionGroups) > 0 {
+		q.ConditionGroups = []structs.WhereGroup{{Conditions: []structs.Where{{Nested: q.ConditionGroups}}}}
+	}
+	qb.builder.ApplyQueryState(q)
 }

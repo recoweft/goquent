@@ -74,3 +74,20 @@ func (db *DB) WrapExecutor(exec Executor, opts ...Option) *DB {
 	next.exec = exec
 	return next
 }
+
+// ApplicationSchema is an immutable application assertion, not live schema evidence.
+type ApplicationSchema = query.ApplicationSchema
+type ApplicationSchemaInput = query.ApplicationSchemaInput
+type ApplicationTable = query.ApplicationTable
+
+func NewApplicationSchema(input ApplicationSchemaInput) (ApplicationSchema, error) {
+	return query.NewApplicationSchema(input)
+}
+func NewApplicationTenantContext(input ExecutionContextInput) (ExecutionContext, error) {
+	return query.NewApplicationTenantContext(input)
+}
+
+// WithTenantPolicy opts documented Query paths into conditional strict inspection.
+func WithTenantPolicy(database string, schema ApplicationSchema, automatic bool) Option {
+	return func(db *DB) { db.settings = db.settings.WithTenantPolicy(database, schema, automatic) }
+}

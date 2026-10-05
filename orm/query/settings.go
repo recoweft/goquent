@@ -64,7 +64,10 @@ type ExecutionContextInput struct {
 
 // ExecutionContext holds an immutable application-supplied snapshot. The zero
 // value is missing context. ORM verification remains unconfirmed in PR1.
-type ExecutionContext struct{ input ExecutionContextInput }
+type ExecutionContext struct {
+	input       ExecutionContextInput
+	application bool
+}
 
 // NewExecutionContext detaches supported values using the predicate ownership
 // copier. Unsupported values are rejected without calling user methods or
@@ -92,10 +95,14 @@ func (c ExecutionContext) Input() ExecutionContextInput {
 // value uses empty policies, built-in risk defaults and missing context. Copies
 // safely share only privately owned immutable data.
 type Settings struct {
-	policies  PolicySet
-	risk      RiskConfig
-	execution ExecutionContext
-	err       error
+	strict     bool
+	autoTenant bool
+	database   string
+	schema     ApplicationSchema
+	policies   PolicySet
+	risk       RiskConfig
+	execution  ExecutionContext
+	err        error
 }
 
 // NewSettings builds a detached snapshot without consulting globals.

@@ -25,6 +25,8 @@ const (
 
 // TablePolicy describes application-specific safety policy for a table.
 type TablePolicy struct {
+	ImmutableColumns      []string   `json:"immutable_columns,omitempty"`
+	ForbiddenColumns      []string   `json:"forbidden_columns,omitempty"`
 	Table                 string     `json:"table"`
 	TenantColumn          string     `json:"tenant_column,omitempty"`
 	TenantMode            PolicyMode `json:"tenant_mode,omitempty"`
@@ -128,6 +130,8 @@ func normalizeColumns(cols []string) []string {
 }
 
 func cloneTablePolicy(policy TablePolicy) TablePolicy {
+	policy.ImmutableColumns = append([]string(nil), policy.ImmutableColumns...)
+	policy.ForbiddenColumns = append([]string(nil), policy.ForbiddenColumns...)
 	policy.PIIColumns = append([]string(nil), policy.PIIColumns...)
 	policy.RequiredFilterColumns = append([]string(nil), policy.RequiredFilterColumns...)
 	return policy

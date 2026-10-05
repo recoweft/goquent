@@ -195,6 +195,13 @@ func finalizePlanWithSettings(plan *QueryPlan, approval *Approval, suppressions 
 	if plan == nil {
 		return
 	}
+	if settings.strict && plan.Operation == OperationRaw {
+		plan.tenantEvidence = &tenantEvidence{failure: "raw_unsupported"}
+		plan.Blocked = true
+		plan.RiskLevel = RiskBlocked
+		plan.Warnings = []Warning{{Code: "TENANT_POLICY_REJECTED", Level: RiskBlocked, Message: "raw_unsupported"}}
+		return
+	}
 	if settings.Err() != nil {
 		plan.Warnings = []Warning{{Code: "UNSUPPORTED_RISK_ENGINE", Level: RiskBlocked, Message: settings.Err().Error()}}
 		plan.RiskLevel = RiskBlocked
@@ -204,7 +211,9 @@ func finalizePlanWithSettings(plan *QueryPlan, approval *Approval, suppressions 
 	result := (defaultRiskEngine{config: settings.risk}).CheckQuery(plan)
 	allWarnings := append([]Warning(nil), result.Warnings...)
 	allWarnings = append(allWarnings, checkRequiredPredicates(plan)...)
-	allWarnings = append(allWarnings, checkPolicies(plan, policy, settings.policies)...)
+	if !settings.strict {
+		allWarnings = append(allWarnings, checkPolicies(plan, policy, settings.policies)...)
+	}
 	warnings, suppressed, suppressionWarnings := applySuppressions(allWarnings, suppressions, time.Now().UTC())
 	warnings = append(warnings, suppressionWarnings...)
 	level, blocked := aggregateWarnings(warnings)
@@ -295,6 +304,9 @@ func EnsurePlanExecutable(plan *QueryPlan) error {
 func ensurePlanExecutable(plan *QueryPlan) error {
 	if plan == nil {
 		return nil
+	}
+	if err := checkTenantEvidence(plan); err != nil {
+		return err
 	}
 	if plan.Blocked {
 		return fmt.Errorf("%w: %s", ErrBlockedOperation, warningCodes(plan.Warnings))

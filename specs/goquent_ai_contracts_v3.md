@@ -200,6 +200,22 @@ column/value_ref is insufficient. Unknown schema/policy freshness must remain
 unknown. Legacy global configuration requires a documented migration route;
 concurrency and transaction inheritance tests belong to 03.
 
+GQ-AI-03/PR2 update: [conditional tenant/policy inspection](../docs/tenant-policy.md)
+now supplies a distinct opt-in `WithTenantPolicy` gate, `NewApplicationTenantContext`
+and immutable `NewApplicationSchema`. The historical inventory in section 2 must
+be read with that document's entry coverage table. Query PostgreSQL InsertGetId
+now checks its final generated RETURNING and execution gate in both modes.
+
+AC1/AC4 are conditional proofs of supported builder operations under correct
+application-supplied schema, tenant and executor semantics. This is explicitly
+not independent live schema verification. Missing/inconsistent/unsupported facts,
+unknown conflict completeness and unproven branches refuse strict execution.
+AC5 includes the application responsibility, old API migration and continuing
+unknown freshness/executor identity. AC6/AC7 add supply/copy/isolation and both-DB
+conflict evidence without promoting fixture JSON, manifest Fresh or old key context.
+C22/C23 manifest requirements remain unchanged. Unified Strict and 04/05/11/13
+are not complete. Compatibility retains its column-presence heuristics.
+
 ### 3.4 Plans, execution and results — GQ-AI-04/05/10/12
 
 All public CRUD paths, including generic, batch, RETURNING, conflict branches and
@@ -265,17 +281,17 @@ only existing cases named in section 5 have executable evidence.
 | C01 SELECT id,name WHERE id=10 LIMIT 1 | Low plan; no execution during Plan | Preserve pure planning (01/04) | LIMIT bounds output, not authorization |
 | C02 SELECT * with no limit | SELECT_STAR_USED and LIMIT_MISSING, medium | Preserve diagnostics (04/09) | No DB cost estimate |
 | C03 UPDATE/DELETE with no predicate, no soft-delete policy | Blocked, non-suppressible missing-WHERE warning | Preserve block (02/04) | Default soft-delete predicate changes input; not a narrow-write proof |
-| C04 UPDATE WHERE tenant_id=T1, no key | Medium bulk warning, allowed absent other policy violations | Tenant-wide, never prove one row (02/03) | Correct tenant still permits many rows |
+| C04 UPDATE WHERE tenant_id=T1, no key | Compatibility: medium bulk warning; PR2 correct tenant still does not prove one row | Tenant-wide, never prove one row (02/03) | Correct tenant still permits many rows |
 | C05 UPDATE WHERE id > 0 or id IN (1,2) | Bulk warning; unknown without typed context, broad for supported typed range/multiple IN | Broad/unknown, not single-row (02) | Column-name/operator-insensitive heuristic is insufficient |
 | C06 UPDATE WHERE id=1 OR status='active' | Bulk warning; OR with a non-key branch has no single-row proof | Every OR branch must satisfy scope; broad/unknown otherwise (02) | Flattened predicates lose implication |
-| C07 UPDATE WHERE (tenant_id=T1 AND id=1) OR id=2 | Tenant presence still satisfies policy; unbound OR has no single-row proof | Reject unbound branch in Strict (02/03) | OR must not escape tenant restriction |
-| C08 tenant_id=T2, tenant_id!=T1, NOT(tenant_id=T1), or tenant_id=other_column | Column presence can satisfy required/tenant checks; NOT/column comparison do not prove write scope | Reject incorrect/unknown binding in Strict (02/03) | No proof of equality to trusted value |
-| C09 Tenant-scoped read without tenant context but literal tenant filter | Presence check can pass | Unverified/rejected in Strict until trusted tenant supplied (03) | Application JSON is not trusted context |
-| C10 Composite unique key (tenant_id,external_key), range predicates mentioning both | Legacy metadata alone is unknown; typed full-key non-NULL equality can prove at most one | Require conjunction/equality/full unique key (02) | Nullability, partial/expression indexes, dialect semantics matter |
+| C07 UPDATE WHERE (tenant_id=T1 AND id=1) OR id=2 | Compatibility presence can pass; PR2 opt-in rejects the unbound OR branch | Reject unbound branch in Strict (02/03) | OR must not escape tenant restriction |
+| C08 tenant_id=T2, tenant_id!=T1, NOT(tenant_id=T1), or tenant_id=other_column | Compatibility presence can pass; PR2 opt-in refuses missing current-tenant equality | Reject incorrect/unknown binding in Strict (02/03) | No proof of equality to trusted value |
+| C09 Tenant-scoped read without tenant context but literal tenant filter | Compatibility presence can pass; PR2 opt-in requires separate application tenant supply | Unverified/rejected in Strict until trusted tenant supplied (03) | Application JSON is not trusted context |
+| C10 Composite unique key (tenant_id,external_key), range predicates mentioning both | Conditional integer key scope retained; PR2 requires consistent application schema and supported conflict facts | Require conjunction/equality/full unique key (02) | Nullability, partial/expression indexes, dialect semantics matter |
 | C11 NOT(id=1), id IS NOT NULL, raw expression or EXISTS child query | NOT/NULL do not prove a key; Raw/subqueries are unknown with partial write-scope precision | Preserve condition meaning or mark unknown; no verified scope in Strict (02/09) | General SQL theorem proving is not promised |
 | C12 Raw DELETE FROM users via DB.Exec | RAW_SQL_USED high; no approval rejects; reason permits raw gate | Unknown semantics not verified by reason; trusted high-risk authorization required in Strict (04/13) | No full SQL parser; TouchedTables does not fix this |
 | C13 Generic Update with WherePK or generic Upsert with conflict target | Shape checks/trusted execution, no common plan/policy | Common inspection for final operations/conflict branches (04) | PK option is not tenant binding |
-| C14 Batch containing T1 and T2 rows | Generic batch/DSL INSERT lack per-row tenant-value inspection | Inspect all rows/branches with trusted context (03/04) | Chunking/partial execution must be explicit |
+| C14 Batch containing T1 and T2 rows | Generic gap remains; PR2 Query INSERT checks every candidate and rejects mixed tenants | Inspect all rows/branches with trusted context (03/04) | Chunking/partial execution must be explicit |
 | C15 PostgreSQL InsertGetId / UpdateByReturning | Plan exists but gate omitted in first path; RETURNING appended after checking in both | Inspect/gate final SQL and projection (04) | MySQL uses LastInsertId; generic RETURNING rejected |
 | C16 Typed RETURNING with ExpectAffected(1), DB returns multiple rows | First-row typed helper ignores expected count; ManyReturning scans all | Inspect cardinality across paths; surface rollback status (04/10) | RETURNING rows and driver RowsAffected differ |
 | C17 Generic write ExpectAffected(1), actual=2 | RowsAffectedError after execution | Preserve error, define transactional rollback contract (10) | Autocommit may already have changed data |
@@ -287,9 +303,9 @@ only existing cases named in section 5 have executable evidence.
 | C23 review --require-fresh-manifest missing/stale/unverified | Gate failure | Preserve explicit verification requirement (05/11) | Supplied fingerprints do not prove live DB equality |
 | C24 Dynamic helper/raw SQL or unrelated method named Update in Go source | Partial/unsupported, omissions or false positives possible | Type-aware identification; preserve uncertainty (09) | No whole-program/control-flow proof |
 | C25 InsertOnceReturning/RunIdempotentCommand concurrent replay | Existing-row/conflict recipes | Define operation/key/payload and retry/result semantics (10) | Existing tests do not prove exactly-once effects |
-| C26 Two DBs register different policy for same table | Immutable DB policy/risk/context snapshots; later global registration affects only new snapshots | DB isolation and transaction inheritance (03) | Configuration isolation is not tenant authentication or all-branch validation |
-| C27 sql.Tx/custom Executor wrapped by NewTxDB/NewDBWithExecutor | Delegated path works; no new-transaction capability implied | Preserve interface/ownership; bind context for inspected paths (03/04/05) | Direct executor/SQLDB access is outside interception |
-| C28 MySQL/PostgreSQL equivalent filtered operation | Distinct SQL preserved; signed integer write bounds tested on both databases | Same semantic safety requirement, dialect-specific limits (02/04/10) | Do not demand identical SQL/counts |
+| C26 Two DBs register different policy for same table | Immutable DB snapshots; PR2 tenant/schema supplies remain isolated across DB derivations and concurrent queries | DB isolation and transaction inheritance (03) | Configuration isolation is not tenant authentication or all-branch validation |
+| C27 sql.Tx/custom Executor wrapped by NewTxDB/NewDBWithExecutor | Explicit/parent Settings retain PR2 tenant/schema provenance; standalone wrappers infer no parent | Preserve interface/ownership; bind context for inspected paths (03/04/05) | Direct executor/SQLDB access is outside interception |
+| C28 MySQL/PostgreSQL equivalent filtered operation | Distinct SQL and integer scope retained; PR2 tenant/write/JOIN/conflict subset exercised on both DBs | Same semantic safety requirement, dialect-specific limits (02/04/10) | Do not demand identical SQL/counts |
 
 New executable guarantees belong in their owning issue. PR2 may share documentary
 cases and baseline fixtures after PR1 merges; it must not freeze gaps as desired
