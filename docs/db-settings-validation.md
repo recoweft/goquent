@@ -1,4 +1,108 @@
-# GQ-AI-03/PR1 validation record
+# GQ-AI-03/PR1 revision 2 validation
+
+Issue: https://github.com/recoweft/goquent/issues/60. Existing PR:
+https://github.com/recoweft/goquent/pull/61. Refs #60; Refs #62.
+Related maintenance: https://github.com/recoweft/goquent/pull/63.
+
+## Identity, integration and final source
+
+Request/context matched work `fa426a13-bb21-4ecf-b023-2494fb86e3fa`, revision **2**,
+execution `2b2af33d-7da8-4ced-851d-06258dc9a718`. Measured cwd was
+`/home/murai/github/goquent`, WSL2 Ubuntu 24.04.4, Go 1.26.4 linux/amd64.
+Origin fetch/push: `git@github.com:recoweft/goquent.git`. Initial worktree was clean
+on the maintenance branch. Authentication succeeded as recoweft outside the
+sandbox; repository API grants push/admin and repo scope was present. Fetch and
+push dry-run succeeded. Initial sandbox network/git-write failures were environment
+restrictions, not test failures or evidence of invalid credentials.
+
+All-state management-ID Issue search reused open Issue 60. Head-branch PR API
+search and git confirmed existing open PR61, branch
+`feature/gq-ai-03-policy-context`, base `main`, required title
+`feat: scope policies and execution context to each DB`, old head
+`330d5b2bc1ea1b04c6a0a33baea661d91009563f`. PR53/56/58/59 merges were independently
+confirmed. PR63 API reported merged into main at 2026-10-05T13:37:15Z, merge SHA
+`25fbda52b6ea19a9d691c21d52668d7b3d438c2c`; fetched origin/main matched.
+AGENT.MD, ancestor/repository AGENTS.md search (none found), PR template,
+workflows, contracts and settings/inspection entry points were checked.
+
+`git merge --no-edit origin/main` on the existing feature branch produced
+`46f593f2aff463bed696a8fc87036f1253405688`, without conflicts. The required main
+SHA is an ancestor. No cherry-pick, duplicate implementation, rebase, force push,
+new Issue or new PR. The merge brings the five maintenance files; this revision's
+only additional edit is this validation document. All test runs below use the
+final production/test source tree; subsequent documentation changes do not alter
+it. Final publication SHA and matching CI run/job are recorded in PR61 and the
+RelayWeft report to avoid a self-referential commit hash in this file.
+
+## Current local validation (2026-10-05 UTC)
+
+Both healthy compose services were queried: MySQL **8.4.6**, PostgreSQL **16.10**
+(Debian 16.10-1.pgdg13+1). Explicit TEST_MYSQL_DSN and TEST_POSTGRES_DSN were used;
+TEST_DB_DSN was explicitly set for registered custom-driver coverage. Values and
+credentials are omitted. Full database suites ran sequentially.
+
+| Command | Actual result |
+| --- | --- |
+| `go test ./orm -run 'TestRunTransactionWithHooks(CommitsAuditHook\|RollsBackOnHookError)$' -count=100 -json` | Exit 0; each hook passed 100 times (200 total), one passing package. |
+| `go test ./... -count=1 -json` | Exit 0; 1,113 test/subtest passes, 18 passing test packages; 20 packages with no tests. |
+| `GOFLAGS=-json make test-integration` with TEST_DB_DSN also supplied | Exit 0; 1,113 test/subtest passes, 18 passing test packages; 20 packages with no tests. |
+| `go test -race ./orm/... ./tests ./tests/contracts -count=1 -json` | Exit 0; 1,089 test/subtest passes, 17 passing test packages; 18 packages with no tests. No race reports. |
+| `go run ./cmd/goquent review --fail-on high --format json ./...` | Exit 1; 363 findings, zero suppressed. See limits below. |
+| Same analyzer reviewing an archive of fetched origin/main | Exit 1; 340 findings. |
+| `go run ./cmd/goquent manifest verify --manifest examples/ai-safe-orm/goquent.manifest.json --schema examples/ai-safe-orm/schema.json --policy examples/ai-safe-orm/policies.json` | Exit 0; schema/policy match. generated_code/database fingerprints missing: skipped/unverified. |
+| `git diff --check` | Clean. No Go changes beyond the merge; no formatting edit needed. No migrations, so migration-plan check is not applicable. |
+
+All four test commands: zero test-level failures/skips, zero cached results.
+Go JSON package skip events correspond only to the explicitly listed packages
+without test files. Both live settings/mysql and settings/postgres tests passed
+in full and race runs, including Query/Tx/two-DB isolation. DB/external Tx/custom
+Executor/registered driver/scan/BoolCompat and argument ownership boundaries
+65,535/65,536/65,537, budgets/cycles/DAGs, condition tree and private write scope
+remain covered by the executed suites.
+
+PR63 permanently fixes the old randomized INSERT construction: map columns are
+sorted after filtering; structs use the existing declaration-order helper; args
+and placeholders follow the same columns. Full SQL/all-argument hook matching,
+commit/rollback and errors.Is assertions remain intact. The old revision-1 local
+failure and CI37293786684/job111710136153 at old head 330d5b2 are historical
+failures, not the current result. No retry-until-success, weakened matcher,
+AnyArg, skip/deletion, suppression or threshold/baseline change was used.
+
+## Current review and manifest limits
+
+Current findings: blocked 11, destructive 11, high 53, medium 288;
+precise 208, partial 107, unsupported 48. Corrected main: blocked 11,
+destructive 11, high 49, medium 269; precise 195, partial 100, unsupported 45.
+Comparison by file/code/level/message/precision ignoring line shifts found
+23 additions and no removals: one in orm/query/settings_test.go, 16 in
+orm/settings_test.go, six in tests/settings_test.go. All are PR1 test fixtures;
+no additional production-source finding was observed. The two maintenance
+medium findings occur on both sides. These are analyzer observations, not a
+safety guarantee. Manifest aggregate fresh=true does not establish missing
+generated-code/database fingerprints or live freshness.
+
+## Acceptance and remaining states
+
+AC1/2: immutable settings/ownership, parallel two-DB isolation and parent
+Tx/clone/wrapper inheritance pass local/full/race and both live DB tests.
+AC3: construction-time legacy snapshots, explicit precedence and migration
+remain implemented/documented and tested. AC4: missing/unconfirmed context stays
+data, never authentication or trusted tenant proof. AC5/8: current command results
+above replace the historical hook failure; head-matching CI is separately recorded
+in PR61/report. AC6/9: existing Issue60/PR61, branch/base/title reused; PR2 plan
+retained. AC7: corrected main is integrated by normal merge, no conflict.
+
+PR1 implemented and locally validated; PR exists but remains unmerged. Issue60
+remains open/incomplete; user acceptance has not been requested or recorded.
+PR2 is not started and can be registered only after PR1 main merge. PR2 tenant/
+write/PII semantics, GQ-AI-04 universal CRUD and unified Strict remain unimplemented.
+
+---
+
+The following is the historical revision-1 record. Its failures, pre-fix main,
+and publication statements describe that earlier run, not revision 2.
+
+# Historical revision 1 validation record
 
 Issue: https://github.com/recoweft/goquent/issues/60. This records local checks for
 PR1 only, before merge; it is not Issue completion or user acceptance.
@@ -27,8 +131,8 @@ These are performed checks, not assumptions about other machines or credentials.
 
 Explicit local integration environment:
 
-- TEST_MYSQL_DSN=root:password@tcp(127.0.0.1:3306)/testdb?parseTime=true
-- TEST_POSTGRES_DSN=postgres://postgres:password@127.0.0.1:5432/testdb?sslmode=disable
+- TEST_MYSQL_DSN explicitly supplied (value omitted)
+- TEST_POSTGRES_DSN explicitly supplied (value omitted)
 - TEST_DB_DSN equals the MySQL DSN for registered custom-driver coverage.
 
 These are disposable local test database credentials from the repository's compose
