@@ -143,6 +143,9 @@ func (q *Query) sealWriteEvidence(p *QueryPlan) {
 	e.Tables = append([]TableRef(nil), e.Tables...)
 	e.Columns = append([]ColumnRef(nil), e.Columns...)
 	e.Joins = append([]JoinRef(nil), e.Joins...)
+	for i := range e.Joins {
+		e.Joins[i].OnTree = valuecopy.Node(e.Joins[i].OnTree)
+	}
 	e.Unverified = append([]string(nil), e.Unverified...)
 	p.writeEvidence = e
 }

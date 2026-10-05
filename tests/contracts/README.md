@@ -119,3 +119,10 @@ GQ-AI-03/PR1 updates C26 to executable configuration-isolation evidence and
 extends partial C27 coverage for context/settings inheritance. See
 [DB settings and migration](../../docs/db-settings.md). These updates do not
 register tenant authentication or all-branch tenant verification as implemented.
+
+GQ-AI-03/PR2 adds conditional Query tenant/policy evidence for C04/C07/C08/C09/
+C10/C14/C26/C27/C28. See [entry coverage and migration](../../docs/tenant-policy.md).
+C22/C23 manifest requirements and the example hashes are unchanged: neither
+fixture assertions nor manifest Fresh become live schema evidence. JSON retains
+its existing shape plus optional explanatory plan fields; private trust is never
+serialized. Generic/scoped final RETURNING and common CRUD enforcement remain 04.

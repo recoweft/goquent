@@ -115,13 +115,14 @@ type ColumnRef struct {
 
 // JoinRef describes a JOIN visible in the query builder metadata.
 type JoinRef struct {
-	Type        string `json:"type,omitempty"`
-	Table       string `json:"table,omitempty"`
-	Alias       string `json:"alias,omitempty"`
-	LeftColumn  string `json:"left_column,omitempty"`
-	Operator    string `json:"operator,omitempty"`
-	RightColumn string `json:"right_column,omitempty"`
-	Subquery    bool   `json:"subquery,omitempty"`
+	OnTree      *predicate.Node `json:"on_tree,omitempty"`
+	Type        string          `json:"type,omitempty"`
+	Table       string          `json:"table,omitempty"`
+	Alias       string          `json:"alias,omitempty"`
+	LeftColumn  string          `json:"left_column,omitempty"`
+	Operator    string          `json:"operator,omitempty"`
+	RightColumn string          `json:"right_column,omitempty"`
+	Subquery    bool            `json:"subquery,omitempty"`
 }
 
 // PredicateRef describes a WHERE-like predicate visible in the query builder metadata.
@@ -140,6 +141,8 @@ type PredicateRef struct {
 
 // QueryPlan explains SQL and metadata before the query is executed.
 type QueryPlan struct {
+	tenantEvidence      *tenantEvidence
+	TenantPolicy        *TenantPolicyResult `json:"tenant_policy,omitempty"`
 	writeEvidence       *writeEvidence
 	WriteScope          *WriteScopeResult `json:"write_scope,omitempty"`
 	conditionSource     *predicate.Node
@@ -353,6 +356,10 @@ func (q *Query) planSelectBuilder(ctx context.Context, builder *qbapi.SelectQuer
 	if builder == q.builder {
 		q.applyPolicyPredicates()
 	}
+	builder, err := q.policyBuilder(builder)
+	if err != nil {
+		return nil, err
+	}
 	sqlStr, args, snapshot, err := builder.BuildSnapshot()
 	if err != nil {
 		return nil, err
@@ -448,6 +455,7 @@ func appendTableRef(plan *QueryPlan, name, alias string) {
 func appendJoinMetadata(plan *QueryPlan, joins []qbapi.JoinSnapshot) {
 	for _, join := range joins {
 		ref := JoinRef{
+			OnTree:      valuecopy.Node(join.OnTree),
 			Type:        join.Type,
 			Table:       join.Table,
 			Alias:       join.Alias,

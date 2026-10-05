@@ -246,9 +246,13 @@ func (q *Query) finalizePlan(plan *QueryPlan) {
 	q.applyPolicyMetadata(plan)
 	q.sealWriteEvidence(plan)
 	finalizePlanWithSettings(plan, q.approval, q.suppressions, q.policy, q.settings)
+	q.finalizeTenantPolicy(plan)
 }
 
 func (q *Query) applyPolicyPredicates() {
+	if q.settings.strict {
+		return
+	}
 	if q.policyApplied || q.policy == nil || q.policy.SoftDeleteColumn == "" {
 		return
 	}
@@ -1066,24 +1070,36 @@ func (q *Query) OrWhereNot(fn func(g *Query)) *Query {
 
 // WhereIn adds WHERE IN condition.
 func (q *Query) WhereIn(col string, vals any) *Query {
+	if !q.strictInValue(vals) {
+		return q
+	}
 	q.builder.WhereIn(col, vals)
 	return q
 }
 
 // WhereNotIn adds WHERE NOT IN condition.
 func (q *Query) WhereNotIn(col string, vals any) *Query {
+	if !q.strictInValue(vals) {
+		return q
+	}
 	q.builder.WhereNotIn(col, vals)
 	return q
 }
 
 // OrWhereIn adds OR WHERE IN condition.
 func (q *Query) OrWhereIn(col string, vals any) *Query {
+	if !q.strictInValue(vals) {
+		return q
+	}
 	q.builder.OrWhereIn(col, vals)
 	return q
 }
 
 // OrWhereNotIn adds OR WHERE NOT IN condition.
 func (q *Query) OrWhereNotIn(col string, vals any) *Query {
+	if !q.strictInValue(vals) {
+		return q
+	}
 	q.builder.OrWhereNotIn(col, vals)
 	return q
 }
@@ -1550,6 +1566,11 @@ func (q *Query) PlanInsert(ctx context.Context, data any) (*QueryPlan, error) {
 		return nil, err
 	}
 	ib := newInsertBuilder(q.dialect)
+	rows, err := q.tenantRows([]map[string]any{m}, false, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	m = rows[0]
 	ib.Table(q.tableName()).Insert(m)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
@@ -1575,7 +1596,9 @@ func (q *Query) InsertGetId(data any) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		plan.SQL += " RETURNING " + q.dialect.QuoteIdent(q.getPrimaryKeyColumn())
+		if err := q.planReturning(plan, []string{q.getPrimaryKeyColumn()}); err != nil {
+			return 0, err
+		}
 		var id int64
 		if err := q.queryRow(plan.SQL, plan.Params...).Scan(&id); err != nil {
 			return 0, err
@@ -1613,6 +1636,10 @@ func (q *Query) PlanInsertBatch(ctx context.Context, data []map[string]any) (*Qu
 		return nil, q.err
 	}
 	ib := newInsertBuilder(q.dialect)
+	data, err := q.tenantRows(data, false, nil, nil)
+	if err != nil {
+		return nil, err
+	}
 	ib.Table(q.tableName()).InsertBatch(data)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
@@ -1644,6 +1671,10 @@ func (q *Query) planInsertOrIgnore(ctx context.Context, data []map[string]any) (
 		return nil, q.err
 	}
 	ib := newInsertBuilder(q.dialect)
+	data, err := q.tenantRows(data, false, nil, nil)
+	if err != nil {
+		return nil, err
+	}
 	ib.Table(q.tableName()).InsertOrIgnore(data)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
@@ -1670,11 +1701,18 @@ func (q *Query) Upsert(data []map[string]any, unique []string, updateCols []stri
 }
 
 func (q *Query) planUpsert(ctx context.Context, data []map[string]any, unique []string, updateCols []string) (*QueryPlan, error) {
+	if q.settings.strict && (len(unique) == 0 || len(updateCols) == 0) {
+		return nil, tenantError("conflict_target_or_updates_missing")
+	}
 	_ = ctx
 	if q.err != nil {
 		return nil, q.err
 	}
 	ib := newInsertBuilder(q.dialect)
+	data, err := q.tenantRows(data, false, unique, updateCols)
+	if err != nil {
+		return nil, err
+	}
 	ib.Table(q.tableName()).Upsert(data, unique, updateCols)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
@@ -1706,6 +1744,16 @@ func (q *Query) planUpdateOrInsert(ctx context.Context, cond map[string]any, val
 		return nil, q.err
 	}
 	ib := newInsertBuilder(q.dialect)
+	if q.settings.strict {
+		merged := make(map[string]any, len(cond)+len(values))
+		for k, v := range cond {
+			merged[k] = v
+		}
+		for k, v := range values {
+			merged[k] = v
+		}
+		return q.planUpsert(ctx, []map[string]any{merged}, sortedMapKeys(cond), sortedMapKeys(values))
+	}
 	ib.Table(q.tableName()).UpdateOrInsert(cond, values)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
@@ -1744,6 +1792,9 @@ func (q *Query) planInsertUsing(ctx context.Context, columns []string, sub *Quer
 		return nil, q.err
 	}
 	ib := newInsertBuilder(q.dialect)
+	if q.settings.strict {
+		return nil, tenantError("insert_using_unsupported")
+	}
 	ib.Table(q.tableName()).InsertUsing(columns, sub.builder)
 	sqlStr, args, err := ib.Build()
 	if err != nil {
@@ -1781,8 +1832,17 @@ func (q *Query) PlanUpdate(ctx context.Context, data any) (*QueryPlan, error) {
 		return nil, err
 	}
 	ub := newUpdateBuilder(q.dialect)
+	rows, err := q.tenantRows([]map[string]any{m}, true, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	m = rows[0]
 	ub.Table(q.tableName()).Update(m)
-	copyBuilderState(q.builder, ub)
+	source, err := q.policyBuilder(q.builder)
+	if err != nil {
+		return nil, err
+	}
+	copyBuilderState(source, ub)
 	sqlStr, args, snapshot, err := ub.BuildSnapshot()
 	if err != nil {
 		return nil, err
@@ -1816,7 +1876,11 @@ func (q *Query) PlanDelete(ctx context.Context) (*QueryPlan, error) {
 	q.applyPolicyPredicates()
 	delBuilder := newDeleteBuilder(q.dialect)
 	delBuilder.Table(q.tableName()).Delete()
-	copyBuilderStateDelete(q.builder, delBuilder)
+	source, err := q.policyBuilder(q.builder)
+	if err != nil {
+		return nil, err
+	}
+	copyBuilderStateDelete(source, delBuilder)
 	sqlStr, args, snapshot, err := delBuilder.BuildSnapshot()
 	if err != nil {
 		return nil, err
