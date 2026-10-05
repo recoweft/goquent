@@ -3,7 +3,6 @@ package orm
 import (
 	"context"
 	"errors"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -27,7 +26,7 @@ type transactionHookAudit struct {
 func (transactionHookAudit) TableName() string { return "audit_events" }
 
 func TestRunTransactionWithHooksCommitsAuditHook(t *testing.T) {
-	sqlDB, mock, err := sqlmock.New()
+	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	if err != nil {
 		t.Fatalf("sqlmock: %v", err)
 	}
@@ -35,10 +34,11 @@ func TestRunTransactionWithHooksCommitsAuditHook(t *testing.T) {
 	db := NewDB(sqlDB, driver.MySQLDialect{})
 
 	mock.ExpectBegin()
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `users` (`id`, `name`) VALUES (?, ?)")).
+	mock.ExpectExec("INSERT INTO `users` (`id`, `name`) VALUES (?, ?)").
 		WithArgs(int64(1), "alice").
 		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `audit_events`")).
+	mock.ExpectExec("INSERT INTO `audit_events` (`id`, `user_id`, `action`) VALUES (?, ?, ?)").
+		WithArgs(int64(10), int64(1), "created").
 		WillReturnResult(sqlmock.NewResult(10, 1))
 	mock.ExpectCommit()
 
@@ -68,7 +68,7 @@ func TestRunTransactionWithHooksCommitsAuditHook(t *testing.T) {
 }
 
 func TestRunTransactionWithHooksRollsBackOnHookError(t *testing.T) {
-	sqlDB, mock, err := sqlmock.New()
+	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	if err != nil {
 		t.Fatalf("sqlmock: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestRunTransactionWithHooksRollsBackOnHookError(t *testing.T) {
 	hookErr := errors.New("outbox unavailable")
 
 	mock.ExpectBegin()
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `users` (`id`, `name`) VALUES (?, ?)")).
+	mock.ExpectExec("INSERT INTO `users` (`id`, `name`) VALUES (?, ?)").
 		WithArgs(int64(1), "alice").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectRollback()

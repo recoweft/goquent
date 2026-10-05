@@ -735,35 +735,20 @@ func buildInsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 				continue
 			}
 			cols = append(cols, col)
-			args = append(args, iter.Value().Interface())
+		}
+		sort.Strings(cols)
+		for _, col := range cols {
+			args = append(args, val.MapIndex(reflect.ValueOf(col).Convert(typ.Key())).Interface())
 		}
 	} else if typ.Kind() == reflect.Struct {
 		table = o.table
 		if table == "" {
 			table = model.TableName(v)
 		}
-		meta, err := getTypeMeta(typ)
+		var err error
+		cols, args, err = insertStructColumnsAndArgs(val, o)
 		if err != nil {
 			return "", nil, err
-		}
-		for _, fm := range meta.FieldsByName {
-			if fm.Readonly {
-				continue
-			}
-			if len(o.cols) > 0 {
-				if _, ok := o.cols[fm.Col]; !ok {
-					continue
-				}
-			}
-			if _, ok := o.omit[fm.Col]; ok {
-				continue
-			}
-			fv := val.FieldByIndex(fm.IndexPath)
-			if fm.OmitEmpty && fv.IsZero() {
-				continue
-			}
-			cols = append(cols, fm.Col)
-			args = append(args, fv.Interface())
 		}
 	} else {
 		return "", nil, fmt.Errorf("unsupported type %s", typ)
