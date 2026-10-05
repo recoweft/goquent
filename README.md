@@ -79,6 +79,7 @@ import "github.com/recoweft/goquent/orm"
   - [func OpenWithDriverOptions\(driverName, dsn string, opts ...Option\) \(\*DB, error\)](<#OpenWithDriverOptions>)
   - [func \(db \*DB\) Begin\(\) \(Tx, error\)](<#DB.Begin>)
   - [func \(db \*DB\) BeginTx\(ctx context.Context, opts \*sql.TxOptions\) \(Tx, error\)](<#DB.BeginTx>)
+  - [func \(db \*DB\) Clone\(\) \*DB](<#DB.Clone>)
   - [func \(db \*DB\) Close\(\) error](<#DB.Close>)
   - [func \(db \*DB\) Dialect\(\) driver.Dialect](<#DB.Dialect>)
   - [func \(db \*DB\) Exec\(q string, args ...any\) \(sql.Result, error\)](<#DB.Exec>)
@@ -94,15 +95,21 @@ import "github.com/recoweft/goquent/orm"
   - [func \(db \*DB\) SQLDB\(\) \*sql.DB](<#DB.SQLDB>)
   - [func \(db \*DB\) SelectMap\(ctx context.Context, q string, args ...any\) \(map\[string\]any, error\)](<#DB.SelectMap>)
   - [func \(db \*DB\) SelectMaps\(ctx context.Context, q string, args ...any\) \(\[\]map\[string\]any, error\)](<#DB.SelectMaps>)
+  - [func \(db \*DB\) Settings\(\) Settings](<#DB.Settings>)
   - [func \(db \*DB\) Table\(name string\) \*query.Query](<#DB.Table>)
   - [func \(db \*DB\) TablePath\(parts ...string\) \*query.Query](<#DB.TablePath>)
   - [func \(db \*DB\) TouchedTables\(tables ...string\) \*DB](<#DB.TouchedTables>)
   - [func \(db \*DB\) Transaction\(fn func\(tx Tx\) error\) error](<#DB.Transaction>)
   - [func \(db \*DB\) TransactionContext\(ctx context.Context, fn func\(tx Tx\) error\) error](<#DB.TransactionContext>)
+  - [func \(db \*DB\) WithOptions\(opts ...Option\) \*DB](<#DB.WithOptions>)
+  - [func \(db \*DB\) WrapExecutor\(exec Executor, opts ...Option\) \*DB](<#DB.WrapExecutor>)
   - [func \(db \*DB\) WrapTx\(tx \*sql.Tx, opts ...Option\) \*DB](<#DB.WrapTx>)
 - [type ErrBoolParse](<#ErrBoolParse>)
   - [func \(e ErrBoolParse\) Error\(\) string](<#ErrBoolParse.Error>)
 - [type Evidence](<#Evidence>)
+- [type ExecutionContext](<#ExecutionContext>)
+  - [func NewExecutionContext\(input ExecutionContextInput\) \(ExecutionContext, error\)](<#NewExecutionContext>)
+- [type ExecutionContextInput](<#ExecutionContextInput>)
 - [type Executor](<#Executor>)
 - [type FilterSpec](<#FilterSpec>)
 - [type IdempotentCommandResult](<#IdempotentCommandResult>)
@@ -169,9 +176,15 @@ import "github.com/recoweft/goquent/orm"
 - [type OperationType](<#OperationType>)
 - [type Option](<#Option>)
   - [func WithBoolScanPolicy\(p BoolScanPolicy\) Option](<#WithBoolScanPolicy>)
+  - [func WithExecutionContext\(c ExecutionContext\) Option](<#WithExecutionContext>)
+  - [func WithPolicySet\(p PolicySet\) Option](<#WithPolicySet>)
+  - [func WithRiskConfig\(r RiskConfig\) Option](<#WithRiskConfig>)
+  - [func WithSettings\(s Settings\) Option](<#WithSettings>)
 - [type OrderSpec](<#OrderSpec>)
 - [type ParentChildProjection](<#ParentChildProjection>)
 - [type PolicyMode](<#PolicyMode>)
+- [type PolicySet](<#PolicySet>)
+  - [func NewPolicySet\(policies ...TablePolicy\) \(PolicySet, error\)](<#NewPolicySet>)
 - [type PredicateRef](<#PredicateRef>)
 - [type ProjectionExpression](<#ProjectionExpression>)
   - [func JSONAggregateArray\(d ormdriver.Dialect, expr ProjectionExpression, opts ...JSONAggOption\) \(ProjectionExpression, error\)](<#JSONAggregateArray>)
@@ -207,6 +220,9 @@ import "github.com/recoweft/goquent/orm"
   - [func RequireTenantScope\(table string, column ...string\) Scope](<#RequireTenantScope>)
   - [func TenantScope\(tenantID any, column ...string\) Scope](<#TenantScope>)
   - [func TextSearch\(columns \[\]string, term string\) Scope](<#TextSearch>)
+- [type Settings](<#Settings>)
+  - [func NewSettings\(p PolicySet, r RiskConfig, c ExecutionContext\) Settings](<#NewSettings>)
+  - [func SnapshotDefaultSettings\(\) Settings](<#SnapshotDefaultSettings>)
 - [type SourceLocation](<#SourceLocation>)
 - [type Suppression](<#Suppression>)
   - [func NewSuppression\(code, reason string, opts ...SuppressionOption\) \(Suppression, error\)](<#NewSuppression>)
@@ -411,6 +427,18 @@ var ErrNotFound = sql.ErrNoRows
 
 ```go
 var ErrRowsAffected = errors.New("goquent: unexpected rows affected")
+```
+
+<a name="ErrUnsupportedExecutionContext"></a>
+
+```go
+var ErrUnsupportedExecutionContext = query.ErrUnsupportedExecutionContext
+```
+
+<a name="ErrUnsupportedRiskEngine"></a>
+
+```go
+var ErrUnsupportedRiskEngine = query.ErrUnsupportedRiskEngine
 ```
 
 <a name="ApplyProjection"></a>
@@ -666,7 +694,7 @@ RegisterDriverWithDialect registers a database driver along with its dialect.
 func RegisterTablePolicy(policy TablePolicy) error
 ```
 
-RegisterTablePolicy registers a table policy directly.
+RegisterTablePolicy updates the legacy defaults for future DB snapshots. Existing DBs and queries are unchanged; use per\-DB PolicySet for explicit setup.
 
 <a name="ResetMetaCache"></a>
 ## func ResetMetaCache
@@ -1069,6 +1097,15 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error)
 
 BeginTx starts a transaction using ctx and returns the Tx.
 
+<a name="DB.Clone"></a>
+### func \(\*DB\) Clone
+
+```go
+func (db *DB) Clone() *DB
+```
+
+Clone copies this DB wrapper. Connection ownership and executor are unchanged; Close has the same semantics as on the source. Settings are immutable.
+
 <a name="DB.Close"></a>
 ### func \(\*DB\) Close
 
@@ -1208,6 +1245,15 @@ func (db *DB) SelectMaps(ctx context.Context, q string, args ...any) ([]map[stri
 
 Deprecated: Use SelectAll with map type instead.
 
+<a name="DB.Settings"></a>
+### func \(\*DB\) Settings
+
+```go
+func (db *DB) Settings() Settings
+```
+
+Settings returns the immutable settings snapshot, with detached data getters.
+
 <a name="DB.Table"></a>
 ### func \(\*DB\) Table
 
@@ -1253,6 +1299,24 @@ func (db *DB) TransactionContext(ctx context.Context, fn func(tx Tx) error) erro
 
 TransactionContext executes fn in a transaction using ctx.
 
+<a name="DB.WithOptions"></a>
+### func \(\*DB\) WithOptions
+
+```go
+func (db *DB) WithOptions(opts ...Option) *DB
+```
+
+WithOptions derives a DB without changing existing DBs, queries or transactions. Options run in order; the last explicit value for each setting wins.
+
+<a name="DB.WrapExecutor"></a>
+### func \(\*DB\) WrapExecutor
+
+```go
+func (db *DB) WrapExecutor(exec Executor, opts ...Option) *DB
+```
+
+WrapExecutor inherits this DB's settings, dialect and scan/raw options while using an external executor. It neither owns/closes that executor nor acquires the ability to begin transactions. Use WrapTx for its legacy ownership rules.
+
 <a name="DB.WrapTx"></a>
 ### func \(\*DB\) WrapTx
 
@@ -1291,6 +1355,33 @@ func (e ErrBoolParse) Error() string
 
 ```go
 type Evidence = query.Evidence
+```
+
+<a name="ExecutionContext"></a>
+## type ExecutionContext
+
+ExecutionContext retains application data without asserting authentication.
+
+```go
+type ExecutionContext = query.ExecutionContext
+```
+
+<a name="NewExecutionContext"></a>
+### func NewExecutionContext
+
+```go
+func NewExecutionContext(input ExecutionContextInput) (ExecutionContext, error)
+```
+
+
+
+<a name="ExecutionContextInput"></a>
+## type ExecutionContextInput
+
+ExecutionContextInput records caller\-supplied provenance and tenant presence.
+
+```go
+type ExecutionContextInput = query.ExecutionContextInput
 ```
 
 <a name="Executor"></a>
@@ -1968,6 +2059,42 @@ func WithBoolScanPolicy(p BoolScanPolicy) Option
 
 WithBoolScanPolicy sets the bool scanning policy.
 
+<a name="WithExecutionContext"></a>
+### func WithExecutionContext
+
+```go
+func WithExecutionContext(c ExecutionContext) Option
+```
+
+
+
+<a name="WithPolicySet"></a>
+### func WithPolicySet
+
+```go
+func WithPolicySet(p PolicySet) Option
+```
+
+
+
+<a name="WithRiskConfig"></a>
+### func WithRiskConfig
+
+```go
+func WithRiskConfig(r RiskConfig) Option
+```
+
+WithRiskConfig captures config when the option is created, not when applied.
+
+<a name="WithSettings"></a>
+### func WithSettings
+
+```go
+func WithSettings(s Settings) Option
+```
+
+WithSettings explicitly replaces all settings, including any legacy defaults.
+
 <a name="OrderSpec"></a>
 ## type OrderSpec
 
@@ -2003,6 +2130,24 @@ type ParentChildProjection[R any, P any, C any, K comparable] struct {
 ```go
 type PolicyMode = query.PolicyMode
 ```
+
+<a name="PolicySet"></a>
+## type PolicySet
+
+PolicySet is an immutable collection of table policies.
+
+```go
+type PolicySet = query.PolicySet
+```
+
+<a name="NewPolicySet"></a>
+### func NewPolicySet
+
+```go
+func NewPolicySet(policies ...TablePolicy) (PolicySet, error)
+```
+
+
 
 <a name="PredicateRef"></a>
 ## type PredicateRef
@@ -2337,6 +2482,33 @@ func TextSearch(columns []string, term string) Scope
 ```
 
 TextSearch adds a grouped multi\-column substring search scope.
+
+<a name="Settings"></a>
+## type Settings
+
+Settings owns policy/risk/context snapshots; the zero value imports no globals.
+
+```go
+type Settings = query.Settings
+```
+
+<a name="NewSettings"></a>
+### func NewSettings
+
+```go
+func NewSettings(p PolicySet, r RiskConfig, c ExecutionContext) Settings
+```
+
+
+
+<a name="SnapshotDefaultSettings"></a>
+### func SnapshotDefaultSettings
+
+```go
+func SnapshotDefaultSettings() Settings
+```
+
+
 
 <a name="SourceLocation"></a>
 ## type SourceLocation
@@ -4479,6 +4651,10 @@ import "github.com/recoweft/goquent/orm/query"
   - [func CursorDescAlias\(alias string\) CursorColumn](<#CursorDescAlias>)
   - [func CursorDescExpr\(expr string\) CursorColumn](<#CursorDescExpr>)
 - [type Evidence](<#Evidence>)
+- [type ExecutionContext](<#ExecutionContext>)
+  - [func NewExecutionContext\(input ExecutionContextInput\) \(ExecutionContext, error\)](<#NewExecutionContext>)
+  - [func \(c ExecutionContext\) Input\(\) ExecutionContextInput](<#ExecutionContext.Input>)
+- [type ExecutionContextInput](<#ExecutionContextInput>)
 - [type JoinClause](<#JoinClause>)
   - [func \(c \*JoinClause\) On\(my, condition, target string\) \*JoinClause](<#JoinClause.On>)
   - [func \(c \*JoinClause\) OrOn\(my, condition, target string\) \*JoinClause](<#JoinClause.OrOn>)
@@ -4488,9 +4664,15 @@ import "github.com/recoweft/goquent/orm/query"
 - [type OperationType](<#OperationType>)
 - [type OutputError](<#OutputError>)
 - [type PolicyMode](<#PolicyMode>)
+- [type PolicySet](<#PolicySet>)
+  - [func NewPolicySet\(policies ...TablePolicy\) \(PolicySet, error\)](<#NewPolicySet>)
+  - [func SnapshotPolicyRegistry\(\) PolicySet](<#SnapshotPolicyRegistry>)
+  - [func \(s PolicySet\) Policies\(\) \[\]TablePolicy](<#PolicySet.Policies>)
+  - [func \(s PolicySet\) PolicyForTable\(table string\) \(TablePolicy, bool\)](<#PolicySet.PolicyForTable>)
 - [type PredicateRef](<#PredicateRef>)
 - [type Query](<#Query>)
   - [func New\(exec executor, table string, dialect driver.Dialect\) \*Query](<#New>)
+  - [func NewWithSettings\(exec executor, table string, dialect driver.Dialect, settings Settings\) \*Query](<#NewWithSettings>)
   - [func \(q \*Query\) AccessReason\(reason string\) \*Query](<#Query.AccessReason>)
   - [func \(q \*Query\) Avg\(col string\) \*Query](<#Query.Avg>)
   - [func \(q \*Query\) Build\(\) \(string, \[\]any, error\)](<#Query.Build>)
@@ -4572,6 +4754,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) SafeWhereRaw\(raw string, vals map\[string\]any\) \*Query](<#Query.SafeWhereRaw>)
   - [func \(q \*Query\) Select\(cols ...string\) \*Query](<#Query.Select>)
   - [func \(q \*Query\) SelectRaw\(raw string, values ...any\) \*Query](<#Query.SelectRaw>)
+  - [func \(q \*Query\) Settings\(\) Settings](<#Query.Settings>)
   - [func \(q \*Query\) SharedLock\(\) \*Query](<#Query.SharedLock>)
   - [func \(q \*Query\) Skip\(n int\) \*Query](<#Query.Skip>)
   - [func \(q \*Query\) Sum\(col string\) \*Query](<#Query.Sum>)
@@ -4620,6 +4803,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) WithWriteKeyContext\(ctx WriteKeyContext\) \*Query](<#Query.WithWriteKeyContext>)
 - [type QueryPlan](<#QueryPlan>)
   - [func NewRawPlan\(sqlStr string, args ...any\) \*QueryPlan](<#NewRawPlan>)
+  - [func NewRawPlanWithSettings\(settings Settings, sqlStr string, args ...any\) \*QueryPlan](<#NewRawPlanWithSettings>)
   - [func \(p QueryPlan\) MarshalJSON\(\) \(\[\]byte, error\)](<#QueryPlan.MarshalJSON>)
   - [func \(p \*QueryPlan\) RequiresApproval\(\) bool](<#QueryPlan.RequiresApproval>)
   - [func \(p \*QueryPlan\) String\(\) string](<#QueryPlan.String>)
@@ -4632,6 +4816,16 @@ import "github.com/recoweft/goquent/orm/query"
 - [type RiskLevel](<#RiskLevel>)
 - [type RiskResult](<#RiskResult>)
 - [type RiskRuleConfig](<#RiskRuleConfig>)
+- [type Settings](<#Settings>)
+  - [func NewSettings\(policies PolicySet, risk RiskConfig, execution ExecutionContext\) Settings](<#NewSettings>)
+  - [func SnapshotDefaultSettings\(\) Settings](<#SnapshotDefaultSettings>)
+  - [func \(s Settings\) Err\(\) error](<#Settings.Err>)
+  - [func \(s Settings\) ExecutionContext\(\) ExecutionContext](<#Settings.ExecutionContext>)
+  - [func \(s Settings\) PolicySet\(\) PolicySet](<#Settings.PolicySet>)
+  - [func \(s Settings\) RiskConfig\(\) RiskConfig](<#Settings.RiskConfig>)
+  - [func \(s Settings\) WithExecutionContext\(c ExecutionContext\) Settings](<#Settings.WithExecutionContext>)
+  - [func \(s Settings\) WithPolicySet\(p PolicySet\) Settings](<#Settings.WithPolicySet>)
+  - [func \(s Settings\) WithRiskConfig\(r RiskConfig\) Settings](<#Settings.WithRiskConfig>)
 - [type SourceLocation](<#SourceLocation>)
 - [type Suppression](<#Suppression>)
   - [func NewSuppression\(code, reason string, opts ...SuppressionOption\) \(Suppression, error\)](<#NewSuppression>)
@@ -4712,6 +4906,15 @@ var (
 )
 ```
 
+<a name="ErrUnsupportedExecutionContext"></a>
+
+```go
+var (
+    ErrUnsupportedExecutionContext = errors.New("goquent: execution context contains an unsupported, recursive, deep or oversized value")
+    ErrUnsupportedRiskEngine       = errors.New("goquent: custom global risk engine cannot be snapshotted; supply an explicit RiskConfig")
+)
+```
+
 <a name="ErrOutputBudget"></a>
 
 ```go
@@ -4766,7 +4969,7 @@ If table is non\-empty and the plan touches multiple tables, the predicate must 
 func RegisterTablePolicy(policy TablePolicy) error
 ```
 
-RegisterTablePolicy registers or replaces a table policy.
+RegisterTablePolicy registers or replaces a legacy default for future snapshots. It does not update existing DBs or queries.
 
 <a name="ResetPolicyRegistry"></a>
 ## func ResetPolicyRegistry
@@ -4907,6 +5110,48 @@ type Evidence struct {
 }
 ```
 
+<a name="ExecutionContext"></a>
+## type ExecutionContext
+
+ExecutionContext holds an immutable application\-supplied snapshot. The zero value is missing context. ORM verification remains unconfirmed in PR1.
+
+```go
+type ExecutionContext struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewExecutionContext"></a>
+### func NewExecutionContext
+
+```go
+func NewExecutionContext(input ExecutionContextInput) (ExecutionContext, error)
+```
+
+NewExecutionContext detaches supported values using the predicate ownership copier. Unsupported values are rejected without calling user methods or retaining references. See docs/db\-settings.md for supported types and budgets.
+
+<a name="ExecutionContext.Input"></a>
+### func \(ExecutionContext\) Input
+
+```go
+func (c ExecutionContext) Input() ExecutionContextInput
+```
+
+Input returns a detached copy; it is data, never an authorization verdict.
+
+<a name="ExecutionContextInput"></a>
+## type ExecutionContextInput
+
+ExecutionContextInput is application\-supplied provenance and current tenant data. Source is an application label, not verified identity. TenantPresent preserves absence separately from an explicitly supplied nil/empty tenant. None of these fields assert authentication, authorization or a verified tenant binding.
+
+```go
+type ExecutionContextInput struct {
+    Source        string
+    CurrentTenant any
+    TenantPresent bool
+}
+```
+
 <a name="JoinClause"></a>
 ## type JoinClause
 
@@ -5020,6 +5265,53 @@ const (
 )
 ```
 
+<a name="PolicySet"></a>
+## type PolicySet
+
+PolicySet is an immutable collection of table policies. Its zero value is empty. Build a new set to change policies; input and returned slices are detached.
+
+```go
+type PolicySet struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewPolicySet"></a>
+### func NewPolicySet
+
+```go
+func NewPolicySet(policies ...TablePolicy) (PolicySet, error)
+```
+
+
+
+<a name="SnapshotPolicyRegistry"></a>
+### func SnapshotPolicyRegistry
+
+```go
+func SnapshotPolicyRegistry() PolicySet
+```
+
+SnapshotPolicyRegistry copies the legacy registry at this explicit boundary.
+
+<a name="PolicySet.Policies"></a>
+### func \(PolicySet\) Policies
+
+```go
+func (s PolicySet) Policies() []TablePolicy
+```
+
+Policies returns detached policies in stable table order.
+
+<a name="PolicySet.PolicyForTable"></a>
+### func \(PolicySet\) PolicyForTable
+
+```go
+func (s PolicySet) PolicyForTable(table string) (TablePolicy, bool)
+```
+
+PolicyForTable returns a detached policy using the compatibility table normalization.
+
 <a name="PredicateRef"></a>
 ## type PredicateRef
 
@@ -5059,6 +5351,15 @@ func New(exec executor, table string, dialect driver.Dialect) *Query
 ```
 
 New creates a Query with given db and table.
+
+<a name="NewWithSettings"></a>
+### func NewWithSettings
+
+```go
+func NewWithSettings(exec executor, table string, dialect driver.Dialect, settings Settings) *Query
+```
+
+NewWithSettings creates a query using only the supplied immutable snapshot.
 
 <a name="Query.AccessReason"></a>
 ### func \(\*Query\) AccessReason
@@ -5789,6 +6090,15 @@ func (q *Query) SelectRaw(raw string, values ...any) *Query
 
 SelectRaw adds a raw select expression.
 
+<a name="Query.Settings"></a>
+### func \(\*Query\) Settings
+
+```go
+func (q *Query) Settings() Settings
+```
+
+Settings returns the query's immutable configuration and execution context.
+
 <a name="Query.SharedLock"></a>
 ### func \(\*Query\) SharedLock
 
@@ -6249,6 +6559,15 @@ func NewRawPlan(sqlStr string, args ...any) *QueryPlan
 
 NewRawPlan creates a plan for caller\-supplied SQL. It does not execute SQL.
 
+<a name="NewRawPlanWithSettings"></a>
+### func NewRawPlanWithSettings
+
+```go
+func NewRawPlanWithSettings(settings Settings, sqlStr string, args ...any) *QueryPlan
+```
+
+NewRawPlanWithSettings inspects raw SQL with an explicit snapshot. It does not parse tenant semantics. Unsupported legacy engines produce a blocked plan.
+
 <a name="QueryPlan.MarshalJSON"></a>
 ### func \(QueryPlan\) MarshalJSON
 
@@ -6329,7 +6648,7 @@ type RiskEngine interface {
 }
 ```
 
-<a name="DefaultRiskEngine"></a>DefaultRiskEngine is the built\-in deterministic risk engine.
+<a name="DefaultRiskEngine"></a>DefaultRiskEngine is the legacy engine/default snapshot source. Assign only during single\-threaded initialization. Existing DB/Query snapshots never read subsequent assignments; custom implementations require explicit RiskConfig.
 
 ```go
 var DefaultRiskEngine RiskEngine = defaultRiskEngine{}
@@ -6392,6 +6711,98 @@ type RiskRuleConfig struct {
     RequiresReason *bool      `json:"requires_reason,omitempty"`
 }
 ```
+
+<a name="Settings"></a>
+## type Settings
+
+Settings is an immutable policy, risk and execution\-context snapshot. The zero value uses empty policies, built\-in risk defaults and missing context. Copies safely share only privately owned immutable data.
+
+```go
+type Settings struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewSettings"></a>
+### func NewSettings
+
+```go
+func NewSettings(policies PolicySet, risk RiskConfig, execution ExecutionContext) Settings
+```
+
+NewSettings builds a detached snapshot without consulting globals.
+
+<a name="SnapshotDefaultSettings"></a>
+### func SnapshotDefaultSettings
+
+```go
+func SnapshotDefaultSettings() Settings
+```
+
+SnapshotDefaultSettings imports legacy defaults once. Global engine assignment must finish before concurrent use; the historical exported variable cannot synchronize caller writes. Arbitrary custom engines cannot be copied safely. Such a snapshot records ErrUnsupportedRiskEngine and blocks inspected paths until explicitly replaced with WithRiskConfig. No custom method is invoked.
+
+<a name="Settings.Err"></a>
+### func \(Settings\) Err
+
+```go
+func (s Settings) Err() error
+```
+
+
+
+<a name="Settings.ExecutionContext"></a>
+### func \(Settings\) ExecutionContext
+
+```go
+func (s Settings) ExecutionContext() ExecutionContext
+```
+
+
+
+<a name="Settings.PolicySet"></a>
+### func \(Settings\) PolicySet
+
+```go
+func (s Settings) PolicySet() PolicySet
+```
+
+
+
+<a name="Settings.RiskConfig"></a>
+### func \(Settings\) RiskConfig
+
+```go
+func (s Settings) RiskConfig() RiskConfig
+```
+
+
+
+<a name="Settings.WithExecutionContext"></a>
+### func \(Settings\) WithExecutionContext
+
+```go
+func (s Settings) WithExecutionContext(c ExecutionContext) Settings
+```
+
+
+
+<a name="Settings.WithPolicySet"></a>
+### func \(Settings\) WithPolicySet
+
+```go
+func (s Settings) WithPolicySet(p PolicySet) Settings
+```
+
+
+
+<a name="Settings.WithRiskConfig"></a>
+### func \(Settings\) WithRiskConfig
+
+```go
+func (s Settings) WithRiskConfig(r RiskConfig) Settings
+```
+
+
 
 <a name="SourceLocation"></a>
 ## type SourceLocation
