@@ -86,7 +86,8 @@ func (b *ModelPolicyBuilder) register() {
 	b.err = query.RegisterTablePolicy(b.policy)
 }
 
-// RegisterTablePolicy registers a table policy directly.
+// RegisterTablePolicy updates the legacy defaults for future DB snapshots.
+// Existing DBs and queries are unchanged; use per-DB PolicySet for explicit setup.
 func RegisterTablePolicy(policy TablePolicy) error {
 	return query.RegisterTablePolicy(policy)
 }

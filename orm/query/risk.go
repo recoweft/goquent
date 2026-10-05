@@ -41,12 +41,14 @@ type RiskConfig struct {
 	Rules       map[string]RiskRuleConfig `json:"rules,omitempty"`
 }
 
-// DefaultRiskEngine is the built-in deterministic risk engine.
+// DefaultRiskEngine is the legacy engine/default snapshot source. Assign only
+// during single-threaded initialization. Existing DB/Query snapshots never read
+// subsequent assignments; custom implementations require explicit RiskConfig.
 var DefaultRiskEngine RiskEngine = defaultRiskEngine{}
 
 // NewRiskEngine creates a deterministic risk engine using config overrides.
 func NewRiskEngine(config RiskConfig) RiskEngine {
-	return defaultRiskEngine{config: config}
+	return defaultRiskEngine{config: cloneRiskConfig(config)}
 }
 
 type defaultRiskEngine struct {
@@ -189,48 +191,26 @@ func applyRiskConfig(warnings []Warning, config RiskConfig) []Warning {
 	return out
 }
 
-func finalizePlan(plan *QueryPlan, approval *Approval, suppressions []Suppression) {
+func finalizePlanWithSettings(plan *QueryPlan, approval *Approval, suppressions []Suppression, policy *TablePolicy, settings Settings) {
 	if plan == nil {
 		return
 	}
-	result := DefaultRiskEngine.CheckQuery(plan)
-	allWarnings := append([]Warning(nil), result.Warnings...)
-	allWarnings = append(allWarnings, checkPolicies(plan, nil)...)
-	warnings, suppressed, suppressionWarnings := applySuppressions(allWarnings, suppressions, time.Now().UTC())
-	warnings = append(warnings, suppressionWarnings...)
-
-	level, blocked := aggregateWarnings(warnings)
-	if len(warnings) == 0 && len(suppressed) > 0 {
-		level = RiskLow
-	}
-
-	plan.Warnings = warnings
-	plan.SuppressedWarnings = suppressed
-	plan.RiskLevel = level
-	plan.Blocked = blocked || level == RiskBlocked
-	plan.RequiredApproval = requiresApprovalLevel(level)
-	if approval != nil {
-		copied := *approval
-		plan.Approval = &copied
-	}
-}
-
-func finalizePlanWithPolicy(plan *QueryPlan, approval *Approval, suppressions []Suppression, policy *TablePolicy) {
-	if plan == nil {
+	if settings.Err() != nil {
+		plan.Warnings = []Warning{{Code: "UNSUPPORTED_RISK_ENGINE", Level: RiskBlocked, Message: settings.Err().Error()}}
+		plan.RiskLevel = RiskBlocked
+		plan.Blocked = true
 		return
 	}
-	result := DefaultRiskEngine.CheckQuery(plan)
+	result := (defaultRiskEngine{config: settings.risk}).CheckQuery(plan)
 	allWarnings := append([]Warning(nil), result.Warnings...)
 	allWarnings = append(allWarnings, checkRequiredPredicates(plan)...)
-	allWarnings = append(allWarnings, checkPolicies(plan, policy)...)
+	allWarnings = append(allWarnings, checkPolicies(plan, policy, settings.policies)...)
 	warnings, suppressed, suppressionWarnings := applySuppressions(allWarnings, suppressions, time.Now().UTC())
 	warnings = append(warnings, suppressionWarnings...)
-
 	level, blocked := aggregateWarnings(warnings)
 	if len(warnings) == 0 && len(suppressed) > 0 {
 		level = RiskLow
 	}
-
 	plan.Warnings = warnings
 	plan.SuppressedWarnings = suppressed
 	plan.RiskLevel = level

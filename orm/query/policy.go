@@ -41,7 +41,8 @@ var policyRegistry = struct {
 	byTable map[string]TablePolicy
 }{byTable: make(map[string]TablePolicy)}
 
-// RegisterTablePolicy registers or replaces a table policy.
+// RegisterTablePolicy registers or replaces a legacy default for future snapshots.
+// It does not update existing DBs or queries.
 func RegisterTablePolicy(policy TablePolicy) error {
 	policy.Table = strings.TrimSpace(policy.Table)
 	if policy.Table == "" {
@@ -136,13 +137,13 @@ type policyCheckContext struct {
 	ambiguousPredicateColumns map[string]bool
 }
 
-func checkPolicies(plan *QueryPlan, extra *TablePolicy) []Warning {
+func checkPolicies(plan *QueryPlan, extra *TablePolicy, set PolicySet) []Warning {
 	if plan == nil {
 		return nil
 	}
 
 	byTable := make(map[string]TablePolicy)
-	for _, policy := range RegisteredTablePolicies() {
+	for _, policy := range set.Policies() {
 		byTable[normalizeTableName(policy.Table)] = policy
 	}
 	if extra != nil && strings.TrimSpace(extra.Table) != "" {
