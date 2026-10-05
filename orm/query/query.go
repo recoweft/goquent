@@ -34,7 +34,6 @@ type executor interface {
 
 // Query wraps goquent QueryBuilder and the executor.
 type Query struct {
-	settings           Settings
 	writeKeys          *WriteKeyContext
 	builder            *qbapi.SelectQueryBuilder
 	exec               executor
@@ -90,22 +89,14 @@ func CursorDescAlias(alias string) CursorColumn { return CursorDesc(alias) }
 
 // New creates a Query with given db and table.
 func New(exec executor, table string, dialect driver.Dialect) *Query {
-	return NewWithSettings(exec, table, dialect, SnapshotDefaultSettings())
-}
-
-// NewWithSettings creates a query using only the supplied immutable snapshot.
-func NewWithSettings(exec executor, table string, dialect driver.Dialect, settings Settings) *Query {
 	builder := newSelectBuilder(dialect)
 	builder.Table(table)
-	q := &Query{builder: builder, exec: exec, dialect: dialect, primaryKey: "id", settings: settings, err: settings.Err()}
-	if policy, ok := settings.PolicySet().PolicyForTable(table); ok {
+	q := &Query{builder: builder, exec: exec, dialect: dialect, primaryKey: "id"}
+	if policy, ok := PolicyForTable(table); ok {
 		q.policy = &policy
 	}
 	return q
 }
-
-// Settings returns the query's immutable configuration and execution context.
-func (q *Query) Settings() Settings { return q.settings }
 
 func (q *Query) tableName() string {
 	return q.builder.Snapshot().Table
@@ -245,7 +236,7 @@ func (q *Query) finalizePlan(plan *QueryPlan) {
 	}
 	q.applyPolicyMetadata(plan)
 	q.sealWriteEvidence(plan)
-	finalizePlanWithSettings(plan, q.approval, q.suppressions, q.policy, q.settings)
+	finalizePlanWithPolicy(plan, q.approval, q.suppressions, q.policy)
 }
 
 func (q *Query) applyPolicyPredicates() {
@@ -1002,7 +993,7 @@ func (q *Query) WhereGroup(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.WhereGroup(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{settings: q.settings, err: q.err, builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
 		grp.builder.UseWhereBuilder(b.GetBuilder())
 		fn(grp)
 		q.paramSeq = grp.paramSeq
@@ -1019,7 +1010,7 @@ func (q *Query) OrWhereGroup(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.OrWhereGroup(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{settings: q.settings, err: q.err, builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
 		grp.builder.UseWhereBuilder(b.GetBuilder())
 		fn(grp)
 		q.paramSeq = grp.paramSeq
@@ -1036,7 +1027,7 @@ func (q *Query) WhereNot(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.WhereNot(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{settings: q.settings, err: q.err, builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
 		grp.builder.UseWhereBuilder(b.GetBuilder())
 		fn(grp)
 		q.paramSeq = grp.paramSeq
@@ -1053,7 +1044,7 @@ func (q *Query) OrWhereNot(fn func(g *Query)) *Query {
 		return q
 	}
 	q.builder.OrWhereNot(func(b *qbapi.WhereSelectQueryBuilder) {
-		grp := &Query{settings: q.settings, err: q.err, builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
+		grp := &Query{builder: q.builder, exec: q.exec, ctx: q.ctx, dialect: q.dialect, paramSeq: q.paramSeq, requiredPredicates: append([]RequiredPredicate(nil), q.requiredPredicates...)}
 		grp.builder.UseWhereBuilder(b.GetBuilder())
 		fn(grp)
 		q.paramSeq = grp.paramSeq

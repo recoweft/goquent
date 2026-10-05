@@ -329,14 +329,8 @@ func newQueryPlan(op OperationType, sqlStr string, args []any) *QueryPlan {
 
 // NewRawPlan creates a plan for caller-supplied SQL. It does not execute SQL.
 func NewRawPlan(sqlStr string, args ...any) *QueryPlan {
-	return NewRawPlanWithSettings(SnapshotDefaultSettings(), sqlStr, args...)
-}
-
-// NewRawPlanWithSettings inspects raw SQL with an explicit snapshot. It does not
-// parse tenant semantics. Unsupported legacy engines produce a blocked plan.
-func NewRawPlanWithSettings(settings Settings, sqlStr string, args ...any) *QueryPlan {
 	plan := newQueryPlan(OperationRaw, sqlStr, args)
-	finalizePlanWithSettings(plan, nil, nil, nil, settings)
+	finalizePlan(plan, nil, nil)
 	return plan
 }
 

@@ -140,9 +140,9 @@ nullable/numeric/bool helpers do not execute SQL or impose policy on supplied ro
 
 ### 3.1 Compatibility and Strict profiles
 
-Current Goquent has policy modes `warn`, `enforce`, `block` and legacy global
-risk/registry defaults. GQ-AI-03/PR1 adds DB-scoped immutable snapshots. It has
-**no unified compatibility/Strict profile API**. These terms describe a required migration boundary, not new options introduced here.
+Current Goquent has policy modes `warn`, `enforce`, `block` and a global risk
+engine/registry. It has **no unified compatibility/Strict profile API**. These
+terms describe a required migration boundary, not new options introduced here.
 
 Compatibility must preserve existing MySQL/PostgreSQL, custom Executor/sql.Tx,
 scanning and BoolCompat behavior unless a change is explicitly documented.
@@ -187,15 +187,9 @@ historical API inventory above remains the GQ-AI-01 baseline.
 ### 3.3 DB settings and trusted context — GQ-AI-03
 
 DB-scoped policy/risk/profile settings must be isolated and propagate explicitly
-to queries, copies and transactions, without cross-DB global mutation. The legacy
-registry and `query.DefaultRiskEngine` remain process-wide defaults. GQ-AI-03/PR1
-adds immutable DB/Query snapshots, explicit per-DB configuration and retained
-application execution context; see [DB settings and migration](../docs/db-settings.md).
-Later global registration no longer changes existing DBs or queries. Custom global
-risk engines cannot be copied safely and require explicit built-in RiskConfig on
-the new snapshot paths. Standalone review/OperationSpec and generic CRUD exclusions
-remain documented there. This is not trusted tenant binding or unified Strict.
-Trusted tenant context must originate outside user-controlled operation JSON; mere presence of a tenant
+to queries, copies and transactions, without cross-DB global mutation. Current
+registry and `query.DefaultRiskEngine` are process-wide. Trusted tenant context
+must originate outside user-controlled operation JSON; mere presence of a tenant
 column/value_ref is insufficient. Unknown schema/policy freshness must remain
 unknown. Legacy global configuration requires a documented migration route;
 concurrency and transaction inheritance tests belong to 03.
@@ -287,7 +281,7 @@ only existing cases named in section 5 have executable evidence.
 | C23 review --require-fresh-manifest missing/stale/unverified | Gate failure | Preserve explicit verification requirement (05/11) | Supplied fingerprints do not prove live DB equality |
 | C24 Dynamic helper/raw SQL or unrelated method named Update in Go source | Partial/unsupported, omissions or false positives possible | Type-aware identification; preserve uncertainty (09) | No whole-program/control-flow proof |
 | C25 InsertOnceReturning/RunIdempotentCommand concurrent replay | Existing-row/conflict recipes | Define operation/key/payload and retry/result semantics (10) | Existing tests do not prove exactly-once effects |
-| C26 Two DBs register different policy for same table | Immutable DB policy/risk/context snapshots; later global registration affects only new snapshots | DB isolation and transaction inheritance (03) | Configuration isolation is not tenant authentication or all-branch validation |
+| C26 Two DBs register different policy for same table | Shared process-wide registry | DB isolation and transaction inheritance (03) | Mutex protection is not tenant isolation |
 | C27 sql.Tx/custom Executor wrapped by NewTxDB/NewDBWithExecutor | Delegated path works; no new-transaction capability implied | Preserve interface/ownership; bind context for inspected paths (03/04/05) | Direct executor/SQLDB access is outside interception |
 | C28 MySQL/PostgreSQL equivalent filtered operation | Distinct SQL preserved; signed integer write bounds tested on both databases | Same semantic safety requirement, dialect-specific limits (02/04/10) | Do not demand identical SQL/counts |
 

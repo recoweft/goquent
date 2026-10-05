@@ -423,19 +423,15 @@
     {
       "id": "C26",
       "input": "Two DBs register different policy for same table",
-      "current": "Immutable DB policy/risk/context snapshots; later global registration affects only new snapshots",
+      "current": "Shared process-wide registry",
       "required": "DB isolation and transaction inheritance (03)",
       "owners": [
         "GQ-AI-03"
       ],
-      "analysis_limit": "Configuration isolation is not tenant authentication or all-branch validation",
-      "coverage": "executable",
-      "evidence": [
-        "orm/settings_test.go#TestDBSettingsIsolationAndOwnership",
-        "orm/settings_test.go#TestDBLegacySettingsSnapshotAndExplicitPrecedence",
-        "tests/settings_test.go#TestSettingsDatabaseIsolationAndTransactions"
-      ],
-      "assertion_scope": "Immutable policy/risk/context ownership, parallel DB isolation, explicit configuration precedence and legacy snapshot timing; both DBs execute reads and transactions. Tenant binding semantics and authorization remain unverified."
+      "analysis_limit": "Mutex protection is not tenant isolation",
+      "coverage": "documentary",
+      "evidence": [],
+      "assertion_scope": "Source-derived observation only; this exact case has no registered executable evidence. Future guarantee is unverified."
     },
     {
       "id": "C27",
@@ -453,11 +449,9 @@
         "orm/write_test.go#TestNewDBWithExecutorUsesExternalExecutor",
         "tests/manual_transaction_test.go#TestManualTxCommit",
         "tests/transaction_context_test.go#TestTransactionContextRollback",
-        "tests/contracts/compatibility_test.go#TestExternalTransactionOwnership",
-        "orm/settings_test.go#TestDBSettingsTransactionAndExecutorInheritance",
-        "tests/settings_test.go#TestSettingsDatabaseIsolationAndTransactions"
+        "tests/contracts/compatibility_test.go#TestExternalTransactionOwnership"
       ],
-      "assertion_scope": "Existing external executor ownership plus explicit settings/context inheritance through DB/Tx and parent executor wrappers. No parent inference for standalone external executors. Universal CRUD inspection and executor/plan identity binding remain unverified."
+      "assertion_scope": "Custom Executor delegation and owned manual/context transactions; external NewTxDB covered by shared test. Context binding across inspected paths remains unverified."
     },
     {
       "id": "C28",
