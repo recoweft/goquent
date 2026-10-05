@@ -31,6 +31,7 @@ type Executor interface {
 
 // DB provides main ORM interface.
 type DB struct {
+	settings    query.Settings
 	drv         *driver.Driver
 	exec        Executor
 	scanOpts    ScanOptions
@@ -77,7 +78,7 @@ func defaultDialect(name string) driver.Dialect {
 }
 
 func newDB(d *driver.Driver, exec Executor, opts ...Option) *DB {
-	db := &DB{drv: d, exec: exec, scanOpts: ScanOptions{BoolPolicy: BoolCompat}}
+	db := &DB{drv: d, exec: exec, scanOpts: ScanOptions{BoolPolicy: BoolCompat}, settings: query.SnapshotDefaultSettings()}
 	for _, o := range opts {
 		o(db)
 	}
@@ -197,7 +198,9 @@ func (db *DB) Close() error {
 
 // newTransactionDB wraps a sql.Tx in a DB instance bound to the same driver.
 func (db *DB) newTransactionDB(tx *sql.Tx) *DB {
-	return &DB{drv: db.drv, exec: tx, scanOpts: db.scanOpts, rawApproval: db.rawApproval, rawTables: append([]string(nil), db.rawTables...), rawErr: db.rawErr}
+	next := db.Clone()
+	next.exec = tx
+	return next
 }
 
 // WrapTx returns a DB copy that executes through tx while preserving this DB's
@@ -254,12 +257,12 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error) {
 
 // Model creates a query for the struct table.
 func (db *DB) Model(v any) *query.Query {
-	return query.New(db.exec, model.TableName(v), db.drv.Dialect)
+	return db.Table(model.TableName(v))
 }
 
 // Table creates a query for table name.
 func (db *DB) Table(name string) *query.Query {
-	return query.New(db.exec, name, db.drv.Dialect)
+	return query.NewWithSettings(db.exec, name, db.drv.Dialect, db.settings)
 }
 
 // TablePath creates a query for a schema-qualified or otherwise
@@ -277,7 +280,10 @@ func (db *DB) rawPlan(ctx context.Context, q string, args ...any) (*query.QueryP
 	if db.rawErr != nil {
 		return nil, db.rawErr
 	}
-	plan := query.NewRawPlan(q, args...)
+	if err := db.settings.Err(); err != nil {
+		return nil, err
+	}
+	plan := query.NewRawPlanWithSettings(db.settings, q, args...)
 	if db.rawApproval != nil {
 		copied := *db.rawApproval
 		plan.Approval = &copied

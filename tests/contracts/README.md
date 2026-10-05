@@ -114,3 +114,8 @@ GQ-AI-02/PR1 adds partial C05–C11/C28 representation and DB-result evidence in
 [predicate-tree.md](../../docs/predicate-tree.md). Existing current/required case
 text and all five example hashes are preserved. Cardinality and trusted tenant
 verdicts remain outside these new assertions.
+
+GQ-AI-03/PR1 updates C26 to executable configuration-isolation evidence and
+extends partial C27 coverage for context/settings inheritance. See
+[DB settings and migration](../../docs/db-settings.md). These updates do not
+register tenant authentication or all-branch tenant verification as implemented.
