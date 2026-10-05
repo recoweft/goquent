@@ -58,6 +58,10 @@ import "github.com/recoweft/goquent/orm"
 - [func ValidateManifest\(m \*Manifest\) error](<#ValidateManifest>)
 - [type AggregateHydration](<#AggregateHydration>)
 - [type AnalysisPrecision](<#AnalysisPrecision>)
+- [type ApplicationSchema](<#ApplicationSchema>)
+  - [func NewApplicationSchema\(input ApplicationSchemaInput\) \(ApplicationSchema, error\)](<#NewApplicationSchema>)
+- [type ApplicationSchemaInput](<#ApplicationSchemaInput>)
+- [type ApplicationTable](<#ApplicationTable>)
 - [type Approval](<#Approval>)
 - [type BoolScanPolicy](<#BoolScanPolicy>)
   - [func \(p BoolScanPolicy\) String\(\) string](<#BoolScanPolicy.String>)
@@ -108,6 +112,7 @@ import "github.com/recoweft/goquent/orm"
   - [func \(e ErrBoolParse\) Error\(\) string](<#ErrBoolParse.Error>)
 - [type Evidence](<#Evidence>)
 - [type ExecutionContext](<#ExecutionContext>)
+  - [func NewApplicationTenantContext\(input ExecutionContextInput\) \(ExecutionContext, error\)](<#NewApplicationTenantContext>)
   - [func NewExecutionContext\(input ExecutionContextInput\) \(ExecutionContext, error\)](<#NewExecutionContext>)
 - [type ExecutionContextInput](<#ExecutionContextInput>)
 - [type Executor](<#Executor>)
@@ -180,6 +185,7 @@ import "github.com/recoweft/goquent/orm"
   - [func WithPolicySet\(p PolicySet\) Option](<#WithPolicySet>)
   - [func WithRiskConfig\(r RiskConfig\) Option](<#WithRiskConfig>)
   - [func WithSettings\(s Settings\) Option](<#WithSettings>)
+  - [func WithTenantPolicy\(database string, schema ApplicationSchema, automatic bool\) Option](<#WithTenantPolicy>)
 - [type OrderSpec](<#OrderSpec>)
 - [type ParentChildProjection](<#ParentChildProjection>)
 - [type PolicyMode](<#PolicyMode>)
@@ -896,6 +902,42 @@ type AggregateHydration[P any, A any, K comparable] struct {
 type AnalysisPrecision = query.AnalysisPrecision
 ```
 
+<a name="ApplicationSchema"></a>
+## type ApplicationSchema
+
+ApplicationSchema is an immutable application assertion, not live schema evidence.
+
+```go
+type ApplicationSchema = query.ApplicationSchema
+```
+
+<a name="NewApplicationSchema"></a>
+### func NewApplicationSchema
+
+```go
+func NewApplicationSchema(input ApplicationSchemaInput) (ApplicationSchema, error)
+```
+
+
+
+<a name="ApplicationSchemaInput"></a>
+## type ApplicationSchemaInput
+
+
+
+```go
+type ApplicationSchemaInput = query.ApplicationSchemaInput
+```
+
+<a name="ApplicationTable"></a>
+## type ApplicationTable
+
+
+
+```go
+type ApplicationTable = query.ApplicationTable
+```
+
 <a name="Approval"></a>
 ## type Approval
 
@@ -1365,6 +1407,15 @@ ExecutionContext retains application data without asserting authentication.
 ```go
 type ExecutionContext = query.ExecutionContext
 ```
+
+<a name="NewApplicationTenantContext"></a>
+### func NewApplicationTenantContext
+
+```go
+func NewApplicationTenantContext(input ExecutionContextInput) (ExecutionContext, error)
+```
+
+
 
 <a name="NewExecutionContext"></a>
 ### func NewExecutionContext
@@ -2094,6 +2145,15 @@ func WithSettings(s Settings) Option
 ```
 
 WithSettings explicitly replaces all settings, including any legacy defaults.
+
+<a name="WithTenantPolicy"></a>
+### func WithTenantPolicy
+
+```go
+func WithTenantPolicy(database string, schema ApplicationSchema, automatic bool) Option
+```
+
+WithTenantPolicy opts documented Query paths into conditional strict inspection.
 
 <a name="OrderSpec"></a>
 ## type OrderSpec
@@ -4641,6 +4701,11 @@ import "github.com/recoweft/goquent/orm/query"
 - [func RegisterTablePolicy\(policy TablePolicy\) error](<#RegisterTablePolicy>)
 - [func ResetPolicyRegistry\(\)](<#ResetPolicyRegistry>)
 - [type AnalysisPrecision](<#AnalysisPrecision>)
+- [type ApplicationSchema](<#ApplicationSchema>)
+  - [func NewApplicationSchema\(input ApplicationSchemaInput\) \(ApplicationSchema, error\)](<#NewApplicationSchema>)
+  - [func \(s ApplicationSchema\) Input\(\) ApplicationSchemaInput](<#ApplicationSchema.Input>)
+- [type ApplicationSchemaInput](<#ApplicationSchemaInput>)
+- [type ApplicationTable](<#ApplicationTable>)
 - [type Approval](<#Approval>)
 - [type ColumnRef](<#ColumnRef>)
 - [type CursorColumn](<#CursorColumn>)
@@ -4652,6 +4717,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func CursorDescExpr\(expr string\) CursorColumn](<#CursorDescExpr>)
 - [type Evidence](<#Evidence>)
 - [type ExecutionContext](<#ExecutionContext>)
+  - [func NewApplicationTenantContext\(input ExecutionContextInput\) \(ExecutionContext, error\)](<#NewApplicationTenantContext>)
   - [func NewExecutionContext\(input ExecutionContextInput\) \(ExecutionContext, error\)](<#NewExecutionContext>)
   - [func \(c ExecutionContext\) Input\(\) ExecutionContextInput](<#ExecutionContext.Input>)
 - [type ExecutionContextInput](<#ExecutionContextInput>)
@@ -4826,6 +4892,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(s Settings\) WithExecutionContext\(c ExecutionContext\) Settings](<#Settings.WithExecutionContext>)
   - [func \(s Settings\) WithPolicySet\(p PolicySet\) Settings](<#Settings.WithPolicySet>)
   - [func \(s Settings\) WithRiskConfig\(r RiskConfig\) Settings](<#Settings.WithRiskConfig>)
+  - [func \(s Settings\) WithTenantPolicy\(database string, schema ApplicationSchema, automatic bool\) Settings](<#Settings.WithTenantPolicy>)
 - [type SourceLocation](<#SourceLocation>)
 - [type Suppression](<#Suppression>)
   - [func NewSuppression\(code, reason string, opts ...SuppressionOption\) \(Suppression, error\)](<#NewSuppression>)
@@ -4839,6 +4906,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func RegisteredTablePolicies\(\) \[\]TablePolicy](<#RegisteredTablePolicies>)
 - [type TableRef](<#TableRef>)
 - [type TableRiskMetadata](<#TableRiskMetadata>)
+- [type TenantPolicyResult](<#TenantPolicyResult>)
 - [type Warning](<#Warning>)
 - [type WriteKeyColumn](<#WriteKeyColumn>)
 - [type WriteKeyConstraint](<#WriteKeyConstraint>)
@@ -4999,6 +5067,65 @@ const (
 )
 ```
 
+<a name="ApplicationSchema"></a>
+## type ApplicationSchema
+
+ApplicationSchema is an immutable, explicitly supplied assertion, not live evidence.
+
+```go
+type ApplicationSchema struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewApplicationSchema"></a>
+### func NewApplicationSchema
+
+```go
+func NewApplicationSchema(input ApplicationSchemaInput) (ApplicationSchema, error)
+```
+
+
+
+<a name="ApplicationSchema.Input"></a>
+### func \(ApplicationSchema\) Input
+
+```go
+func (s ApplicationSchema) Input() ApplicationSchemaInput
+```
+
+
+
+<a name="ApplicationSchemaInput"></a>
+## type ApplicationSchemaInput
+
+ApplicationSchemaInput is a trusted application's assertion for the executor configured under Database. Neither identity nor schema freshness is read. It must not be reconstructed from operation JSON or manifest verdicts.
+
+```go
+type ApplicationSchemaInput struct {
+    Database string
+    Dialect  string
+    Tables   []ApplicationTable
+}
+```
+
+<a name="ApplicationTable"></a>
+## type ApplicationTable
+
+ApplicationTable declares the column inventory and conflict constraints. Tenant and conflict columns currently support signed SQL integers only. Other DBType values may describe non\-tenant, non\-conflict columns.
+
+```go
+type ApplicationTable struct {
+    // PlainTable asserts a base table with no trigger/rule/generated-column rewrite
+    // of supplied writes or hidden conflict constraints. Views are unsupported.
+    PlainTable                bool
+    Table                     string
+    Columns                   []WriteKeyColumn
+    Constraints               []WriteKeyConstraint
+    CompleteUniqueConstraints bool
+}
+```
+
 <a name="Approval"></a>
 ## type Approval
 
@@ -5121,6 +5248,15 @@ type ExecutionContext struct {
 }
 ```
 
+<a name="NewApplicationTenantContext"></a>
+### func NewApplicationTenantContext
+
+```go
+func NewApplicationTenantContext(input ExecutionContextInput) (ExecutionContext, error)
+```
+
+NewApplicationTenantContext records a trusted application's explicit supply after authentication and authorization. It does not authenticate that caller. Never call it merely to deserialize an operation/request's tenant claim.
+
 <a name="NewExecutionContext"></a>
 ### func NewExecutionContext
 
@@ -5206,13 +5342,14 @@ JoinRef describes a JOIN visible in the query builder metadata.
 
 ```go
 type JoinRef struct {
-    Type        string `json:"type,omitempty"`
-    Table       string `json:"table,omitempty"`
-    Alias       string `json:"alias,omitempty"`
-    LeftColumn  string `json:"left_column,omitempty"`
-    Operator    string `json:"operator,omitempty"`
-    RightColumn string `json:"right_column,omitempty"`
-    Subquery    bool   `json:"subquery,omitempty"`
+    OnTree      *predicate.Node `json:"on_tree,omitempty"`
+    Type        string          `json:"type,omitempty"`
+    Table       string          `json:"table,omitempty"`
+    Alias       string          `json:"alias,omitempty"`
+    LeftColumn  string          `json:"left_column,omitempty"`
+    Operator    string          `json:"operator,omitempty"`
+    RightColumn string          `json:"right_column,omitempty"`
+    Subquery    bool            `json:"subquery,omitempty"`
 }
 ```
 
@@ -6522,6 +6659,8 @@ QueryPlan explains SQL and metadata before the query is executed.
 
 ```go
 type QueryPlan struct {
+    TenantPolicy *TenantPolicyResult `json:"tenant_policy,omitempty"`
+
     WriteScope *WriteScopeResult `json:"write_scope,omitempty"`
 
     WhereTree          *predicate.Node   `json:"where_tree,omitempty"`
@@ -6804,6 +6943,15 @@ func (s Settings) WithRiskConfig(r RiskConfig) Settings
 
 
 
+<a name="Settings.WithTenantPolicy"></a>
+### func \(Settings\) WithTenantPolicy
+
+```go
+func (s Settings) WithTenantPolicy(database string, schema ApplicationSchema, automatic bool) Settings
+```
+
+WithTenantPolicy enables PR2's conditional strict gate on documented query paths. Database is an application identity, never a connection attestation. Automatic binding affects the base WHERE only; JOIN ON remains caller\-owned.
+
 <a name="SourceLocation"></a>
 ## type SourceLocation
 
@@ -6904,6 +7052,8 @@ TablePolicy describes application\-specific safety policy for a table.
 
 ```go
 type TablePolicy struct {
+    ImmutableColumns      []string   `json:"immutable_columns,omitempty"`
+    ForbiddenColumns      []string   `json:"forbidden_columns,omitempty"`
     Table                 string     `json:"table"`
     TenantColumn          string     `json:"tenant_column,omitempty"`
     TenantMode            PolicyMode `json:"tenant_mode,omitempty"`
@@ -6959,6 +7109,23 @@ type TableRiskMetadata struct {
     TenantColumn          string     `json:"tenant_column,omitempty"`
     SoftDeleteColumn      string     `json:"soft_delete_column,omitempty"`
     RequiredFilterColumns []string   `json:"required_filter_columns,omitempty"`
+}
+```
+
+<a name="TenantPolicyResult"></a>
+## type TenantPolicyResult
+
+TenantPolicyResult explains a conditional result. Public fields are not evidence.
+
+```go
+type TenantPolicyResult struct {
+    Status           string            `json:"status"`
+    Reason           string            `json:"reason"`
+    Precision        AnalysisPrecision `json:"precision"`
+    Provenance       string            `json:"provenance"`
+    SchemaFreshness  string            `json:"schema_freshness"`
+    PolicyFreshness  string            `json:"policy_freshness"`
+    ExecutorIdentity string            `json:"executor_identity"`
 }
 ```
 
