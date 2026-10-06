@@ -148,7 +148,8 @@ ordered columns, key equalities and conflict/assignment inputs. Both Query and
 generic writes use `planInsertRows`/`planUpdateValues`, the existing frozen
 builder snapshots, tenant inspection, finalizer and `plannedExecution` dispatch.
 Generic column ordering and literal identifier quoting are retained; Query's
-existing path/JSON assignment interpretation stays distinct. Expression and
+existing path/JSON assignment interpretation stays distinct. Query PrimaryKey is
+a literal identifier, while generic Returning retains identifier-path quoting. Expression and
 named/raw/partial conflict forms preserve compatibility rendering but are not
 strict evidence. Unsupported literal key identifiers are opaque to scope proof.
 

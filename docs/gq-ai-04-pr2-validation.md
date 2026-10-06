@@ -3,7 +3,7 @@
 Work `02fa0f75-ce5d-48a9-9131-46969d9aa3db`, revision 1, execution
 `fc423680-d48e-49a1-aab6-b76b8cfd85d6`.
 [Issue #66](https://github.com/recoweft/goquent/issues/66), PR2 of 3.
-Implementation/test source commit: `d779c9dac17108adaf16a42d3057cfb93daf9efd`.
+Implementation/test source commit: `c9b584c00fcec45f32142254d67c532364a60e52`.
 This validation document is a subsequent documentation-only commit. Actual PR,
 final head and CI run are reported through RelayWeft after publication. No merge,
 Issue closure or user completion is performed.
@@ -57,7 +57,7 @@ image postgres:16. Fixture version reads returned **MySQL 8.4.6** and
 **PostgreSQL 16.10**. These fixture observations do not verify application schema
 assertions, physical connection identity or live freshness.
 
-All final commands below ran at implementation commit d779c9d, with:
+All final runtime commands below ran at implementation commit c9b584c, with:
 
 - `GOCACHE=/tmp/gq-pr2-go-cache`
 - `TEST_MYSQL_DSN=root:password@tcp(127.0.0.1:3306)/testdb?parseTime=true`
@@ -71,9 +71,9 @@ summaries.
 
 | Command | Result |
 | --- | --- |
-| `go test ./... -count=1 -json` | Exit 0; 1,358 pass, 0 fail, 0 test skips |
-| `make test-integration GOFLAGS=-json` | Exit 0; 1,358 pass, 0 fail, 0 test skips; underlying `go test ./... -count=1` |
-| `go test -race ./... -count=1 -json` | Exit 0; 1,358 pass, 0 fail, 0 test skips |
+| `go test ./... -count=1 -json` | Exit 0; 1,359 pass, 0 fail, 0 test skips |
+| `make test-integration GOFLAGS=-json` | Exit 0; 1,359 pass, 0 fail, 0 test skips; underlying `go test ./... -count=1` |
+| `go test -race ./... -count=1 -json` | Exit 0; 1,359 pass, 0 fail, 0 test skips |
 | `go test ./tests -run TestGenericPlannedDatabaseSemantics -count=1 -v` with both explicit DB DSNs | Both dialect subtests pass; fixture versions above |
 | `git diff --check` | Passed |
 
@@ -83,6 +83,8 @@ was used in final suites. Earlier all-package smoke testing had 1,263 pass and o
 custom-driver skip before the added tests and explicit TEST_DB_DSN. During edits,
 compile errors from the mechanical extraction, SQL fixture grouping expectations,
 and a missing automatic-tenant conflict-column ordering case were found and fixed.
+A final quoting regression test also preserves literal Query PrimaryKey versus
+generic RETURNING identifier paths; strict refuses unsupported literal references.
 No failing safety assertion was removed or suppressed.
 
 New unit/integration coverage includes generic Plan zero executor calls; all-six-
@@ -125,7 +127,8 @@ No threshold, rule, fixture finding or manifest was changed to hide these result
 Runtime tests do not resolve unsupported static analysis.
 
 `go run ./cmd/goquent manifest verify --manifest examples/ai-safe-orm/goquent.manifest.json --schema examples/ai-safe-orm/schema.json --policy examples/ai-safe-orm/policies.json --format json`
-returned exit 0. Supplied schema/policy fingerprints matched. **generated_code and
+returned exit 0 at implementation commit d779c9d; the supplied files are unchanged
+at c9b584c. Supplied schema/policy fingerprints matched. **generated_code and
 database checks were skipped because their fingerprints are absent**. The aggregate
 fresh=true is not live freshness, authentication or authorization.
 
