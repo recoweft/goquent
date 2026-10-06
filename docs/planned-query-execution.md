@@ -30,8 +30,8 @@ chain modifiers feed the terminal operation; they do not execute independently.
 
 There is no public Query `PlanUpsert`, Query `Returning`, or execute-a-plan API.
 The generic diagnostic plan APIs added in PR2 are listed below. Query `InsertBatch`/slice-based Upsert each render one
-statement and are covered here. No parent/child or multi-statement batch lifecycle
-is introduced. SQL is rendered once per plan, not again during dispatch.
+statement and are covered here. These Query terminals themselves do not introduce
+a parent/child or multi-statement batch lifecycle. SQL is rendered once per plan, not again during dispatch.
 
 ## Generic, scoped and boundary inventory
 
@@ -262,7 +262,7 @@ In compatibility mode, Parent executes before each DeleteBefore scope is evaluat
 at that deletion's original position. A scope is evaluated once, in array order;
 nil is ignored and a nil return keeps the current Query. An alternate Query is
 copied and re-planned on the actual destination. Unknown delete slots remain
-explicitly unresolved until that point. Known children are prechecked; if scopes
+explicitly unresolved until that point. Known children are prechecked; later delete inputs are re-planned after a scope has run. If scopes
 can change captured inputs, children are freshly extracted with the already
 evaluated options and re-inspected after scopes. Dynamic grandchildren are
 constructed after child IDs/AssignChildID, then receive fresh ordered plans and

@@ -59,7 +59,9 @@ type NestedCollectionWriteResult struct {
 // ReplaceNestedCollection executes a parent + child collection replacement on db.
 //
 // The caller controls transaction boundaries. Use ReplaceNestedCollectionTx when
-// the whole sequence should run in a new transaction.
+// the whole sequence should run in a new transaction. Conditional strict settings
+// reject Grandchildren, AssignChildID, and every nonnil DeleteBefore Scope before
+// execution. Compatibility callbacks can have effects before a later refusal.
 func ReplaceNestedCollection[P any, C any, G any](ctx context.Context, db *DB, spec NestedCollectionReplace[P, C, G]) (NestedCollectionWriteResult, error) {
 	p, err := prepareNested(ctx, db, spec)
 	if err != nil {

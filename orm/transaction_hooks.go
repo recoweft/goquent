@@ -48,6 +48,8 @@ type TransactionWithHooksSpec[T any] struct {
 // RunTransactionWithHooks runs Apply, then hooks, inside one transaction.
 //
 // Hooks run only if Apply succeeds. Any hook error rolls the transaction back.
+// Conditional strict settings reject this opaque recipe before Begin or callbacks;
+// compatibility retains each ORM helper gate without intercepting external effects.
 func RunTransactionWithHooks[T any](ctx context.Context, db *DB, spec TransactionWithHooksSpec[T]) (T, error) {
 	var zero T
 	if db == nil {
