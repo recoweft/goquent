@@ -91,8 +91,8 @@ import "github.com/recoweft/goquent/orm"
   - [func \(db \*DB\) Model\(v any\) \*query.Query](<#DB.Model>)
   - [func \(db \*DB\) Query\(q string, args ...any\) \(\*sql.Rows, error\)](<#DB.Query>)
   - [func \(db \*DB\) QueryContext\(ctx context.Context, q string, args ...any\) \(\*sql.Rows, error\)](<#DB.QueryContext>)
-  - [func \(db \*DB\) QueryRow\(q string, args ...any\) \*sql.Row](<#DB.QueryRow>)
-  - [func \(db \*DB\) QueryRowContext\(ctx context.Context, q string, args ...any\) \*sql.Row](<#DB.QueryRowContext>)
+  - [func \(db \*DB\) QueryRow\(q string, args ...any\) \*Row](<#DB.QueryRow>)
+  - [func \(db \*DB\) QueryRowContext\(ctx context.Context, q string, args ...any\) \*Row](<#DB.QueryRowContext>)
   - [func \(db \*DB\) QueryRowE\(ctx context.Context, q string, args ...any\) \(\*sql.Row, error\)](<#DB.QueryRowE>)
   - [func \(db \*DB\) RawPlan\(ctx context.Context, q string, args ...any\) \(\*QueryPlan, error\)](<#DB.RawPlan>)
   - [func \(db \*DB\) RequireRawApproval\(reason string\) \*DB](<#DB.RequireRawApproval>)
@@ -217,6 +217,9 @@ import "github.com/recoweft/goquent/orm"
 - [type RiskLevel](<#RiskLevel>)
 - [type RiskResult](<#RiskResult>)
 - [type RiskRuleConfig](<#RiskRuleConfig>)
+- [type Row](<#Row>)
+  - [func \(r \*Row\) Err\(\) error](<#Row.Err>)
+  - [func \(r \*Row\) Scan\(dest ...any\) error](<#Row.Scan>)
 - [type RowsAffectedError](<#RowsAffectedError>)
   - [func \(e RowsAffectedError\) Error\(\) string](<#RowsAffectedError.Error>)
   - [func \(e RowsAffectedError\) Is\(target error\) bool](<#RowsAffectedError.Is>)
@@ -438,6 +441,12 @@ var ErrNotFound = sql.ErrNoRows
 
 ```go
 var ErrRowsAffected = errors.New("goquent: unexpected rows affected")
+```
+
+<a name="ErrUnsupportedCompound"></a>ErrUnsupportedCompound identifies opaque recipes refused by conditional strict inspection.
+
+```go
+var ErrUnsupportedCompound = errors.New("goquent: unsupported compound operation")
 ```
 
 <a name="ErrUnsupportedExecutionContext"></a>
@@ -734,7 +743,7 @@ func RunTransactionWithHooks[T any](ctx context.Context, db *DB, spec Transactio
 
 RunTransactionWithHooks runs Apply, then hooks, inside one transaction.
 
-Hooks run only if Apply succeeds. Any hook error rolls the transaction back.
+Hooks run only if Apply succeeds. Any hook error rolls the transaction back. Conditional strict settings reject this opaque recipe before Begin or callbacks; compatibility retains each ORM helper gate without intercepting external effects.
 
 <a name="SelectAll"></a>
 ## func SelectAll
@@ -1220,23 +1229,19 @@ QueryContext runs Query with a context.
 ### func \(\*DB\) QueryRow
 
 ```go
-func (db *DB) QueryRow(q string, args ...any) *sql.Row
+func (db *DB) QueryRow(q string, args ...any) *Row
 ```
 
-QueryRow executes a query that is expected to return at most one row.
-
-Deprecated: use QueryRowE so raw SQL safety errors can be returned before Scan. QueryRow cannot surface pre\-execution approval errors because \*sql.Row has no public error constructor. When raw SQL approval checks fail, QueryRow does not execute the caller\-supplied SQL.
+QueryRow returns a Row that carries inspection errors without executor calls. Use QueryRowE when a concrete \*sql.Row is required.
 
 <a name="DB.QueryRowContext"></a>
 ### func \(\*DB\) QueryRowContext
 
 ```go
-func (db *DB) QueryRowContext(ctx context.Context, q string, args ...any) *sql.Row
+func (db *DB) QueryRowContext(ctx context.Context, q string, args ...any) *Row
 ```
 
-QueryRowContext executes a query with context returning at most one row.
-
-Deprecated: use QueryRowE so raw SQL safety errors can be returned before Scan. QueryRowContext cannot surface pre\-execution approval errors because \*sql.Row has no public error constructor. When raw SQL approval checks fail, QueryRowContext does not execute the caller\-supplied SQL.
+QueryRowContext returns a Row that carries inspection errors without executor calls.
 
 <a name="DB.QueryRowE"></a>
 ### func \(\*DB\) QueryRowE
@@ -1245,7 +1250,7 @@ Deprecated: use QueryRowE so raw SQL safety errors can be returned before Scan. 
 func (db *DB) QueryRowE(ctx context.Context, q string, args ...any) (*sql.Row, error)
 ```
 
-QueryRowE validates raw SQL policy and executes a context\-aware single\-row query.
+QueryRowE validates raw SQL policy before dispatch and returns \*sql.Row.
 
 <a name="DB.RawPlan"></a>
 ### func \(\*DB\) RawPlan
@@ -1254,7 +1259,7 @@ QueryRowE validates raw SQL policy and executes a context\-aware single\-row que
 func (db *DB) RawPlan(ctx context.Context, q string, args ...any) (*QueryPlan, error)
 ```
 
-RawPlan creates a plan for caller\-supplied SQL without executing it.
+RawPlan inspects caller\-supplied SQL without dispatch. Its result is diagnostic only.
 
 <a name="DB.RequireRawApproval"></a>
 ### func \(\*DB\) RequireRawApproval
@@ -1966,7 +1971,7 @@ func ReplaceNestedCollection[P any, C any, G any](ctx context.Context, db *DB, s
 
 ReplaceNestedCollection executes a parent \+ child collection replacement on db.
 
-The caller controls transaction boundaries. Use ReplaceNestedCollectionTx when the whole sequence should run in a new transaction.
+The caller controls transaction boundaries. Use ReplaceNestedCollectionTx when the whole sequence should run in a new transaction. Conditional strict settings reject Grandchildren, AssignChildID, and every nonnil DeleteBefore Scope before execution. Compatibility callbacks can have effects before a later refusal.
 
 <a name="ReplaceNestedCollectionTx"></a>
 ### func ReplaceNestedCollectionTx
@@ -1975,7 +1980,7 @@ The caller controls transaction boundaries. Use ReplaceNestedCollectionTx when t
 func ReplaceNestedCollectionTx[P any, C any, G any](ctx context.Context, db *DB, spec NestedCollectionReplace[P, C, G]) (NestedCollectionWriteResult, error)
 ```
 
-ReplaceNestedCollectionTx runs ReplaceNestedCollection inside a transaction.
+ReplaceNestedCollectionTx validates known statements before starting a transaction.
 
 <a name="NestedDelete"></a>
 ## type NestedDelete
@@ -2460,6 +2465,35 @@ type RiskResult = query.RiskResult
 ```go
 type RiskRuleConfig = query.RiskRuleConfig
 ```
+
+<a name="Row"></a>
+## type Row
+
+Row retains a pre\-dispatch refusal or delegates to a database/sql Row. QueryRow and QueryRowContext now return this type in every mode. Callers that require \*sql.Row must use QueryRowE and check its error first.
+
+```go
+type Row struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="Row.Err"></a>
+### func \(\*Row\) Err
+
+```go
+func (r *Row) Err() error
+```
+
+Err returns the original refusal or the underlying Row's error.
+
+<a name="Row.Scan"></a>
+### func \(\*Row\) Scan
+
+```go
+func (r *Row) Scan(dest ...any) error
+```
+
+Scan delegates without additional dispatch. A rejected Row never writes dest.
 
 <a name="RowsAffectedError"></a>
 ## type RowsAffectedError

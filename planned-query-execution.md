@@ -1,10 +1,10 @@
-# Planned Query execution (GQ-AI-04/PR2)
+# Planned Query execution (GQ-AI-04/PR3)
 
-[Issue #66](https://github.com/recoweft/goquent/issues/66), **GQ-AI-04/PR2 (2/3)**.
-PR1 merged as [PR #67](https://github.com/recoweft/goquent/pull/67), main
-`8a6360ae93c3c96bc187357d6fada631f7e2410c`. This inventory supplements the
-historical [contracts v3](../specs/goquent_ai_contracts_v3.md). PR3 is separate;
-this PR does not complete the whole Issue or its compound-operation criteria.
+[Issue #66](https://github.com/recoweft/goquent/issues/66), **GQ-AI-04/PR3 (3/3)**.
+PR1 (#67) and PR2 (#68) are merged. The implementation base for PR3 is
+`c30f8dc1e984ea63005eec0dc57ed700acef06d0`. The tables below describe current
+coverage; [contracts v3](../specs/goquent_ai_contracts_v3.md) retains its historical
+baseline. These conditional contracts do not establish Issue-wide completion.
 
 ## Query terminal inventory
 
@@ -30,8 +30,8 @@ chain modifiers feed the terminal operation; they do not execute independently.
 
 There is no public Query `PlanUpsert`, Query `Returning`, or execute-a-plan API.
 The generic diagnostic plan APIs added in PR2 are listed below. Query `InsertBatch`/slice-based Upsert each render one
-statement and are covered here. No parent/child or multi-statement batch lifecycle
-is introduced. SQL is rendered once per plan, not again during dispatch.
+statement and are covered here. These Query terminals themselves do not introduce
+a parent/child or multi-statement batch lifecycle. SQL is rendered once per plan, not again during dispatch.
 
 ## Generic, scoped and boundary inventory
 
@@ -41,24 +41,25 @@ is introduced. SQL is rendered once per plan, not again during dispatch.
 | `Insert`, `Update`, `Upsert` | Generic struct/map mapping and effective WriteOpt fields feed the common Query write planner; private Exec dispatch and existing sql.Result/affected-row checks |
 | `InsertReturning`, `UpdateReturning`, `UpsertReturning` | Same planner; infer projection from result type unless explicit Returning is nonempty; re-inspect final projection/SQL before private Query dispatch and generic one-row scanner |
 | Write `Returning` option on result helpers | Same final projection inspection; count returned rows for the existing result/ExpectAffected/NoRowsAs behavior; PostgreSQL only |
-| `InsertMany`, `UpsertMany`, `InsertManyReturning`, `UpsertManyReturning` | All candidates of **one statement** use the same substrate. No splitting, parent/child batch plans or compound lifecycle. Empty-input errors remain |
+| `InsertMany`, `UpsertMany`, `InsertManyReturning`, `UpsertManyReturning` | All candidates of **one statement** use the same substrate. No public splitting API. Nested generated-ID collection uses private per-row statements (below). Empty-input errors remain |
 | `PlanSelectBy`, `PlanUpdateBy`, `PlanDeleteBy` | Existing DB-free plans use the supplied base Query and scopes. They accept no separate destination DB and do not attest a later helper's destination |
 | `UpdateBy`, `DeleteBy` | Existing Query terminals and their original Query executor/settings |
 | `SelectOneBy`, `SelectAllBy` | Apply scopes, copy private builder state, then re-plan with the separately supplied DB's settings, dialect, execution context and executor. Private Query dispatch; generic struct/map/scalar/bool scanner |
 | `UpdateByReturning`, `UpdateByReturningWithOptions` | Same destination rebinding, scoped UPDATE/data inspection and final RETURNING inspection. Only Returning and NoRowsAs are effective options; see below |
 | `SelectOne`, `SelectAll`, `SelectStruct`, `SelectStructs`, `DB.SelectMap`, `DB.SelectMaps` | SQL-string inputs remain **Raw**. Existing error-returning raw gate then generic scanning. Conditional strict settings refuse them before executor calls; TouchedTables and reasons are not semantic proof |
-| `InsertOnceReturning` | Insert attempt now inherits checked generic upsert/RETURNING; existing-row lookup inherits checked SelectOneBy. No whole-operation plan, lookup/conflict correspondence, concurrency or replay guarantee; PR3 |
-| `ReplaceNestedCollection`, `ReplaceNestedCollectionTx`, `RunIdempotentCommand` | Individual migrated helpers inherit checks; full nested/idempotent orchestration, ordering and partial-operation behavior remain PR3 |
-| `RunTransactionWithHooks`, `InsertHook`, `InsertManyHook`, `NewTransactionHook` | Calling a migrated generic helper from a hook keeps its checks. No hooks-wide plan, prevalidation of future callbacks or external-effect guarantee; PR3 |
-| `DB.RawPlan`, `query.NewRawPlan`, `NewRawPlanWithSettings`, DB Query/Exec and Context variants, `QueryRowE` | Existing raw gate and strict refusal remain; complete low-level boundary work is PR3 |
-| `DB.QueryRow`, `QueryRowContext` | Legacy canceled harmless-query error transport may invoke executor on refusal. Excluded from PR2's zero-dispatch assertion; PR3 |
+| `InsertOnceReturning` | Private ordered insert and conditional lookup plans from the same extracted input; both checked before insert dispatch. Final RETURNING and lookup projection checked. Scan/result-dependent branch; no concurrency or replay guarantee |
+| `ReplaceNestedCollection`, `ReplaceNestedCollectionTx` | Known parent/delete/children inputs checked before dispatch/Begin; private ordered statement/range records. Strict rejects opaque scopes and ID callbacks; compatibility resolves dynamic slots at the original callback position |
+| `RunIdempotentCommand` | Strict rejects before LookupExisting/Apply/LookupAfterConflict/Begin. Compatibility preserves existing lookup/transaction/conflict order; ORM helpers retain their gates |
+| `RunTransactionWithHooks`, `InsertHook`, `InsertManyHook`, `NewTransactionHook` | Strict recipe entry refuses opaque Apply/hooks before Begin or callbacks. Compatibility retains Apply → ordered hooks → commit/rollback. Standalone hook.Run retains constituent helper gates; public mutable Run is not safety evidence |
+| `DB.RawPlan`, `query.NewRawPlan`, `NewRawPlanWithSettings` | DB-free Raw diagnostics; conditional Strict refuses unknown Raw regardless of reasons, TouchedTables, risk overrides or public verdict edits |
+| `DB.Query`, `QueryContext`, `Exec`, `ExecContext`, `QueryRowE` | One Raw inspection followed by the shared private seal/bind/dispatch; rejection calls no Executor method. Raw read/scanning aliases inherit this path |
+| `DB.QueryRow`, `QueryRowContext` | Return *orm.Row in every mode. Refusal is stored without DB/Executor calls; Scan/Err retain original error identity. Allowed rows delegate to *sql.Row |
 | `SQLDB`, underlying sql.DB/sql.Tx, driver and direct Executor | Outside ORM interception |
 | `orm/operation.Compile`, review, manifest, MCP | Existing nonexecuting/read-only contracts; no application trust or new write API |
 
 No entry accepting public QueryPlan/JSON is added. `extractPlanSQL` followed by
 Raw is not an execution adapter. The old generic independent SQL renderers and
-trusted dispatch paths are removed. Raw low-level trusted dispatch remains only
-behind its existing raw gate.
+trusted dispatch paths are removed. Raw input also enters the shared private bind/dispatch after its Raw gate; it is never upgraded to semantic SQL.
 
 ### Scoped write options
 
@@ -130,9 +131,9 @@ permit refusal. No reason, suppression, RiskLow or precise result overrides this
 
 The ORM does not authenticate tenants or verify live schema freshness. Unknown
 conditions, opaque/raw SQL and unsupported schema/write forms remain refusals
-under that gate; tests do not prove safety of unparsed cases. PR2 covers the
-generic/scoped entries above, but does not make Strict universal
-across compound operations or raw escape hatches and does not complete Issue #66.
+under that gate; tests do not prove safety of unparsed cases. The supported generic/scoped and compound entries above inherit this gate. Opaque
+compound recipes are explicitly unsupported, not statically proven. Direct escape
+hatches remain outside interception; Issue #66 is not declared complete.
 
 ## Internal adapter and ownership
 
@@ -230,8 +231,101 @@ preview cannot attest a future executor. Reasons/TouchedTables cannot upgrade
 an unparsed SQL string to a semantic SELECT, and bool/scalar/map scanning does
 not inspect SQL meaning.
 
-See [PR2 validation](gq-ai-04-pr2-validation.md) for tested commands, counts and
-remaining unverified items. PR3 owns split bulk parent/child correspondence,
-nested/RunIdempotentCommand/hooks-wide orchestration and complete Raw boundaries.
-A compound call may execute an earlier valid statement before a later statement
-is refused; checking those statements does not prove the whole operation safe.
+See [PR3 validation](gq-ai-04-pr3-validation.md) for commands and limitations.
+
+## Compound support and ordered correspondence
+
+The unexported compound plan records phase, input start/end range, detached
+structural input and the corresponding sealed statement closures in execution
+order. It is not a new public artifact, OperationSpec or bulk split API. Ordinary
+InsertMany/UpsertMany and typed Many RETURNING still issue one statement. Private
+compound preparation calls no DB/Executor/Begin; diagnostics are never read back
+as execution inputs. All known constituent gates are checked before initial
+execution, then each statement binds again (including expiry/context checks).
+Transaction wrappers first prepare on the original DB, then begin, re-plan all
+known inputs using the actual transaction executor/settings/context/dialect,
+and dispatch. No source DB permission transfers to another destination.
+
+Supported conditional Strict nested shapes have no Grandchildren, AssignChildID,
+or nonnil Scope anywhere in DeleteBefore. The rejection runs before TableName,
+WriteOpt, Scope, parent, deletion, child or Begin. SkipParent/empty Children do not
+waive it, and built-in scope factories are not exceptions. ErrUnsupportedCompound
+and ErrBlockedOperation both match with errors.Is. Nil-only/empty scopes receive
+ordinary DELETE inspection, not permission; missing tenant/filter/risk evidence
+refuses the whole known plan. No cleanup step is silently omitted. The current
+NestedDelete API has no structural condition input: useful Strict support is
+primarily Parent/Children without cleanup, not complete collection replacement.
+Existing automatic-tenant policy behavior is retained, not an unconditional
+cleanup authorization.
+
+In compatibility mode, Parent executes before each DeleteBefore scope is evaluated
+at that deletion's original position. A scope is evaluated once, in array order;
+nil is ignored and a nil return keeps the current Query. An alternate Query is
+copied and re-planned on the actual destination. Unknown delete slots remain
+explicitly unresolved until that point. Known children are prechecked; later delete inputs are re-planned after a scope has run. If scopes
+can change captured inputs, children are freshly extracted with the already
+evaluated options and re-inspected after scopes. Dynamic grandchildren are
+constructed after child IDs/AssignChildID, then receive fresh ordered plans and
+the normal gate. Opaque callback effects themselves cannot be enumerated or
+intercepted. A callback or later refusal may follow earlier valid statements;
+rollback does not mean those statements or external effects never happened.
+TableName/WriteOpt remain ordinary application construction callbacks, not a
+promise of zero effects from every possible application callback.
+
+Generated-ID collection uses one private INSERT per input row on **both** dialects.
+MySQL reads each result.LastInsertId; it no longer guesses firstID+index. PostgreSQL
+uses final inspected RETURNING per row, checks one returned ID, and scans it with
+the existing converter. This avoids assuming arbitrary multi-row RETURNING order.
+The prior MySQL implementation used one multirow insert and contiguous-ID guessing;
+this is an intentional statement granularity change, with possible partial writes
+without a caller-owned transaction. WriteOpt is evaluated once for the input batch.
+MySQL ExpectAffected/NoRowsAs apply to the aggregate affected count, not each row;
+PG's prior typed-Many option nonapplication remains. Driver/result failures stop
+processing, preserve errors and leave already executed statements executed. There
+is no retry, new transaction ownership or custom-executor correctness guarantee.
+
+InsertOnceReturning builds insert/conflict/final projection and lookup from one
+extraction, sharing detached private final INSERT candidates (including automatic
+tenant fill), and inspects both branches before dispatch even when the insert would
+succeed. A lookup construction/policy error can therefore now prevent an insert.
+The lookup is still conditional on ErrNoRows; it is not an atomic concurrency or
+exactly-once contract. Explicit tenant-compatible conflict coverage is checked for
+generic DO NOTHING as well as updating UPSERT. MySQL RETURNING stays unsupported.
+
+RunTransactionWithHooks and RunIdempotentCommand are unsupported at their Strict
+recipe entry, including empty Hooks: Apply/Lookup remain opaque. Compatibility
+retains existing callback/commit/rollback behavior and all migrated statement
+gates. NewTransactionHook, InsertHook/InsertManyHook provenance or public Run
+replacement is never a static proof. Ordinary Transaction/TransactionContext,
+Begin/BeginTx, external caller-owned transactions and standalone hook.Run are not
+whole-recipe interception APIs. Direct SQLDB/driver/Tx/Executor and external effects
+remain outside the ORM guarantee. An external Executor does not acquire transaction
+ownership or Begin capability by being wrapped. Switching to compatibility does
+not retain Strict guarantees.
+
+## Row source compatibility and migration
+
+DB.QueryRow and DB.QueryRowContext return ***orm.Row**, with Scan/Err. This change
+applies in compatibility mode too. Chained Scan and Scan/Err-only interfaces keep
+working. Explicit *sql.Row assignments, functions/interfaces requiring that return
+type, and passing *orm.DB itself as an Executor are source incompatible. Executor's
+six method signatures and sql.DB/sql.Tx/custom executors are unchanged; Query's
+internal executor also remains unchanged.
+
+```go
+// Old concrete-type use no longer compiles:
+// var row *sql.Row = db.QueryRow(sqlText, args...)
+row, err := db.QueryRowE(ctx, sqlText, args...)
+if err != nil { return err }
+return row.Scan(&value)
+```
+
+Do not replace a rejected operation with SQLDB/direct Executor as a safety
+migration. Use structural scoped reads for Strict. A rejected Row returns the
+original error from both Scan and Err (errors.Is/As preserved), never fills a
+destination, and performs no SQL, driver access or Begin. Nil/zero wrappers return
+an explicit uninitialized-row error without panic. Allowed Row delegates Scan/Err
+to the original sql.Row without further dispatch; initial query timing, driver
+errors, no-row and scan behavior remain database/sql's. No replay/cardinality or
+new scan-success guarantee is added. No unsafe/reflection/private sql.Row fields,
+custom driver or cancelled sentinel SELECT is used for refusal transport.

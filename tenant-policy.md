@@ -196,5 +196,7 @@ NewExecutionContext call under this option intentionally fails closed.
 
 For GQ-AI-04/PR2 execution integration and the current entry boundaries, see
 [planned Query execution](planned-query-execution.md). The historical table above
-describes the PR65 baseline; generic integration is now in PR2, while compound
-completion remains PR3.
+describes the PR65 baseline; generic integration is in PR2. PR3 adds private compound preflight and Raw
+binding, the source-breaking Row wrapper, and Strict unsupported-recipe/scope
+refusals. See the current inventory for the supported subset and compatibility
+partial-execution limits; arbitrary callbacks and escape hatches are not covered.
