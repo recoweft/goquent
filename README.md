@@ -4544,6 +4544,7 @@ import "github.com/recoweft/goquent/orm/operation"
 - [func Validate\(spec OperationSpec, opts Options\) \(\[\]query.Warning, error\)](<#Validate>)
 - [type FilterSpec](<#FilterSpec>)
 - [type OperationSpec](<#OperationSpec>)
+  - [func \(s OperationSpec\) MarshalJSON\(\) \(\[\]byte, error\)](<#OperationSpec.MarshalJSON>)
   - [func \(s \*OperationSpec\) UnmarshalJSON\(b \[\]byte\) error](<#OperationSpec.UnmarshalJSON>)
 - [type Options](<#Options>)
 - [type OrderSpec](<#OrderSpec>)
@@ -4562,6 +4563,12 @@ const (
     WarningOperationMissingLimit   = query.WarningLimitMissing
     WarningOperationStaleManifest  = manifest.WarningStale
 )
+```
+
+<a name="JSONVersion"></a>JSONVersion is the current diagnostic/input envelope version, not authorization.
+
+```go
+const JSONVersion = planversion.Current
 ```
 
 ## Variables
@@ -4584,6 +4591,12 @@ var (
     ErrPIIAccessReasonRequired = errors.New("goquent operation: PII access reason required")
     ErrStaleManifest           = errors.New("goquent operation: stale manifest")
 )
+```
+
+<a name="ErrJSONVersion"></a>ErrJSONVersion identifies invalid, ambiguous or unsupported envelope versions.
+
+```go
+var ErrJSONVersion = planversion.ErrVersion
 ```
 
 <a name="Compile"></a>
@@ -4634,6 +4647,7 @@ OperationSpec is the read\-only structured interface for AI\-generated DB intent
 
 ```go
 type OperationSpec struct {
+    Version      int          `json:"version"`
     Operation    string       `json:"operation"`
     Model        string       `json:"model"`
     Select       []string     `json:"select,omitempty"`
@@ -4643,6 +4657,15 @@ type OperationSpec struct {
     AccessReason string       `json:"access_reason,omitempty"`
 }
 ```
+
+<a name="OperationSpec.MarshalJSON"></a>
+### func \(OperationSpec\) MarshalJSON
+
+```go
+func (s OperationSpec) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON migrates legacy input format without certifying its provenance.
 
 <a name="OperationSpec.UnmarshalJSON"></a>
 ### func \(\*OperationSpec\) UnmarshalJSON
@@ -4958,6 +4981,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(p \*QueryPlan\) RequiresApproval\(\) bool](<#QueryPlan.RequiresApproval>)
   - [func \(p \*QueryPlan\) String\(\) string](<#QueryPlan.String>)
   - [func \(p \*QueryPlan\) ToJSON\(\) \(\[\]byte, error\)](<#QueryPlan.ToJSON>)
+  - [func \(p \*QueryPlan\) UnmarshalJSON\(b \[\]byte\) error](<#QueryPlan.UnmarshalJSON>)
 - [type RequiredPredicate](<#RequiredPredicate>)
   - [func MissingRequiredPredicates\(plan \*QueryPlan, required \[\]RequiredPredicate\) \[\]RequiredPredicate](<#MissingRequiredPredicates>)
 - [type RiskConfig](<#RiskConfig>)
@@ -4988,6 +5012,8 @@ import "github.com/recoweft/goquent/orm/query"
 - [type TablePolicy](<#TablePolicy>)
   - [func PolicyForTable\(table string\) \(TablePolicy, bool\)](<#PolicyForTable>)
   - [func RegisteredTablePolicies\(\) \[\]TablePolicy](<#RegisteredTablePolicies>)
+  - [func \(p TablePolicy\) MarshalJSON\(\) \(\[\]byte, error\)](<#TablePolicy.MarshalJSON>)
+  - [func \(p \*TablePolicy\) UnmarshalJSON\(b \[\]byte\) error](<#TablePolicy.UnmarshalJSON>)
 - [type TableRef](<#TableRef>)
 - [type TableRiskMetadata](<#TableRiskMetadata>)
 - [type TenantPolicyResult](<#TenantPolicyResult>)
@@ -5033,6 +5059,12 @@ const (
 )
 ```
 
+<a name="JSONVersion"></a>JSONVersion is the current diagnostic/input envelope version, not authorization.
+
+```go
+const JSONVersion = planversion.Current
+```
+
 <a name="MetadataRequiredPredicates"></a>MetadataRequiredPredicates stores \[\]RequiredPredicate in QueryPlan.Metadata.
 
 ```go
@@ -5065,6 +5097,12 @@ var (
     ErrUnsupportedExecutionContext = errors.New("goquent: execution context contains an unsupported, recursive, deep or oversized value")
     ErrUnsupportedRiskEngine       = errors.New("goquent: custom global risk engine cannot be snapshotted; supply an explicit RiskConfig")
 )
+```
+
+<a name="ErrJSONVersion"></a>ErrJSONVersion identifies invalid, ambiguous or unsupported envelope versions.
+
+```go
+var ErrJSONVersion = planversion.ErrVersion
 ```
 
 <a name="ErrOutputBudget"></a>
@@ -6743,6 +6781,8 @@ QueryPlan explains SQL and metadata before the query is executed.
 
 ```go
 type QueryPlan struct {
+    Version int `json:"version"`
+
     TenantPolicy *TenantPolicyResult `json:"tenant_policy,omitempty"`
 
     WriteScope *WriteScopeResult `json:"write_scope,omitempty"`
@@ -6826,6 +6866,15 @@ func (p *QueryPlan) ToJSON() ([]byte, error)
 ```
 
 ToJSON returns stable, indented JSON for the plan.
+
+<a name="QueryPlan.UnmarshalJSON"></a>
+### func \(\*QueryPlan\) UnmarshalJSON
+
+```go
+func (p *QueryPlan) UnmarshalJSON(b []byte) error
+```
+
+UnmarshalJSON replaces diagnostic data atomically. No execution evidence is decoded.
 
 <a name="RequiredPredicate"></a>
 ## type RequiredPredicate
@@ -7136,6 +7185,7 @@ TablePolicy describes application\-specific safety policy for a table.
 
 ```go
 type TablePolicy struct {
+    Version               int        `json:"version"`
     ImmutableColumns      []string   `json:"immutable_columns,omitempty"`
     ForbiddenColumns      []string   `json:"forbidden_columns,omitempty"`
     Table                 string     `json:"table"`
@@ -7167,6 +7217,24 @@ func RegisteredTablePolicies() []TablePolicy
 ```
 
 RegisteredTablePolicies returns all registered table policies in stable order.
+
+<a name="TablePolicy.MarshalJSON"></a>
+### func \(TablePolicy\) MarshalJSON
+
+```go
+func (p TablePolicy) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="TablePolicy.UnmarshalJSON"></a>
+### func \(\*TablePolicy\) UnmarshalJSON
+
+```go
+func (p *TablePolicy) UnmarshalJSON(b []byte) error
+```
+
+UnmarshalJSON replaces diagnostic data atomically. No execution evidence is decoded.
 
 <a name="TableRef"></a>
 ## type TableRef
@@ -7319,6 +7387,7 @@ import "github.com/recoweft/goquent/orm/review"
 ## Index
 
 - [Constants](<#constants>)
+- [Variables](<#variables>)
 - [func HasFindingsAtOrAbove\(report ReviewReport, threshold query.RiskLevel\) bool](<#HasFindingsAtOrAbove>)
 - [func HasFindingsAtOrAbovePrecision\(report ReviewReport, threshold query.AnalysisPrecision\) bool](<#HasFindingsAtOrAbovePrecision>)
 - [func ParseAnalysisPrecision\(s string\) \(query.AnalysisPrecision, error\)](<#ParseAnalysisPrecision>)
@@ -7334,6 +7403,8 @@ import "github.com/recoweft/goquent/orm/review"
 - [type Options](<#Options>)
 - [type ReviewReport](<#ReviewReport>)
   - [func Run\(opts Options\) \(ReviewReport, error\)](<#Run>)
+  - [func \(p ReviewReport\) MarshalJSON\(\) \(\[\]byte, error\)](<#ReviewReport.MarshalJSON>)
+  - [func \(p \*ReviewReport\) UnmarshalJSON\(b \[\]byte\) error](<#ReviewReport.UnmarshalJSON>)
 - [type ReviewSummary](<#ReviewSummary>)
 
 
@@ -7349,6 +7420,20 @@ const (
     WarningSuppressionReasonWeak    = "SUPPRESSION_REASON_WEAK"
     WarningSuppressionConfigInvalid = "SUPPRESSION_CONFIG_INVALID"
 )
+```
+
+<a name="JSONVersion"></a>JSONVersion is the current diagnostic/input envelope version, not authorization.
+
+```go
+const JSONVersion = planversion.Current
+```
+
+## Variables
+
+<a name="ErrJSONVersion"></a>ErrJSONVersion identifies invalid, ambiguous or unsupported envelope versions.
+
+```go
+var ErrJSONVersion = planversion.ErrVersion
 ```
 
 <a name="HasFindingsAtOrAbove"></a>
@@ -7518,6 +7603,7 @@ ReviewReport is the top\-level report produced by goquent review.
 
 ```go
 type ReviewReport struct {
+    Version            int             `json:"version"`
     Findings           []Finding       `json:"findings"`
     SuppressedFindings []Finding       `json:"suppressed_findings,omitempty"`
     Summary            ReviewSummary   `json:"summary"`
@@ -7533,6 +7619,24 @@ func Run(opts Options) (ReviewReport, error)
 ```
 
 Run reviews all configured paths.
+
+<a name="ReviewReport.MarshalJSON"></a>
+### func \(ReviewReport\) MarshalJSON
+
+```go
+func (p ReviewReport) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="ReviewReport.UnmarshalJSON"></a>
+### func \(\*ReviewReport\) UnmarshalJSON
+
+```go
+func (p *ReviewReport) UnmarshalJSON(b []byte) error
+```
+
+UnmarshalJSON replaces diagnostic data atomically. No execution evidence is decoded.
 
 <a name="ReviewSummary"></a>
 ## type ReviewSummary
