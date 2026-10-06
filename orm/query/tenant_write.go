@@ -151,6 +151,10 @@ func tenantWriteColumn(t tenantTarget, col string, update bool) error {
 // planReturning checks the final generated projection before resealing this
 // internally generated plan, including generic and scoped writes.
 func (q *Query) planReturning(p *QueryPlan, cols []string) error {
+	return q.planReturningProjection(p, cols, false)
+}
+
+func (q *Query) planReturningProjection(p *QueryPlan, cols []string, paths bool) error {
 	if p == nil || p.execution == nil || p.execution.owner != q || p.execution.used.Load() {
 		return tenantError("missing_or_consumed_execution_plan")
 	}
@@ -179,6 +183,13 @@ func (q *Query) planReturning(p *QueryPlan, cols []string) error {
 		if err != nil {
 			return err
 		}
+		if !paths {
+			for _, col := range cols {
+				if !scopeIdent(col) {
+					return tenantError("returning_identifier_unsupported")
+				}
+			}
+		}
 		if err := tenantProjection(columnRefsFromNames(cols), ts); err != nil {
 			return err
 		}
@@ -192,10 +203,15 @@ func (q *Query) planReturning(p *QueryPlan, cols []string) error {
 		} else {
 			p.SQL += ", "
 		}
-		parts := strings.Split(col, ".")
+		parts := []string{col}
+		if paths {
+			parts = strings.Split(col, ".")
+		}
 		for j, part := range parts {
-			part = strings.TrimSpace(part)
-			if part == "" {
+			if paths {
+				part = strings.TrimSpace(part)
+			}
+			if paths && part == "" {
 				return fmt.Errorf("goquent: identifier path contains an empty part")
 			}
 			if j > 0 {

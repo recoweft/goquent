@@ -71,7 +71,7 @@ func prepareGeneric(r querybridge.Request) (querybridge.Planned, error) {
 		return out, err
 	}
 	if len(r.Returning) > 0 {
-		if err = q.planReturning(p, r.Returning); err != nil {
+		if err = q.planReturningProjection(p, r.Returning, true); err != nil {
 			return out, err
 		}
 	}

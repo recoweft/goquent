@@ -306,3 +306,35 @@ func TestGenericConflictCoverageAndRiskParity(t *testing.T) {
 		})
 	}
 }
+
+func TestReturningIdentifierContracts(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	db := NewDB(sqlDB, driver.PostgresDialect{})
+	// Query PrimaryKey is a single literal identifier, including dots in compatibility.
+	mock.ExpectQuery(`RETURNING "literal.id"`).WillReturnRows(sqlmock.NewRows([]string{"literal.id"}).AddRow(3))
+	id, err := db.Table("users").PrimaryKey("literal.id").InsertGetId(map[string]any{"score": 1})
+	if err != nil || id != 3 {
+		t.Fatal(id, err)
+	}
+	// Generic Returning retains identifier-path quoting, with the same private finalizer.
+	mock.ExpectQuery(`RETURNING "users"\."id"`).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(3))
+	row, err := InsertReturning[genericID](nil, db, map[string]any{"score": 1}, Table("users"), Returning("users.id"))
+	if err != nil || row.ID != 3 {
+		t.Fatal(row, err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+	spy := &genericSpy{}
+	strict := NewDBWithExecutor(spy, driver.PostgresDialect{}, WithSettings(genericSettings(t, "postgres", true)))
+	if _, err = strict.Table("users").PrimaryKey("users.id").InsertGetId(map[string]any{"id": 3}); !errors.Is(err, ErrBlockedOperation) {
+		t.Fatal(err)
+	}
+	if len(spy.calls) != 0 {
+		t.Fatal(spy.calls)
+	}
+}
