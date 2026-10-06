@@ -3,9 +3,9 @@
 [Issue #66](https://github.com/recoweft/goquent/issues/66), PR3 of 3.
 Work `1cb93652-1caf-48e7-a631-1f3dd023269b`, revision **3**, execution
 `5723e31a-8b47-4ad2-8751-b2455b29dfce`.
-Implementation/test source: `bf55890d76639d1cff05506c8d7479392c32ce70`.
-The subsequent documentation commit changes prose/API comments only. Actual PR,
-final head and head CI are reported through RelayWeft following publication.
+Implementation/test source: `1e4f5823f1c0b477be85c0ce3530a0e198dc0dcb`.
+The subsequent documentation commit changes documentation only. PR [#69](https://github.com/recoweft/goquent/pull/69) uses the specified branch/base/title.
+Final head and head CI are reported through RelayWeft after the last push.
 No merge, Issue closure or user completion is performed.
 
 ## Identity, environment and prerequisites actually checked
@@ -62,7 +62,7 @@ IDs are provenance only, not answer-delivery targets.
 ## Runtime checks
 
 Healthy repository containers were reused, with observed versions MySQL **8.4.6**
-and PostgreSQL **16.10**. All final suites ran sequentially at bf55890 with:
+and PostgreSQL **16.10**. All final suites ran sequentially at 1e4f582 with:
 
 - `GOCACHE=/home/murai/github/goquent/.gocache`
 - `TEST_MYSQL_DSN=root:password@tcp(127.0.0.1:3306)/testdb?parseTime=true`
@@ -71,9 +71,9 @@ and PostgreSQL **16.10**. All final suites ran sequentially at bf55890 with:
 
 | Command | Observed result |
 | --- | --- |
-| `go test ./... -count=1 -json` | Exit 0; 1,427 test/subtest pass, 0 fail, 0 test skips |
-| `make test-integration GOFLAGS=-json` with explicit DB DSNs | Exit 0; 1,427 pass, 0 fail, 0 test skips |
-| `go test -race ./... -count=1 -json` | Exit 0; 1,427 pass, 0 fail, 0 test skips |
+| `go test ./... -count=1 -json` | Exit 0; 1,428 test/subtest pass, 0 fail, 0 test skips |
+| `make test-integration GOFLAGS=-json` with explicit DB DSNs | Exit 0; 1,428 pass, 0 fail, 0 test skips |
+| `go test -race ./... -count=1 -json` | Exit 0; 1,428 pass, 0 fail, 0 test skips |
 | `git diff --check` | Passed |
 
 Each suite reports 18 passing packages and 22 packages without test files; those
@@ -92,7 +92,10 @@ plan/diagnostic mutation, tenant destination rebinding, external/caller-owned Tx
 compatibility scope timing/single evaluation/alternate Query destination and later
 input changes, split input ranges, aggregate options and partial driver/result
 failures. Existing generic/Query parity, policy, RETURNING, settings, expiry,
-one-use, bool, hooks and idempotent regressions also ran.
+one-use, bool, hooks and idempotent regressions also ran. A final inspection found
+that InsertOnceReturning lookup needed the privately finalized INSERT candidates
+(including automatic tenant fill), rather than the pre-fill input. This was fixed
+and a dedicated conflict/lookup regression added before these final suite runs.
 
 `TestCompoundGeneratedIDCorrespondence` runs on both databases, with allocation
 increment **7** on the actual transaction connection/PG sequence. Through a custom
@@ -109,7 +112,7 @@ for comparison, also exit 1. No thresholds, suppressions or rule files changed.
 | Source | Blocked | Destructive | High | Medium | Total |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | main c30f8dc | 11 | 11 | 55 | 344 | 421 |
-| PR3 bf55890 | 11 | 15 | 64 | 357 | 447 |
+| PR3 1e4f582 | 11 | 15 | 64 | 357 | 447 |
 
 Line-independent path/code/severity/precision multiset comparison gives 26 added
 findings, none removed. Additions: two partial reconstructions (compound test and

@@ -285,7 +285,8 @@ processing, preserve errors and leave already executed statements executed. Ther
 is no retry, new transaction ownership or custom-executor correctness guarantee.
 
 InsertOnceReturning builds insert/conflict/final projection and lookup from one
-extraction and inspects both branches before dispatch even when the insert would
+extraction, sharing detached private final INSERT candidates (including automatic
+tenant fill), and inspects both branches before dispatch even when the insert would
 succeed. A lookup construction/policy error can therefore now prevent an insert.
 The lookup is still conditional on ErrNoRows; it is not an atomic concurrency or
 exactly-once contract. Explicit tenant-compatible conflict coverage is checked for
