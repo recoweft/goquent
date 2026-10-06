@@ -352,3 +352,28 @@ func TestNestedSplitNoRowsAsUsesAggregate(t *testing.T) {
 		t.Fatal(err, exec.statements)
 	}
 }
+
+func TestCompatibilityScopeChangesLaterDelete(t *testing.T) {
+	db, exec := newCaptureWriteDB(driver.MySQLDialect{})
+	policies, err := NewPolicySet(TablePolicy{Table: "users", SoftDeleteColumn: "deleted"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db = db.WithOptions(WithPolicySet(policies))
+	spec := staticSpec()
+	calls := 0
+	deletes := []NestedDelete{{Table: "users"}, {Table: "users"}}
+	deletes[0].Scopes = []Scope{func(q *query.Query) *query.Query {
+		calls++
+		deletes[1].Scopes = []Scope{func(q *query.Query) *query.Query { calls++; return q.Where("id", 99) }}
+		return q.Where("id", 7)
+	}}
+	spec.DeleteBefore = deletes
+	_, err = ReplaceNestedCollection(nil, db, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || len(exec.statements) != 4 || !hasArg(exec.statements[2].args, 99) {
+		t.Fatal(calls, exec.statements)
+	}
+}

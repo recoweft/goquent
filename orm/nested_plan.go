@@ -150,16 +150,24 @@ func executeNested[P any, C any, G any](ctx context.Context, db *DB, spec Nested
 			}
 		}
 	}
+	scopeRan := false
 	for i, d := range spec.DeleteBefore {
 		for j := range p.plan.steps {
 			s := &p.plan.steps[j]
 			if s.phase != "delete" || s.start != i {
 				continue
 			}
-			if s.plan.Check == nil {
+			if s.plan.Check == nil || scopeRan {
 				// An unresolved compatibility slot becomes a fresh destination-bound plan
 				// only after its scope runs at the original position, exactly once.
-				q := ApplyScopes(db.Table(strings.TrimSpace(d.Table)), d.Scopes...)
+				table := strings.TrimSpace(d.Table)
+				if table == "" {
+					return result, fmt.Errorf("goquent: nested delete table is required")
+				}
+				q := ApplyScopes(db.Table(table), d.Scopes...)
+				for _, scope := range d.Scopes {
+					scopeRan = scopeRan || scope != nil
+				}
 				var resolved compoundPlan
 				if err := resolved.add(ctx, db, "delete", i, i+1, querybridge.Request{Base: q, Operation: "delete"}, nil); err != nil {
 					return result, err
