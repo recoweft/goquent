@@ -48,8 +48,9 @@ examples/, docs/, specs/   Runnable examples, usage guides and design contracts
 - Plans must not execute SQL. Explicit live schema reads are separate operations.
   A low risk level, `precise`, predicate column name, reason or suppression is not
   authorization or proof that all conditions were checked.
-- Current generic writes and some RETURNING paths do not share the complete query
-  plan pipeline. Do not describe all public CRUD as universally policy checked.
+- Generic CRUD/RETURNING and scoped destination helpers share the Query pipeline;
+  see docs/planned-query-execution.md. Compound orchestration and complete Raw
+  boundaries remain deferred. Do not claim all public CRUD is universally checked.
 - AI/MCP workflows must remain read-only for database execution. Migration apply
   remains a human-controlled deployment operation.
 - Use `OpenWithDriver(orm.MySQL, dsn)` or `OpenWithDriver(orm.Postgres, dsn)`.

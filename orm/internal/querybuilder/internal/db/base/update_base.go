@@ -1,6 +1,8 @@
 package base
 
 import (
+	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/internal/writeinput"
 	"sort"
 	"strings"
 
@@ -69,7 +71,7 @@ func (m *UpdateBaseBuilder) BuildUpdate(q *structs.UpdateQuery) (string, []inter
 
 	// UPDATE
 	sb = append(sb, "UPDATE "...)
-	sb = m.u.EscapeRelation(sb, q.Table)
+	sb = writeTable(sb, m.u, q.Table, q.Options)
 
 	// JOIN
 	b := NewJoinBaseBuilder(m.u, q.Query.Joins)
@@ -83,18 +85,44 @@ func (m *UpdateBaseBuilder) BuildUpdate(q *structs.UpdateQuery) (string, []inter
 		columns = append(columns, column)
 	}
 	sort.Strings(columns)
+	if q.Options.Columns != nil {
+		columns = q.Options.Columns
+	}
 	for i, column := range columns {
-		if strings.Contains(column, "->") {
+		if !q.Options.Literal && strings.Contains(column, "->") {
 			field, path := jsonutils.ParseJsonFieldAndPath(column)
 			sb = formatJSONUpdateExpression(sb, m.u, field, path, m.u.GetPlaceholder())
 		} else {
-			sb = m.u.EscapeReference(sb, column)
-			sb = append(sb, " = "+m.u.GetPlaceholder()...)
+			sb = writeColumn(sb, m.u, column, q.Options.Literal)
+			sep := " = "
+			if q.Options.Literal {
+				sep = "="
+			}
+			sb = append(sb, sep+m.u.GetPlaceholder()...)
 		}
 		if i < len(columns)-1 {
 			sb = append(sb, ", "...)
 		}
 		values = append(values, q.Values[column])
+	}
+
+	if len(q.Options.Assignments) > 0 {
+		var d driver.Dialect = driver.MySQLDialect{}
+		if m.u.Dialect() == consts.DialectPostgreSQL {
+			d = driver.PostgresDialect{}
+		}
+		parts, args, err := writeinput.SetParts(d, nil, nil, q.Options.Assignments, len(values)+1)
+		if err != nil {
+			return "", nil, err
+		}
+		if len(columns) > 0 {
+			sb = append(sb, ", "...)
+		}
+		sb = append(sb, strings.Join(parts, ", ")...)
+		values = append(values, args...)
+		for range args {
+			m.u.GetPlaceholder()
+		}
 	}
 
 	// WHERE

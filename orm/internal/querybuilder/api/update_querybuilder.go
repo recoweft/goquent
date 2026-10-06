@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/db/interfaces"
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/query"
+	"github.com/recoweft/goquent/orm/internal/writeinput"
 )
 
 type UpdateQueryBuilder struct {
@@ -78,3 +79,5 @@ func (qb *UpdateQueryBuilder) GetJoinBuilder() *query.JoinBuilder[query.UpdateBu
 func (qb *UpdateQueryBuilder) GetOrderByBuilder() *query.OrderByBuilder[query.UpdateBuilder] {
 	return &qb.builder.OrderByBuilder
 }
+
+func (b *UpdateQueryBuilder) WriteOptions(o writeinput.Options) { b.builder.WriteOptions(o) }

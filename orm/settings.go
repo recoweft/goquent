@@ -87,7 +87,7 @@ func NewApplicationTenantContext(input ExecutionContextInput) (ExecutionContext,
 	return query.NewApplicationTenantContext(input)
 }
 
-// WithTenantPolicy opts documented Query paths into conditional strict inspection.
+// WithTenantPolicy opts documented Query and generic/scoped paths into conditional strict inspection.
 func WithTenantPolicy(database string, schema ApplicationSchema, automatic bool) Option {
 	return func(db *DB) { db.settings = db.settings.WithTenantPolicy(database, schema, automatic) }
 }

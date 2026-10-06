@@ -191,3 +191,7 @@ func (qb *SelectQueryBuilder) GetJoinBuilder() *query.JoinBuilder[query.SelectBu
 func (qb *SelectQueryBuilder) GetOrderByBuilder() *query.OrderByBuilder[query.SelectBuilder] {
 	return qb.builder.GetOrderByBuilder()
 }
+
+func (b *SelectQueryBuilder) WhereLiteral(column string, value any) {
+	b.builder.WhereLiteral(column, value)
+}

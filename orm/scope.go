@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/recoweft/goquent/orm/conv"
+	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"github.com/recoweft/goquent/orm/query"
 )
 
@@ -142,14 +144,7 @@ func SelectOneBy[T any](ctx context.Context, db *DB, base *query.Query, scopes .
 	if err != nil {
 		return zero, err
 	}
-	plan, err := q.Plan(ctx)
-	if err != nil {
-		return zero, err
-	}
-	if err := query.EnsurePlanExecutable(plan); err != nil {
-		return zero, err
-	}
-	return SelectOne[T](ctx, db.RequireRawApproval("goquent generated scoped query"), plan.SQL, plan.Params...)
+	return queryWriteOne[T](ctx, db, querybridge.Request{Base: q, Operation: "select"})
 }
 
 // SelectAllBy builds a scoped query and scans all rows into []T.
@@ -161,14 +156,7 @@ func SelectAllBy[T any](ctx context.Context, db *DB, base *query.Query, scopes .
 	if err != nil {
 		return nil, err
 	}
-	plan, err := q.Plan(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := query.EnsurePlanExecutable(plan); err != nil {
-		return nil, err
-	}
-	return SelectAll[T](ctx, db.RequireRawApproval("goquent generated scoped query"), plan.SQL, plan.Params...)
+	return queryWriteAll[T](ctx, db, querybridge.Request{Base: q, Operation: "select"})
 }
 
 // PlanUpdateBy applies scopes to base and returns an UPDATE QueryPlan without executing it.
@@ -195,7 +183,10 @@ func UpdateByReturning[T any](ctx context.Context, db *DB, base *query.Query, da
 }
 
 // UpdateByReturningWithOptions applies scopes, executes an UPDATE with
-// RETURNING, and applies write options such as NoRowsAs for guarded updates.
+// RETURNING, and applies Returning and NoRowsAs. Other WriteOpt fields (including
+// ExpectAffected, table, column, key, assignment and conflict options) retain their
+// legacy nonapplication here. Options are still evaluated. The base/scopes and
+// data determine the actual UPDATE, which is inspected on the destination DB.
 func UpdateByReturningWithOptions[T any](ctx context.Context, db *DB, base *query.Query, data any, opts []WriteOpt, scopes ...Scope) (T, error) {
 	var zero T
 	if db == nil {
@@ -206,25 +197,17 @@ func UpdateByReturningWithOptions[T any](ctx context.Context, db *DB, base *quer
 	if err != nil {
 		return zero, err
 	}
-	plan, err := q.PlanUpdate(ctx, data)
-	if err != nil {
+	if err := ensureReturningColumns[T](o); err != nil {
 		return zero, err
 	}
-	if err := query.EnsurePlanExecutable(plan); err != nil {
-		return zero, err
-	}
-	if len(o.returning) == 0 {
-		cols, err := returningColumnsForQuery[T]()
+	m, ok := data.(map[string]any)
+	if !ok {
+		m, err = conv.StructToMap(data)
 		if err != nil {
 			return zero, err
 		}
-		o.returning = cols
 	}
-	sqlStr, err := appendReturningClause(db.drv.Dialect, plan.SQL, o.returning)
-	if err != nil {
-		return zero, err
-	}
-	return queryReturningOneWithOptions[T](ctx, db, sqlStr, o, plan.Params...)
+	return queryWriteOneWithOptions[T](ctx, db, querybridge.Request{Base: q, Operation: "update", Rows: []map[string]any{m}, Returning: o.returning}, o)
 }
 
 // PlanDeleteBy applies scopes to base and returns a DELETE QueryPlan without executing it.

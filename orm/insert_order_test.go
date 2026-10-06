@@ -1,6 +1,7 @@
 package orm
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -91,4 +92,22 @@ func TestInsertNamedMapKey(t *testing.T) {
 	if err != nil || sql != "INSERT INTO `ordered_rows` (`a`, `z`) VALUES (?, ?)" || !reflect.DeepEqual(args, []any{"first", int64(42)}) {
 		t.Fatalf("named keys: %s %#v %v", sql, args, err)
 	}
+}
+
+// These compatibility helpers inspect public plans; execution never consumes SQL.
+func buildInsertStatement(db *DB, v any, o *writeOptions) (string, []any, error) {
+	r, e := buildInsertInput(db, v, o)
+	p, e := writeDiagnostic(context.Background(), db, r, e)
+	if e != nil {
+		return "", nil, e
+	}
+	return p.SQL, p.Params, nil
+}
+func buildInsertManyStatement[T any](db *DB, v []T, o *writeOptions) (string, []any, error) {
+	r, e := buildInsertManyInput(db, v, o)
+	p, e := writeDiagnostic(context.Background(), db, r, e)
+	if e != nil {
+		return "", nil, e
+	}
+	return p.SQL, p.Params, nil
 }

@@ -399,7 +399,17 @@ func checkTenantEvidence(p *QueryPlan) error {
 // plan, so later OR additions cannot escape a previously appended predicate.
 func (q *Query) policyBuilder(src *qbapi.SelectQueryBuilder) (*qbapi.SelectQueryBuilder, error) {
 	if !q.settings.strict {
-		return src, nil
+		if q.policy == nil || q.policy.SoftDeleteColumn == "" || q.withDeleted {
+			return src, nil
+		}
+		b := newSelectBuilder(q.dialect)
+		src.CopyStateToSelect(b)
+		if q.onlyDeleted {
+			b.WhereNotNull(q.policy.SoftDeleteColumn)
+		} else {
+			b.WhereNull(q.policy.SoftDeleteColumn)
+		}
+		return b, nil
 	}
 	b := newSelectBuilder(q.dialect)
 	src.CopyStateToSelect(b)

@@ -5,6 +5,7 @@ import (
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/common/structs"
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/db/interfaces"
 	"github.com/recoweft/goquent/orm/internal/valuecopy"
+	"github.com/recoweft/goquent/orm/internal/writeinput"
 )
 
 type InsertBuilder struct {
@@ -91,6 +92,7 @@ func (ib *InsertBuilder) InsertUsing(columns []string, b *SelectBuilder) *Insert
 func (ib *InsertBuilder) Build() (string, []interface{}, error) {
 	// Render and inspect the same detached input, including INSERT SELECT.
 	frozen := *ib.query
+	frozen.Options = ib.query.Options.Clone()
 	copier := valuecopy.New()
 	copyRow := func(row map[string]any) map[string]any {
 		if row == nil {
@@ -119,3 +121,5 @@ func (ib *InsertBuilder) Build() (string, []interface{}, error) {
 	query, values, err := ib.dbBuilder.BuildInsert(&frozen)
 	return query, values, err
 }
+
+func (b *InsertBuilder) WriteOptions(o writeinput.Options) { b.query.Options = o.Clone() }

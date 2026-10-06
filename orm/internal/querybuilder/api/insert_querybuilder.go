@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/db/interfaces"
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/query"
+	"github.com/recoweft/goquent/orm/internal/writeinput"
 	"sort"
 )
 
@@ -69,6 +70,8 @@ func (ib *InsertQueryBuilder) Build() (string, []interface{}, error) {
 
 // InsertSnapshot describes the exact input used by BuildSnapshot.
 type InsertSnapshot struct {
+	Mode          string
+	Unverified    []string
 	Table         string
 	Columns       []string
 	BatchSize     int
@@ -102,9 +105,29 @@ func (ib *InsertQueryBuilder) BuildSnapshot() (string, []any, InsertSnapshot, er
 	if src.Query != nil {
 		out.Columns = append([]string(nil), src.Columns...)
 	}
+	if src.Ignore {
+		out.Mode = "ignore"
+	}
 	if src.Upsert != nil {
+		out.Mode = "upsert"
 		out.UniqueColumns = append([]string(nil), src.Upsert.UniqueColumns...)
 		out.UpdateColumns = append([]string(nil), src.Upsert.UpdateColumns...)
 	}
+	if c := src.Options.Conflict; c != nil {
+		out.Mode = "upsert"
+		if c.Where != "" || c.Constraint != "" || c.RawTarget != "" {
+			out.Unverified = append(out.Unverified, "conflict_expression")
+		}
+		out.UniqueColumns = append([]string(nil), c.Columns...)
+		out.UpdateColumns = append([]string(nil), c.Updates...)
+	}
+	for _, a := range src.Options.Assignments {
+		out.UpdateColumns = append(out.UpdateColumns, a.Column)
+	}
+	if len(src.Options.Assignments) > 0 {
+		out.Unverified = append(out.Unverified, "assignment_expression")
+	}
 	return sql, args, out, nil
 }
+
+func (b *InsertQueryBuilder) WriteOptions(o writeinput.Options) { b.builder.WriteOptions(o) }
