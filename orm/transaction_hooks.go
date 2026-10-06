@@ -48,6 +48,8 @@ type TransactionWithHooksSpec[T any] struct {
 // RunTransactionWithHooks runs Apply, then hooks, inside one transaction.
 //
 // Hooks run only if Apply succeeds. Any hook error rolls the transaction back.
+// Conditional strict settings reject this opaque recipe before Begin or callbacks;
+// compatibility retains each ORM helper gate without intercepting external effects.
 func RunTransactionWithHooks[T any](ctx context.Context, db *DB, spec TransactionWithHooksSpec[T]) (T, error) {
 	var zero T
 	if db == nil {
@@ -55,6 +57,9 @@ func RunTransactionWithHooks[T any](ctx context.Context, db *DB, spec Transactio
 	}
 	if db.drv == nil || db.exec == nil {
 		return zero, fmt.Errorf("goquent: db is not initialized")
+	}
+	if err := rejectOpaqueCompound(db); err != nil {
+		return zero, err
 	}
 	if spec.Apply == nil {
 		return zero, fmt.Errorf("goquent: transaction apply is required")

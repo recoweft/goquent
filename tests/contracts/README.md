@@ -38,7 +38,7 @@ entries and nonexistent files. All API-family mappings are explicitly partial:
 file membership does not prove every symbol/variant is exercised. Non-tabular
 constructors, chain modifiers, options, conversion and projection helpers inherit
 the documented consuming path, or remain outside DB inspection. Section 2 of the
-specification remains the authoritative per-entry inspection/exclusion inventory.
+specification retains the historical baseline; the [current execution inventory](../../docs/planned-query-execution.md) records PR3 compound/Raw/Row changes.
 
 ## Reused fixtures and bounded compatibility checks
 

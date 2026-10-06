@@ -20,6 +20,7 @@ type plannedExecution struct {
 	sql        string
 	args       []any
 	inspection *QueryPlan
+	insertRows []map[string]any
 	gate       error
 	expires    *time.Time
 	used       atomic.Bool
@@ -77,17 +78,33 @@ func (q *Query) sealExecution(p *QueryPlan) {
 	p.execution = e
 }
 
-func (q *Query) bindExecution(p *QueryPlan) (*plannedExecution, error) {
+func (q *Query) checkExecution(p *QueryPlan) error {
 	if p == nil || p.execution == nil || p.execution.owner != q {
-		return nil, fmt.Errorf("%w: missing private execution plan", ErrBlockedOperation)
+		return fmt.Errorf("%w: missing private execution plan", ErrBlockedOperation)
 	}
 	e := p.execution
 	if e.gate != nil {
-		return nil, e.gate
+		return e.gate
+	}
+	if e.ctx != nil {
+		if err := e.ctx.Err(); err != nil {
+			return err
+		}
 	}
 	if e.expires != nil && !e.expires.After(time.Now().UTC()) {
-		return nil, fmt.Errorf("%w: approval expired", ErrApprovalRequired)
+		return fmt.Errorf("%w: approval expired", ErrApprovalRequired)
 	}
+	if e.used.Load() {
+		return fmt.Errorf("%w: execution plan already consumed", ErrBlockedOperation)
+	}
+	return nil
+}
+
+func (q *Query) bindExecution(p *QueryPlan) (*plannedExecution, error) {
+	if err := q.checkExecution(p); err != nil {
+		return nil, err
+	}
+	e := p.execution
 	if !e.used.CompareAndSwap(false, true) {
 		return nil, fmt.Errorf("%w: execution plan already consumed", ErrBlockedOperation)
 	}
@@ -102,35 +119,27 @@ const (
 	executionRow
 )
 
-// execute is the only Query executor dispatch. All result modes bind the private
-// plan and reject before invoking any executor method, including QueryRow.
+// This file owns Query and facade Raw executor dispatch. All result modes bind
+// the private plan and reject before any executor call, including QueryRow.
 func (q *Query) execute(p *QueryPlan, mode executionMode, scan func(*sql.Rows) error, dest ...any) (sql.Result, error) {
-	e, err := q.bindExecution(p)
-	if err != nil {
-		return nil, err
-	}
-	args := valuecopy.Slice(e.args)
 	switch mode {
 	case executionResult:
-		if e.ctx != nil {
-			return e.executor.ExecContext(e.ctx, e.sql, args...)
+		e, err := q.bindExecution(p)
+		if err != nil {
+			return nil, err
 		}
-		return e.executor.Exec(e.sql, args...)
-	case executionRow:
-		var row *sql.Row
 		if e.ctx != nil {
-			row = e.executor.QueryRowContext(e.ctx, e.sql, args...)
-		} else {
-			row = e.executor.QueryRow(e.sql, args...)
+			return e.executor.ExecContext(e.ctx, e.sql, valuecopy.Slice(e.args)...)
+		}
+		return e.executor.Exec(e.sql, valuecopy.Slice(e.args)...)
+	case executionRow:
+		row, err := q.executeOpenRow(p)
+		if err != nil {
+			return nil, err
 		}
 		return nil, row.Scan(dest...)
 	case executionRows:
-		var rows *sql.Rows
-		if e.ctx != nil {
-			rows, err = e.executor.QueryContext(e.ctx, e.sql, args...)
-		} else {
-			rows, err = e.executor.Query(e.sql, args...)
-		}
+		rows, err := q.executeOpenRows(p)
 		if err != nil {
 			return nil, err
 		}
@@ -139,6 +148,27 @@ func (q *Query) execute(p *QueryPlan, mode executionMode, scan func(*sql.Rows) e
 	default:
 		return nil, fmt.Errorf("%w: unsupported execution mode", ErrBlockedOperation)
 	}
+}
+
+func (q *Query) executeOpenRows(p *QueryPlan) (*sql.Rows, error) {
+	e, err := q.bindExecution(p)
+	if err != nil {
+		return nil, err
+	}
+	if e.ctx != nil {
+		return e.executor.QueryContext(e.ctx, e.sql, valuecopy.Slice(e.args)...)
+	}
+	return e.executor.Query(e.sql, valuecopy.Slice(e.args)...)
+}
+func (q *Query) executeOpenRow(p *QueryPlan) (*sql.Row, error) {
+	e, err := q.bindExecution(p)
+	if err != nil {
+		return nil, err
+	}
+	if e.ctx != nil {
+		return e.executor.QueryRowContext(e.ctx, e.sql, valuecopy.Slice(e.args)...), nil
+	}
+	return e.executor.QueryRow(e.sql, valuecopy.Slice(e.args)...), nil
 }
 
 func (q *Query) executeResult(p *QueryPlan) (sql.Result, error) {

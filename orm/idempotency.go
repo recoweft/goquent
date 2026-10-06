@@ -41,6 +41,9 @@ func RunIdempotentCommand[T any](ctx context.Context, db *DB, spec IdempotentCom
 		return result, err
 	}
 
+	if err := rejectOpaqueCompound(db); err != nil {
+		return result, err
+	}
 	existing, err := spec.LookupExisting(ctx, db)
 	if err == nil {
 		result.Value = existing

@@ -1010,19 +1010,42 @@ func InsertOnceReturning[T any, V any](ctx context.Context, db *DB, v V, opts ..
 	if err != nil {
 		return zero, false, err
 	}
-	inserted, err := queryWriteOne[T](ctx, db, input)
+	var parent compoundPlan
+	if err = parent.add(ctx, db, "insert", 0, 1, input, nil); err != nil {
+		return zero, false, err
+	}
+	lookupCols := dedupeColumns(input.Options.Conflict.Columns)
+	if len(lookupCols) == 0 {
+		return zero, false, fmt.Errorf("InsertOnceReturning existing-row lookup requires ConflictColumns or WherePK primary key columns")
+	}
+	q := db.Table(input.Table).Select(o.returning...)
+	for _, col := range lookupCols {
+		value, ok := parent.steps[0].plan.InsertRows[0][col]
+		if !ok {
+			return zero, false, fmt.Errorf("InsertOnceReturning lookup requires column %s", col)
+		}
+		q.Where(col, value)
+	}
+	if predicate := strings.TrimSpace(o.conflictWhere); predicate != "" {
+		q.WhereRawNoArgs(predicate)
+	}
+	if err = parent.add(ctx, db, "lookup", 0, 1, querybridge.Request{Base: q, Operation: "select"}, nil); err != nil {
+		return zero, false, err
+	}
+	var out T
+	scan := func(rows *sql.Rows) error { var e error; out, e = scanRowsOne[T](db, rows); return e }
+	err = parent.steps[0].plan.Scan(scan)
 	if err == nil {
-		return inserted, true, nil
+		return out, true, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return zero, false, err
 	}
-
-	existing, err := selectExistingInsertOnceRow[T](ctx, db, v, o)
+	err = parent.steps[1].plan.Scan(scan)
 	if err != nil {
 		return zero, false, err
 	}
-	return existing, false, nil
+	return out, false, nil
 }
 
 func buildUpsertInput(db *DB, v any, o *writeOptions) (querybridge.Request, error) {
@@ -1134,78 +1157,6 @@ func buildUpsertInput(db *DB, v any, o *writeOptions) (querybridge.Request, erro
 		return querybridge.Request{}, fmt.Errorf("no columns to insert")
 	}
 	return newWriteInput("upsert", table, cols, args, 1, pkCols, o)
-}
-
-func selectExistingInsertOnceRow[T any](ctx context.Context, db *DB, v any, o *writeOptions) (T, error) {
-	var zero T
-	table, values, pkCols, err := writeLookupValues(v, o)
-	if err != nil {
-		return zero, err
-	}
-	lookupCols := dedupeColumns(o.conflictCols)
-	if len(lookupCols) == 0 {
-		lookupCols = pkCols
-	}
-	if len(lookupCols) == 0 {
-		return zero, fmt.Errorf("InsertOnceReturning existing-row lookup requires ConflictColumns or WherePK primary key columns")
-	}
-
-	q := db.Table(table).Select(o.returning...)
-	for _, col := range lookupCols {
-		value, ok := values[col]
-		if !ok {
-			return zero, fmt.Errorf("InsertOnceReturning lookup requires column %s", col)
-		}
-		q.Where(col, value)
-	}
-	if predicate := strings.TrimSpace(o.conflictWhere); predicate != "" {
-		q.WhereRawNoArgs(predicate)
-	}
-	return SelectOneBy[T](ctx, db, q)
-}
-
-func writeLookupValues(v any, o *writeOptions) (string, map[string]any, []string, error) {
-	val := reflect.ValueOf(v)
-	typ := val.Type()
-	values := make(map[string]any)
-	var table string
-	var pkCols []string
-
-	if isMapStringInterface(typ) {
-		if o.table == "" {
-			return "", nil, nil, fmt.Errorf("Table option required for map writes")
-		}
-		table = o.table
-		iter := val.MapRange()
-		for iter.Next() {
-			values[iter.Key().String()] = iter.Value().Interface()
-		}
-		if o.wherePK {
-			for col := range o.pkCols {
-				pkCols = append(pkCols, col)
-			}
-			sort.Strings(pkCols)
-		}
-		return table, values, pkCols, nil
-	}
-
-	if typ.Kind() != reflect.Struct {
-		return "", nil, nil, fmt.Errorf("unsupported type %s", typ)
-	}
-	table = o.table
-	if table == "" {
-		table = model.TableName(v)
-	}
-	meta, err := getTypeMeta(typ)
-	if err != nil {
-		return "", nil, nil, err
-	}
-	for _, fm := range meta.FieldsByName {
-		fv := val.FieldByIndex(fm.IndexPath)
-		values[fm.Col] = fv.Interface()
-	}
-	pkCols = append(pkCols, meta.PKCols...)
-	return table, values, pkCols, nil
 }
 
 func conflictTargetColumns(o *writeOptions, pkCols []string) []string {

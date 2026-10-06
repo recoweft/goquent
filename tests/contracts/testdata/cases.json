@@ -220,9 +220,11 @@
       "coverage": "partial",
       "evidence": [
         "tests/raw_sql_test.go#TestRawSQLRequiresApproval",
-        "orm/query/plan_test.go#TestRawPlanSnapshot"
+        "orm/query/plan_test.go#TestRawPlanSnapshot",
+        "orm/row_execution_test.go#TestRawEveryEntryRejectsWithoutDispatch",
+        "orm/row_execution_test.go#TestRowRefusalIdentityAndZeroValue"
       ],
-      "assertion_scope": "Raw approval rejection and raw plan metadata; does not establish semantic DELETE inspection or external authority."
+      "assertion_scope": "PR3 tests conditional Strict Raw refusal and zero dispatch, including the source-breaking Row wrapper and error identity. Compatibility reasons remain legacy intent, not semantic or external authority."
     },
     {
       "id": "C13",
@@ -316,9 +318,13 @@
       "coverage": "partial",
       "evidence": [
         "tests/nested_write_test.go#TestMySQLReplaceNestedCollectionTx",
-        "orm/transaction_hooks_test.go#TestRunTransactionWithHooksRollsBackOnHookError"
+        "orm/transaction_hooks_test.go#TestRunTransactionWithHooksRollsBackOnHookError",
+        "orm/compound_execution_test.go#TestCompoundKnownRefusalsBeforeBegin",
+        "orm/compound_execution_test.go#TestStrictOpaqueRecipes",
+        "orm/compound_execution_test.go#TestNestedSplitFailureAndAggregateOption",
+        "tests/compound_plan_test.go#TestCompoundGeneratedIDCorrespondence"
       ],
-      "assertion_scope": "Nested MySQL transaction recipe and hook rollback are related evidence, not full nested later-callback failure/atomicity proof."
+      "assertion_scope": "PR3 tests known-child preflight, Strict opaque-recipe refusal, per-row generated IDs and aggregate result checks. Compatibility callbacks/external effects and later failures are not whole-operation atomicity or exactly-once guarantees."
     },
     {
       "id": "C19",
@@ -553,10 +559,12 @@
         "tests/nested_write_test.go",
         "tests/write_generic_test.go",
         "tests/select_generic_test.go",
-        "tests/orm_postgres_test.go"
+        "tests/orm_postgres_test.go",
+        "orm/compound_execution_test.go",
+        "tests/compound_plan_test.go"
       ],
       "coverage": "partial",
-      "analysis_limit": "Family-level regression evidence only: generic/scoped CRUD, scans/bool, batch/RETURNING and composite recipes. Shared policy, all typed cardinality checks, concurrent replay and external callback rollback are unverified. Hooks commit test has a known column-order flake; no skip or relaxation."
+      "analysis_limit": "Current PR3 coverage is in docs/planned-query-execution.md. Known constituents receive private preflight; Strict opaque recipes/scopes are refused. Arbitrary callbacks, replay, external effects and universal transaction ownership remain outside the guarantee. Historical entry names are retained for baseline correspondence."
     },
     {
       "section": "2.3",
@@ -577,7 +585,8 @@
         "tests/custom_driver_test.go",
         "tests/transaction_context_test.go",
         "tests/manual_transaction_test.go",
-        "tests/contracts/compatibility_test.go"
+        "tests/contracts/compatibility_test.go",
+        "orm/row_execution_test.go"
       ],
       "coverage": "partial",
       "analysis_limit": "Family-level regression evidence only: raw gates, executors, driver and transaction recipes. Direct SQLDB/sql.Tx/Executor calls are outside interception. Universal context binding, ownership of WrapTx and every driver method are not certified."

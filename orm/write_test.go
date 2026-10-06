@@ -24,6 +24,7 @@ type captureExecutor struct {
 	args            []any
 	statements      []capturedStatement
 	lastInsertID    int64
+	insertIDs       []int64
 	rowsAffected    int64
 	rowsAffectedSet bool
 }
@@ -42,14 +43,24 @@ func (e *captureExecutor) Exec(query string, args ...any) (sql.Result, error) {
 	e.query = query
 	e.args = append([]any(nil), args...)
 	e.statements = append(e.statements, capturedStatement{query: query, args: append([]any(nil), args...)})
-	return captureResult{lastInsertID: e.lastInsertID, rowsAffected: e.rowsAffected, rowsAffectedSet: e.rowsAffectedSet}, nil
+	id := e.lastInsertID
+	if strings.HasPrefix(query, "INSERT INTO `document_table_rows`") && len(e.insertIDs) > 0 {
+		id = e.insertIDs[0]
+		e.insertIDs = e.insertIDs[1:]
+	}
+	return captureResult{lastInsertID: id, rowsAffected: e.rowsAffected, rowsAffectedSet: e.rowsAffectedSet}, nil
 }
 
 func (e *captureExecutor) ExecContext(_ context.Context, query string, args ...any) (sql.Result, error) {
 	e.query = query
 	e.args = append([]any(nil), args...)
 	e.statements = append(e.statements, capturedStatement{query: query, args: append([]any(nil), args...)})
-	return captureResult{lastInsertID: e.lastInsertID, rowsAffected: e.rowsAffected, rowsAffectedSet: e.rowsAffectedSet}, nil
+	id := e.lastInsertID
+	if strings.HasPrefix(query, "INSERT INTO `document_table_rows`") && len(e.insertIDs) > 0 {
+		id = e.insertIDs[0]
+		e.insertIDs = e.insertIDs[1:]
+	}
+	return captureResult{lastInsertID: id, rowsAffected: e.rowsAffected, rowsAffectedSet: e.rowsAffectedSet}, nil
 }
 
 type captureResult struct {
@@ -691,7 +702,7 @@ func TestUpsertManyRejectsInconsistentColumns(t *testing.T) {
 
 func TestReplaceNestedCollectionMySQLBuildsOrderedPlan(t *testing.T) {
 	db, exec := newCaptureWriteDB(driver.MySQLDialect{})
-	exec.lastInsertID = 101
+	exec.insertIDs = []int64{101, 117}
 
 	tenantID := "tenant-1"
 	tableID := int64(7)
@@ -737,22 +748,23 @@ func TestReplaceNestedCollectionMySQLBuildsOrderedPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replace nested collection: %v", err)
 	}
-	if !reflect.DeepEqual(result.ChildIDs, []int64{101, 102}) {
+	if !reflect.DeepEqual(result.ChildIDs, []int64{101, 117}) {
 		t.Fatalf("unexpected child ids: %#v", result.ChildIDs)
 	}
-	if rows[0].ID != 101 || rows[1].ID != 102 {
+	if rows[0].ID != 101 || rows[1].ID != 117 {
 		t.Fatalf("assign child id did not update rows: %+v", rows)
 	}
 	if result.GrandchildCount != 2 {
 		t.Fatalf("expected two grandchildren, got %d", result.GrandchildCount)
 	}
-	if len(exec.statements) != 5 {
-		t.Fatalf("expected 5 statements, got %d: %#v", len(exec.statements), exec.statements)
+	if len(exec.statements) != 6 {
+		t.Fatalf("expected 6 statements, got %d: %#v", len(exec.statements), exec.statements)
 	}
 	wantFragments := []string{
 		"INSERT INTO `document_tables`",
 		"DELETE FROM `document_table_cells`",
 		"DELETE FROM `document_table_rows`",
+		"INSERT INTO `document_table_rows`",
 		"INSERT INTO `document_table_rows`",
 		"INSERT INTO `document_table_cells`",
 	}
@@ -767,20 +779,19 @@ func TestReplaceNestedCollectionMySQLBuildsOrderedPlan(t *testing.T) {
 	if strings.Contains(exec.statements[3].query, "`id`") {
 		t.Fatalf("child insert should omit generated id, got: %s", exec.statements[3].query)
 	}
-	if !strings.Contains(exec.statements[4].query, "ON DUPLICATE KEY UPDATE") {
-		t.Fatalf("grandchildren should be upserted, got: %s", exec.statements[4].query)
+	if !strings.Contains(exec.statements[5].query, "ON DUPLICATE KEY UPDATE") {
+		t.Fatalf("grandchildren should be upserted, got: %s", exec.statements[5].query)
 	}
-	if !hasArg(exec.statements[4].args, int64(101)) || !hasArg(exec.statements[4].args, int64(102)) {
-		t.Fatalf("grandchild args should include generated row ids, got: %#v", exec.statements[4].args)
+	if !hasArg(exec.statements[5].args, int64(101)) || !hasArg(exec.statements[5].args, int64(117)) {
+		t.Fatalf("grandchild args should include generated row ids, got: %#v", exec.statements[5].args)
 	}
 }
 
 func TestReplaceNestedCollectionPostgresCollectsChildIDsWithReturning(t *testing.T) {
 	db, mock := newReturningMockDB(t)
-	sqlText := `INSERT INTO "document_table_rows" ("tenant_id", "table_id", "stable_row_key", "position") VALUES ($1, $2, $3, $4), ($5, $6, $7, $8) RETURNING "id"`
-	mock.ExpectQuery(regexp.QuoteMeta(sqlText)).
-		WithArgs("tenant-1", int64(7), "r1", 0, "tenant-1", int64(7), "r2", 1).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(201).AddRow(202))
+	sqlText := `INSERT INTO "document_table_rows" ("tenant_id", "table_id", "stable_row_key", "position") VALUES ($1, $2, $3, $4) RETURNING "id"`
+	mock.ExpectQuery(regexp.QuoteMeta(sqlText)).WithArgs("tenant-1", int64(7), "r1", 0).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(201))
+	mock.ExpectQuery(regexp.QuoteMeta(sqlText)).WithArgs("tenant-1", int64(7), "r2", 1).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(202))
 
 	rows := []nestedDocumentRow{
 		{TenantID: "tenant-1", TableID: 7, StableRowKey: "r1", Position: 0},

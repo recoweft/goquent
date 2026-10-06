@@ -75,8 +75,13 @@ func execWriteInput(ctx context.Context, db *DB, r querybridge.Request, o *write
 	if err != nil {
 		return nil, err
 	}
+	return execPreparedWrite(p, len(r.Returning) > 0, o)
+}
+
+func execPreparedWrite(p querybridge.Planned, returning bool, o *writeOptions) (sql.Result, error) {
+	var err error
 	var res sql.Result
-	if len(r.Returning) == 0 {
+	if !returning {
 		res, err = p.Exec()
 	} else {
 		var count int64
