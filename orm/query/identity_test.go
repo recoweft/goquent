@@ -365,3 +365,14 @@ func TestIdentityDoesNotExtendPrivateExpiry(t *testing.T) {
 		t.Fatal("expired dispatch")
 	}
 }
+
+func TestInvalidWriteContextHasNoIdentity(t *testing.T) {
+	q := NewWithSettings(&recordingExec{}, "users", driver.MySQLDialect{}, tenantTestSettings(t, "mysql", false)).Select("id").Where("tenant_id", 1).Limit(5).WithWriteKeyContext(WriteKeyContext{Constraints: make([]WriteKeyConstraint, 65)})
+	p, e := q.Plan(t.Context())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if p.execution.identity != nil || !errors.Is(p.execution.identityErr, planidentity.ErrUnavailable) {
+		t.Fatal("invalid private key assertion was omitted from correspondence")
+	}
+}

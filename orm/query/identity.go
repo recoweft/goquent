@@ -20,6 +20,9 @@ func (q *Query) sealIdentity(e *plannedExecution) {
 func (q *Query) identitySnapshot(e *plannedExecution) (*planidentity.Snapshot, error) {
 	fail := func() (*planidentity.Snapshot, error) { return nil, planidentity.ErrUnavailable }
 	p, s := e.inspection, q.settings
+	if q.writeKeys != nil && q.writeKeys.invalid != "" {
+		return fail()
+	}
 	if p == nil || p.tenantEvidence == nil || p.tenantEvidence.failure != "" || p.tenantEvidence.view == nil || p.Operation == OperationRaw || len(p.Unverified) > 0 || s.err != nil || s.database == "" || s.schema.input == nil || s.database != s.schema.input.Database || !s.execution.application || !s.execution.input.TenantPresent {
 		return fail()
 	}
