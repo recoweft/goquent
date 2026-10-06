@@ -229,3 +229,12 @@ execution. DB.QueryRow/QueryRowContext now return *orm.Row; Scan/Err chaining re
 available. Explicit *sql.Row consumers and interfaces must use QueryRowE and check
 its error first. The Executor interface is unchanged, but *orm.DB no longer itself
 implements it. SQLDB/direct Executor bypasses are not safe migration substitutes.
+
+### Plan JSON migration
+
+QueryPlan, ReviewReport, TablePolicy and OperationSpec now write integer
+`version: 1`. Missing/0 reads remain legacy input; unsupported versions fail.
+Decoded `any` numbers use `json.Number` instead of `float64`. Use fresh receivers
+for external JSON and discard them on error. See [versions and private identity](docs/plan-version-identity.md)
+for migration and limits. Public JSON is diagnostic, never an execution permit;
+GQ-AI-05 PR2 runtime binding remains separate.

@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/recoweft/goquent/orm/internal/planidentity"
 	"github.com/recoweft/goquent/orm/internal/valuecopy"
 )
 
@@ -14,16 +15,18 @@ import (
 // diagnostics are never read back as SQL, arguments or permission to execute.
 // This is an in-process lifecycle, not a serialized plan or external permit.
 type plannedExecution struct {
-	owner      *Query
-	ctx        context.Context
-	executor   executor
-	sql        string
-	args       []any
-	inspection *QueryPlan
-	insertRows []map[string]any
-	gate       error
-	expires    *time.Time
-	used       atomic.Bool
+	identity    *planidentity.Snapshot
+	identityErr error
+	owner       *Query
+	ctx         context.Context
+	executor    executor
+	sql         string
+	args        []any
+	inspection  *QueryPlan
+	insertRows  []map[string]any
+	gate        error
+	expires     *time.Time
+	used        atomic.Bool
 }
 
 func (q *Query) sealExecution(p *QueryPlan) {
@@ -71,6 +74,7 @@ func (q *Query) sealExecution(p *QueryPlan) {
 		}
 	}
 	e.inspection = &v
+	q.sealIdentity(e)
 	if p.RequiredApproval && p.Approval != nil && p.Approval.ExpiresAt != nil {
 		expiry := *p.Approval.ExpiresAt
 		e.expires = &expiry

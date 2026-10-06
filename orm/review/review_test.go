@@ -3,6 +3,7 @@ package review
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -530,4 +531,16 @@ func findFinding(findings []Finding, code string) (Finding, bool) {
 		}
 	}
 	return Finding{}, false
+}
+
+func TestReviewRejectsUnsupportedPlanEnvelope(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	for _, v := range []string{`2`, `null`, `"1"`} {
+		if e := os.WriteFile(path, []byte(`{"version":`+v+`,"operation":"select","sql":"SELECT 1"}`), 0600); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := Run(Options{Paths: []string{path}}); !errors.Is(e, query.ErrJSONVersion) {
+			t.Fatal("version was silently skipped", e)
+		}
+	}
 }

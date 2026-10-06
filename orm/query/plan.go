@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/recoweft/goquent/orm/internal/planversion"
 	qbapi "github.com/recoweft/goquent/orm/internal/querybuilder/api"
 	"github.com/recoweft/goquent/orm/internal/valuecopy"
 	"github.com/recoweft/goquent/orm/internal/valueguard"
@@ -141,6 +142,7 @@ type PredicateRef struct {
 
 // QueryPlan explains SQL and metadata before the query is executed.
 type QueryPlan struct {
+	Version             int `json:"version"`
 	execution           *plannedExecution
 	tenantEvidence      *tenantEvidence
 	TenantPolicy        *TenantPolicyResult `json:"tenant_policy,omitempty"`
@@ -265,6 +267,10 @@ var ErrOutputBudget = valueguard.ErrBudget
 // A value receiver also covers json.Marshal(*plan). Nil pointers remain JSON null.
 func (p QueryPlan) MarshalJSON() ([]byte, error) {
 	type plain QueryPlan
+	if err := planversion.Check(p.Version); err != nil {
+		return nil, err
+	}
+	p.Version = planversion.Current
 	if err := valueguard.Check(plain(p)); err != nil {
 		return nil, err
 	}
@@ -323,6 +329,7 @@ func (p *QueryPlan) String() string {
 
 func newQueryPlan(op OperationType, sqlStr string, args []any) *QueryPlan {
 	return &QueryPlan{
+		Version:           planversion.Current,
 		Operation:         op,
 		SQL:               sqlStr,
 		Params:            valuecopy.Slice(args),

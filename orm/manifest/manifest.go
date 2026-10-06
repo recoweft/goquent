@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/recoweft/goquent/orm/internal/planversion"
 	"github.com/recoweft/goquent/orm/internal/stringutil"
 	"github.com/recoweft/goquent/orm/migration"
 	"github.com/recoweft/goquent/orm/model"
@@ -136,6 +137,11 @@ type Options struct {
 
 // Generate builds a stable manifest from known schema/model/policy inputs.
 func Generate(opts Options) (*Manifest, error) {
+	for _, policy := range opts.Policies {
+		if err := planversion.Check(policy.Version); err != nil {
+			return nil, err
+		}
+	}
 	generatedAt := opts.GeneratedAt
 	if generatedAt.IsZero() {
 		generatedAt = time.Now().UTC()

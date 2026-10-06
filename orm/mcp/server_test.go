@@ -231,3 +231,33 @@ func stringInt(n int) string {
 	b, _ := json.Marshal(n)
 	return string(b)
 }
+
+func TestRPCOperationVersionAndNumberBoundary(t *testing.T) {
+	for _, input := range []string{
+		`{"arguments":{"spec":{"version":2,"version":1}}}`,
+		`{"args":{"operation_spec":{"version":2,"Version":1}}}`,
+		`{"arguments":{"spec":{"version":null}}}`,
+		`{"arguments":{}} {}`,
+		`{"arguments":{}} bad`,
+	} {
+		var out any
+		if e := decodeParams([]byte(input), &out); e == nil {
+			t.Fatal("ambiguous/invalid input accepted", input)
+		}
+	}
+	var out struct{ Arguments map[string]any }
+	if e := decodeParams([]byte(`{"arguments":{"values":{"n":9007199254740993},"spec":{"version":1,"operation":"select","model":"Item","select":["id"]}}}`), &out); e != nil {
+		t.Fatal(e)
+	}
+	values := out.Arguments["values"].(map[string]any)
+	if values["n"] != json.Number("9007199254740993") {
+		t.Fatal(values)
+	}
+	var spec operation.OperationSpec
+	if e := decodeAny(`{"version":2}`, &spec); e == nil {
+		t.Fatal("string version ignored")
+	}
+	if e := decodeAny(`{"version":1} {}`, &spec); e == nil {
+		t.Fatal("trailing document ignored")
+	}
+}

@@ -9,6 +9,9 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/recoweft/goquent/orm/internal/planversion"
+	"github.com/recoweft/goquent/orm/operation"
 )
 
 const maxMessageBytes = 1 << 20
@@ -145,7 +148,25 @@ func decodeParams(params json.RawMessage, out any) error {
 	if len(params) == 0 {
 		params = []byte(`{}`)
 	}
-	return json.Unmarshal(params, out)
+	// Validate nested version declarations before a generic map loses duplicates.
+	var envelope struct {
+		Arguments map[string]json.RawMessage `json:"arguments"`
+		Args      map[string]json.RawMessage `json:"args"`
+	}
+	if err := json.Unmarshal(params, &envelope); err != nil {
+		return err
+	}
+	for _, args := range []map[string]json.RawMessage{envelope.Arguments, envelope.Args} {
+		for _, key := range []string{"spec", "operation_spec"} {
+			if b, ok := args[key]; ok && len(b) > 0 && b[0] != '"' {
+				var spec operation.OperationSpec
+				if err := json.Unmarshal(b, &spec); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return planversion.Decode(params, out)
 }
 
 func marshalRPC(resp rpcResponse) []byte {

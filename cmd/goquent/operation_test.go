@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -96,4 +98,21 @@ func operationTestManifest(stale bool) manifest.Manifest {
 		m.Verification = &manifest.Verification{Fresh: false, CheckedAt: time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC)}
 	}
 	return m
+}
+
+func TestOperationValuesSingleDocumentPrecision(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "values.json")
+	for _, input := range []string{`{"n":9007199254740993}`, `{"n":1} {}`, `{"n":1} bad`, `{"n":`} {
+		if e := os.WriteFile(path, []byte(input), 0600); e != nil {
+			t.Fatal(e)
+		}
+		values, e := loadOperationValues(path)
+		if input == `{"n":9007199254740993}` {
+			if e != nil || values["n"] != json.Number("9007199254740993") {
+				t.Fatal(values, e)
+			}
+		} else if e == nil || values != nil {
+			t.Fatal("failed input was returned", values, e)
+		}
+	}
 }

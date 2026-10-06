@@ -83,3 +83,21 @@ examples/, docs/, specs/   Runnable examples, usage guides and design contracts
 - Do not add intentionally failing tests for future safety requirements. Record
   missing guarantees in the contracts and add executable regression coverage in
   the issue implementing the guarantee.
+
+## GQ-AI-05 PR1 version and identity update
+
+See [version and private identity contracts](docs/plan-version-identity.md) for the current API
+inventory and migration. QueryPlan, ReviewReport, TablePolicy and OperationSpec
+write integer version 1; missing/0 reads are legacy format, unknown/ambiguous
+versions fail. Manifest retains string version "1" and its fingerprint layout.
+Decoded any numbers now retain json.Number lexemes. QueryPlan method-level
+decode clears receiver-private evidence; standard-library pre-method syntax
+failures leave the original receiver unchanged. Always use a fresh external JSON
+receiver and discard it on error; no alias-wide invalidation is promised.
+
+Internal canonical/HMAC snapshots come from the actual private planner seal and
+owner inputs. They add no public ID/key/context or execution API, do not certify
+opaque forms, and cannot prove physical DB identity or live freshness. PR2
+current-input binding and key supply remain unimplemented; public diagnostics
+and identity equality are not authorization. GQ-AI-06 complete redaction remains
+separate. Preserve the existing Strict/compatibility and private lifecycle limits.
