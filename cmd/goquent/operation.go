@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -143,8 +144,13 @@ func loadOperationValues(path string) (map[string]any, error) {
 		return nil, err
 	}
 	var values map[string]any
-	if err := json.Unmarshal(b, &values); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.UseNumber()
+	if err := decoder.Decode(&values); err != nil {
 		return nil, err
+	}
+	if decoder.Decode(new(any)) != io.EOF {
+		return nil, fmt.Errorf("invalid trailing values JSON")
 	}
 	return values, nil
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/internal/planversion"
 	"github.com/recoweft/goquent/orm/manifest"
 	"github.com/recoweft/goquent/orm/query"
 )
@@ -39,6 +40,7 @@ var (
 
 // OperationSpec is the read-only structured interface for AI-generated DB intent.
 type OperationSpec struct {
+	Version      int          `json:"version"`
 	Operation    string       `json:"operation"`
 	Model        string       `json:"model"`
 	Select       []string     `json:"select,omitempty"`
@@ -50,11 +52,15 @@ type OperationSpec struct {
 
 // UnmarshalJSON rejects non-MVP fields such as join, aggregate, mutation, or raw SQL hints.
 func (s *OperationSpec) UnmarshalJSON(b []byte) error {
+	if err := planversion.Read(b); err != nil {
+		return err
+	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
 	}
 	allowed := map[string]struct{}{
+		"version":       {},
 		"operation":     {},
 		"model":         {},
 		"select":        {},
@@ -70,7 +76,7 @@ func (s *OperationSpec) UnmarshalJSON(b []byte) error {
 	}
 	type alias OperationSpec
 	var decoded alias
-	if err := json.Unmarshal(b, &decoded); err != nil {
+	if err := planversion.Decode(b, &decoded); err != nil {
 		return err
 	}
 	*s = OperationSpec(decoded)
@@ -159,6 +165,9 @@ func Compile(ctx context.Context, spec OperationSpec, opts Options) (*query.Quer
 }
 
 func validate(spec OperationSpec, opts Options) (validationResult, error) {
+	if err := planversion.Check(spec.Version); err != nil {
+		return validationResult{}, err
+	}
 	if opts.Manifest == nil {
 		return validationResult{}, ErrManifestRequired
 	}
@@ -512,4 +521,14 @@ func normalizeName(s string) string {
 		s = s[idx+1:]
 	}
 	return strings.ToLower(s)
+}
+
+// MarshalJSON migrates legacy input format without certifying its provenance.
+func (s OperationSpec) MarshalJSON() ([]byte, error) {
+	if err := planversion.Check(s.Version); err != nil {
+		return nil, err
+	}
+	s.Version = planversion.Current
+	type plain OperationSpec
+	return json.Marshal(plain(s))
 }

@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/recoweft/goquent/orm/internal/valuecopy"
+
+	"github.com/recoweft/goquent/orm/internal/planversion"
 )
 
 // PolicySet is an immutable collection of table policies. Its zero value is empty.
@@ -16,6 +18,9 @@ type PolicySet struct{ byTable map[string]TablePolicy }
 func NewPolicySet(policies ...TablePolicy) (PolicySet, error) {
 	set := PolicySet{byTable: make(map[string]TablePolicy, len(policies))}
 	for _, p := range policies {
+		if err := planversion.Check(p.Version); err != nil {
+			return PolicySet{}, err
+		}
 		if strings.TrimSpace(p.Table) == "" {
 			return PolicySet{}, fmt.Errorf("goquent: policy table is required")
 		}

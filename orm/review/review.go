@@ -48,6 +48,7 @@ type ManifestStatus struct {
 
 // ReviewReport is the top-level report produced by goquent review.
 type ReviewReport struct {
+	Version            int             `json:"version"`
 	Findings           []Finding       `json:"findings"`
 	SuppressedFindings []Finding       `json:"suppressed_findings,omitempty"`
 	Summary            ReviewSummary   `json:"summary"`
@@ -315,6 +316,14 @@ func reviewPlanJSONFile(ctx reviewContext, path string) ([]Finding, error) {
 	}
 	var plan query.QueryPlan
 	if err := json.Unmarshal(b, &plan); err != nil {
+		// Ignore unrelated JSON files, but do not silently accept an unsupported
+		// diagnostic plan envelope as an empty successful review.
+		if errors.Is(err, query.ErrJSONVersion) {
+			var fields map[string]json.RawMessage
+			if json.Unmarshal(b, &fields) == nil && fields["operation"] != nil && fields["sql"] != nil {
+				return nil, fmt.Errorf("%s: %w", path, err)
+			}
+		}
 		return nil, nil
 	}
 	if plan.Operation == "" || plan.SQL == "" {

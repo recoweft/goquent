@@ -12,6 +12,7 @@ func JSONSchema() ([]byte, error) {
 		"additionalProperties": false,
 		"required":             []string{"operation", "model", "select"},
 		"properties": map[string]any{
+			"version":       map[string]any{"type": "integer", "enum": []int{0, JSONVersion}, "description": "Missing/0 is legacy format; 1 is current. Neither grants execution authority."},
 			"operation":     map[string]any{"const": OperationSelect},
 			"model":         map[string]any{"type": "string", "minLength": 1},
 			"select":        map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string"}},

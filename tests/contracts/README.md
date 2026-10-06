@@ -126,3 +126,17 @@ C22/C23 manifest requirements and the example hashes are unchanged: neither
 fixture assertions nor manifest Fresh become live schema evidence. JSON retains
 its existing shape plus optional explanatory plan fields; private trust is never
 serialized. Generic/scoped final RETURNING and common CRUD enforcement remain 04.
+
+## Plan contract version 1
+
+`testdata/plan_contract_v1.json` is a language-neutral, fictional test-only
+version/canonical/HMAC fixture, separate from the historical case registry.
+Integer envelope 0/missing migrates to writer 1; unsupported/ambiguous declarations
+fail. The identity vector explicitly uses jsonint for numeric JSON args/tenant,
+not native i64. `orm/version_contract_test.go` checks all four envelope types;
+`orm/internal/planidentity/identity_test.go` checks every canonical/digest vector,
+ordering, typed differences, unavailable inputs and key/context mutations.
+`orm/query/identity_test.go` checks real private planner provenance and decode
+receiver boundaries. Read [the contract](../../docs/plan-version-identity.md) for
+exact encoding, migration and deferred PR2 binding. A fixture digest is never a
+production key, executable artifact, authorization or live DB assertion.

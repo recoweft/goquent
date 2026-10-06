@@ -1,0 +1,355 @@
+{
+  "fixture_version": 1,
+  "notice": "Non-production, fictional test materials only. Digests are internal test vectors, never authorization or public runtime output.",
+  "versions": [
+    {
+      "name": "missing",
+      "json": "{}",
+      "accepted": true,
+      "version": 0
+    },
+    {
+      "name": "zero",
+      "json": "{\"version\":0}",
+      "accepted": true,
+      "version": 0
+    },
+    {
+      "name": "current",
+      "json": "{\"version\":1}",
+      "accepted": true,
+      "version": 1
+    },
+    {
+      "name": "unknown",
+      "json": "{\"version\":2}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "negative",
+      "json": "{\"version\":-1}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "null",
+      "json": "{\"version\":null}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "string",
+      "json": "{\"version\":\"1\"}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "bool",
+      "json": "{\"version\":true}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "fraction",
+      "json": "{\"version\":1.0}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "exponent",
+      "json": "{\"version\":1e0}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "overflow",
+      "json": "{\"version\":9223372036854775808}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "duplicate",
+      "json": "{\"version\":2,\"version\":1}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "duplicate_known",
+      "json": "{\"version\":1,\"version\":1}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "alias",
+      "json": "{\"Version\":1}",
+      "accepted": false,
+      "version": 0
+    },
+    {
+      "name": "collision",
+      "json": "{\"version\":2,\"Version\":1}",
+      "accepted": false,
+      "version": 0
+    }
+  ],
+  "canonical": [
+    {
+      "type": "i64",
+      "value": "9223372036854775807",
+      "canonical": "i6419:9223372036854775807"
+    },
+    {
+      "type": "i64",
+      "value": "-9223372036854775808",
+      "canonical": "i6420:-9223372036854775808"
+    },
+    {
+      "type": "i32",
+      "value": "1",
+      "canonical": "i321:1"
+    },
+    {
+      "type": "i64",
+      "value": "1",
+      "canonical": "i641:1"
+    },
+    {
+      "type": "u64",
+      "value": "18446744073709551615",
+      "canonical": "u6420:18446744073709551615"
+    },
+    {
+      "type": "jsonint",
+      "value": "9007199254740993",
+      "canonical": "jsonint16:9007199254740993"
+    },
+    {
+      "type": "str",
+      "value": "",
+      "canonical": "str0:"
+    },
+    {
+      "type": "bytes",
+      "value": "",
+      "canonical": "bytes0:"
+    },
+    {
+      "type": "nilbytes",
+      "value": "",
+      "canonical": "nilbytes0:"
+    },
+    {
+      "type": "null",
+      "value": "",
+      "canonical": "null0:"
+    },
+    {
+      "type": "bool",
+      "value": "false",
+      "canonical": "bool5:false"
+    },
+    {
+      "type": "json",
+      "value": "[1,2]",
+      "canonical": "list20:jsonint1:1jsonint1:2"
+    },
+    {
+      "type": "json",
+      "value": "[2,1]",
+      "canonical": "list20:jsonint1:2jsonint1:1"
+    },
+    {
+      "type": "json",
+      "value": "{\"b\":2,\"a\":1}",
+      "canonical": "map32:str1:ajsonint1:1str1:bjsonint1:2"
+    },
+    {
+      "type": "json",
+      "value": "{\"a\":1,\"b\":2}",
+      "canonical": "map32:str1:ajsonint1:1str1:bjsonint1:2"
+    }
+  ],
+  "identity": {
+    "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "scope": "fixture-only",
+    "generation": "generation-1",
+    "shape_hex": "c5ff4add51bb32ba5fc0e4efc5721cf3e6ae1667aa65f973b9049c5967fb026b",
+    "execution_hex": "356886efbe96ebc4c03beb19cb019b61d7ff54f71d2083a18e5b53836f0005cf",
+    "material": {
+      "dialect": "postgres",
+      "target": "fixture-db",
+      "operation": "select",
+      "sql": "SELECT \"id\" FROM \"items\" WHERE \"id\" = $1",
+      "shape": "SELECT \"id\" FROM \"items\" WHERE \"id\" = $1",
+      "args": [
+        9007199254740993
+      ],
+      "tenant": 7,
+      "policy": {
+        "mode": "fixture"
+      },
+      "schema": {
+        "table": "items"
+      },
+      "config": {
+        "strict": true
+      }
+    },
+    "number_domain": "material.args and material.tenant numbers are jsonint lexemes, not native i64"
+  },
+  "identity_cases": [
+    {
+      "name": "same_input",
+      "field": "none",
+      "value": null,
+      "available": true,
+      "same_shape": true,
+      "same_execution": true
+    },
+    {
+      "name": "target_changed",
+      "field": "target",
+      "value": "other-fixture",
+      "available": true,
+      "same_shape": true,
+      "same_execution": false
+    },
+    {
+      "name": "tenant_changed",
+      "field": "tenant",
+      "value": 8,
+      "available": true,
+      "same_shape": true,
+      "same_execution": false
+    },
+    {
+      "name": "args_changed",
+      "field": "args",
+      "value": [
+        9007199254740994
+      ],
+      "available": true,
+      "same_shape": true,
+      "same_execution": false
+    },
+    {
+      "name": "sql_changed",
+      "field": "sql",
+      "value": "SELECT \"id\" FROM \"items\" WHERE \"id\" = $1 LIMIT 1",
+      "available": true,
+      "same_shape": true,
+      "same_execution": false
+    },
+    {
+      "name": "scope_changed",
+      "field": "scope",
+      "value": "other-fixture",
+      "available": true,
+      "same_shape": true,
+      "same_execution": false
+    },
+    {
+      "name": "generation_changed",
+      "field": "generation",
+      "value": "generation-2",
+      "available": true,
+      "same_shape": true,
+      "same_execution": false
+    },
+    {
+      "name": "policy_changed",
+      "field": "policy",
+      "value": {
+        "mode": "changed"
+      },
+      "available": true,
+      "same_shape": true,
+      "same_execution": false
+    },
+    {
+      "name": "schema_changed",
+      "field": "schema",
+      "value": {
+        "table": "changed"
+      },
+      "available": true,
+      "same_shape": true,
+      "same_execution": false
+    },
+    {
+      "name": "config_changed",
+      "field": "config",
+      "value": {
+        "strict": false
+      },
+      "available": true,
+      "same_shape": true,
+      "same_execution": false
+    },
+    {
+      "name": "shape_changed",
+      "field": "shape",
+      "value": "SELECT \"other\" FROM \"items\" WHERE \"id\" = $1",
+      "available": true,
+      "same_shape": false,
+      "same_execution": false
+    },
+    {
+      "name": "diagnostic_and_expiry_context",
+      "field": "diagnostic",
+      "value": {
+        "risk_level": "low",
+        "blocked": false,
+        "approval": {
+          "created_at": "2000-01-01T00:00:00Z",
+          "expires_at": "2000-01-02T00:00:00Z"
+        },
+        "warnings": [
+          "b",
+          "a"
+        ],
+        "checked_at": "2000-01-03T00:00:00Z"
+      },
+      "available": true,
+      "same_shape": true,
+      "same_execution": true
+    },
+    {
+      "name": "missing_target",
+      "field": "target",
+      "value": "",
+      "available": false
+    },
+    {
+      "name": "missing_scope",
+      "field": "scope",
+      "value": "",
+      "available": false
+    },
+    {
+      "name": "missing_generation",
+      "field": "generation",
+      "value": "",
+      "available": false
+    },
+    {
+      "name": "missing_shape",
+      "field": "shape",
+      "value": null,
+      "available": false
+    },
+    {
+      "name": "missing_schema",
+      "field": "schema",
+      "value": null,
+      "available": false
+    },
+    {
+      "name": "missing_policy",
+      "field": "policy",
+      "value": null,
+      "available": false
+    }
+  ]
+}

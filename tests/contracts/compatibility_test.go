@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -85,12 +86,12 @@ func TestSharedPlanSerializationAndReview(t *testing.T) {
 					}
 					var decoded query.QueryPlan
 					readJSON(t, path, &decoded)
-					// JSON numbers decode as float64; selected semantics, not byte identity to
+					// JSON numbers retain json.Number lexemes; selected semantics, not byte identity to
 					// every historical wire field/consumer or a trusted executable artifact.
 					if decoded.Operation != query.OperationSelect || decoded.SQL != plan.SQL || decoded.RiskLevel != plan.RiskLevel || !reflect.DeepEqual(decoded.Columns, plan.Columns) || !reflect.DeepEqual(decoded.Predicates, plan.Predicates) {
 						t.Fatal("selected plan fields changed through JSON")
 					}
-					if id == "C01" && !reflect.DeepEqual(decoded.Params, []any{float64(10)}) {
+					if id == "C01" && !reflect.DeepEqual(decoded.Params, []any{json.Number("10")}) {
 						t.Fatalf("decoded params: %#v", decoded.Params)
 					}
 					report, err := review.Run(review.Options{Paths: []string{path}})

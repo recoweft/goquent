@@ -221,3 +221,24 @@ func hasWarning(warnings []query.Warning, code string) bool {
 	}
 	return false
 }
+
+func TestJSONNumberCompileKeepsPrecisionAndINOrder(t *testing.T) {
+	var spec OperationSpec
+	err := json.Unmarshal([]byte(`{"version":1,"operation":"select","model":"Order","select":["id"],"filters":[{"field":"tenant_id","op":"=","value":9223372036854775807},{"field":"id","op":"in","value":[9007199254740993,9007199254740992]}],"limit":5}`), &spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Compile(t.Context(), spec, Options{Manifest: testManifest(false)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []json.Number{"9223372036854775807", "9007199254740993", "9007199254740992"}
+	if len(p.Params) != len(want) {
+		t.Fatal(p.Params)
+	}
+	for i, v := range want {
+		if p.Params[i] != v {
+			t.Fatalf("%d: %T %v", i, p.Params[i], p.Params[i])
+		}
+	}
+}

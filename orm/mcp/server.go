@@ -8,8 +8,10 @@ import (
 
 	"github.com/recoweft/goquent/orm/manifest"
 	"github.com/recoweft/goquent/orm/migration"
-	"github.com/recoweft/goquent/orm/operation"
 	"github.com/recoweft/goquent/orm/query"
+
+	"github.com/recoweft/goquent/orm/internal/planversion"
+	"github.com/recoweft/goquent/orm/operation"
 )
 
 const (
@@ -521,13 +523,13 @@ func optionalBool(args map[string]any, key string) (bool, bool) {
 
 func decodeAny(v any, out any) error {
 	if s, ok := v.(string); ok {
-		return json.Unmarshal([]byte(s), out)
+		return planversion.Decode([]byte(s), out)
 	}
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(b, out)
+	return planversion.Decode(b, out)
 }
 
 func userPrompt(text string) []PromptMessage {

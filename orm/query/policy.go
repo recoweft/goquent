@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/recoweft/goquent/orm/internal/planversion"
 )
 
 const (
@@ -25,6 +27,7 @@ const (
 
 // TablePolicy describes application-specific safety policy for a table.
 type TablePolicy struct {
+	Version               int        `json:"version"`
 	ImmutableColumns      []string   `json:"immutable_columns,omitempty"`
 	ForbiddenColumns      []string   `json:"forbidden_columns,omitempty"`
 	Table                 string     `json:"table"`
@@ -46,6 +49,9 @@ var policyRegistry = struct {
 // RegisterTablePolicy registers or replaces a legacy default for future snapshots.
 // It does not update existing DBs or queries.
 func RegisterTablePolicy(policy TablePolicy) error {
+	if err := planversion.Check(policy.Version); err != nil {
+		return err
+	}
 	policy.Table = strings.TrimSpace(policy.Table)
 	if policy.Table == "" {
 		return fmt.Errorf("goquent: policy table is required")
