@@ -199,8 +199,13 @@ import "github.com/recoweft/goquent/orm"
 - [type QueryPlan](<#QueryPlan>)
   - [func CompileOperationSpec\(ctx context.Context, spec OperationSpec, opts OperationOptions\) \(\*QueryPlan, error\)](<#CompileOperationSpec>)
   - [func PlanDeleteBy\(ctx context.Context, base \*query.Query, scopes ...Scope\) \(\*QueryPlan, error\)](<#PlanDeleteBy>)
+  - [func PlanInsert\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(\*QueryPlan, error\)](<#PlanInsert>)
+  - [func PlanInsertMany\[T any\]\(ctx context.Context, db \*DB, v \[\]T, opts ...WriteOpt\) \(\*QueryPlan, error\)](<#PlanInsertMany>)
   - [func PlanSelectBy\(ctx context.Context, base \*query.Query, scopes ...Scope\) \(\*QueryPlan, error\)](<#PlanSelectBy>)
+  - [func PlanUpdate\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(\*QueryPlan, error\)](<#PlanUpdate>)
   - [func PlanUpdateBy\(ctx context.Context, base \*query.Query, data any, scopes ...Scope\) \(\*QueryPlan, error\)](<#PlanUpdateBy>)
+  - [func PlanUpsert\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(\*QueryPlan, error\)](<#PlanUpsert>)
+  - [func PlanUpsertMany\[T any\]\(ctx context.Context, db \*DB, v \[\]T, opts ...WriteOpt\) \(\*QueryPlan, error\)](<#PlanUpsertMany>)
 - [type RepresentativeGroup](<#RepresentativeGroup>)
   - [func GroupRepresentativeRows\[R any, K comparable\]\(rows \[\]R, key func\(R\) K\) \(\[\]RepresentativeGroup\[R, K\], error\)](<#GroupRepresentativeRows>)
 - [type RequiredPredicate](<#RequiredPredicate>)
@@ -819,7 +824,7 @@ UpdateByReturning applies scopes, executes an UPDATE, and scans the Postgres RET
 func UpdateByReturningWithOptions[T any](ctx context.Context, db *DB, base *query.Query, data any, opts []WriteOpt, scopes ...Scope) (T, error)
 ```
 
-UpdateByReturningWithOptions applies scopes, executes an UPDATE with RETURNING, and applies write options such as NoRowsAs for guarded updates.
+UpdateByReturningWithOptions applies scopes, executes an UPDATE with RETURNING, and applies Returning and NoRowsAs. Other WriteOpt fields \(including ExpectAffected, table, column, key, assignment and conflict options\) retain their legacy nonapplication here. Options are still evaluated. The base/scopes and data determine the actual UPDATE, which is inspected on the destination DB.
 
 <a name="UpdateReturning"></a>
 ## func UpdateReturning
@@ -2153,7 +2158,7 @@ WithSettings explicitly replaces all settings, including any legacy defaults.
 func WithTenantPolicy(database string, schema ApplicationSchema, automatic bool) Option
 ```
 
-WithTenantPolicy opts documented Query paths into conditional strict inspection.
+WithTenantPolicy opts documented Query and generic/scoped paths into conditional strict inspection.
 
 <a name="OrderSpec"></a>
 ## type OrderSpec
@@ -2288,6 +2293,24 @@ func PlanDeleteBy(ctx context.Context, base *query.Query, scopes ...Scope) (*Que
 
 PlanDeleteBy applies scopes to base and returns a DELETE QueryPlan without executing it.
 
+<a name="PlanInsert"></a>
+### func PlanInsert
+
+```go
+func PlanInsert[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (*QueryPlan, error)
+```
+
+PlanInsert inspects the same structural input as Insert without executing SQL. The result is diagnostic only; it cannot be submitted for execution.
+
+<a name="PlanInsertMany"></a>
+### func PlanInsertMany
+
+```go
+func PlanInsertMany[T any](ctx context.Context, db *DB, v []T, opts ...WriteOpt) (*QueryPlan, error)
+```
+
+PlanInsertMany inspects one INSERT statement, not a compound batch operation.
+
 <a name="PlanSelectBy"></a>
 ### func PlanSelectBy
 
@@ -2297,6 +2320,15 @@ func PlanSelectBy(ctx context.Context, base *query.Query, scopes ...Scope) (*Que
 
 PlanSelectBy applies scopes to base and returns a SELECT QueryPlan without executing it.
 
+<a name="PlanUpdate"></a>
+### func PlanUpdate
+
+```go
+func PlanUpdate[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (*QueryPlan, error)
+```
+
+PlanUpdate inspects the same structural input as Update without executing SQL.
+
 <a name="PlanUpdateBy"></a>
 ### func PlanUpdateBy
 
@@ -2305,6 +2337,24 @@ func PlanUpdateBy(ctx context.Context, base *query.Query, data any, scopes ...Sc
 ```
 
 PlanUpdateBy applies scopes to base and returns an UPDATE QueryPlan without executing it.
+
+<a name="PlanUpsert"></a>
+### func PlanUpsert
+
+```go
+func PlanUpsert[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (*QueryPlan, error)
+```
+
+PlanUpsert inspects the same structural input as Upsert without executing SQL.
+
+<a name="PlanUpsertMany"></a>
+### func PlanUpsertMany
+
+```go
+func PlanUpsertMany[T any](ctx context.Context, db *DB, v []T, opts ...WriteOpt) (*QueryPlan, error)
+```
+
+PlanUpsertMany inspects one UPSERT statement, not a compound batch operation.
 
 <a name="RepresentativeGroup"></a>
 ## type RepresentativeGroup
