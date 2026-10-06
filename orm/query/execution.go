@@ -15,18 +15,19 @@ import (
 // diagnostics are never read back as SQL, arguments or permission to execute.
 // This is an in-process lifecycle, not a serialized plan or external permit.
 type plannedExecution struct {
-	identity    *planidentity.Snapshot
-	identityErr error
-	owner       *Query
-	ctx         context.Context
-	executor    executor
-	sql         string
-	args        []any
-	inspection  *QueryPlan
-	insertRows  []map[string]any
-	gate        error
-	expires     *time.Time
-	used        atomic.Bool
+	bindingExpires *time.Time
+	identity       *planidentity.Snapshot
+	identityErr    error
+	owner          *Query
+	ctx            context.Context
+	executor       executor
+	sql            string
+	args           []any
+	inspection     *QueryPlan
+	insertRows     []map[string]any
+	gate           error
+	expires        *time.Time
+	used           atomic.Bool
 }
 
 func (q *Query) sealExecution(p *QueryPlan) {
@@ -94,6 +95,9 @@ func (q *Query) checkExecution(p *QueryPlan) error {
 		if err := e.ctx.Err(); err != nil {
 			return err
 		}
+	}
+	if e.bindingExpires != nil && !e.bindingExpires.After(time.Now().UTC()) {
+		return ErrBindingExpired
 	}
 	if e.expires != nil && !e.expires.After(time.Now().UTC()) {
 		return fmt.Errorf("%w: approval expired", ErrApprovalRequired)

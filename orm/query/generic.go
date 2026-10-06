@@ -34,7 +34,7 @@ func prepareGeneric(r querybridge.Request) (querybridge.Planned, error) {
 		copy := *base
 		q = &copy
 		q.settings = settings
-		q.exec = r.Executor
+		q.exec = &ownedExecutor{r.Executor}
 		q.ctx = r.Context
 		q.dialect = r.Dialect
 		q.builder = newSelectBuilder(r.Dialect)

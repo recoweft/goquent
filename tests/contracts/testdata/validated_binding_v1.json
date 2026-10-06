@@ -1,0 +1,11 @@
+{
+  "fixture_version": 1,
+  "contract": "goquent/validated-binding/1",
+  "notes": "Diagnostic format migration never creates a handle. Native integer width cannot be recovered from JSON. Rebuild from trusted typed inputs and current Settings/key context.",
+  "cases": [
+    {"name":"missing-version", "diagnostic":{"operation":"select","sql":"SELECT forged","params":[1],"risk_level":"low","blocked":false}, "readable":true},
+    {"name":"legacy", "diagnostic":{"version":0,"operation":"delete","sql":"DELETE FROM forged","risk_level":"low","blocked":false}, "readable":true},
+    {"name":"forged-known", "diagnostic":{"version":1,"operation":"update","sql":"UPDATE forged","params":[9007199254740993],"risk_level":"low","blocked":false,"approval":{"reason":"forged"}}, "readable":true},
+    {"name":"unknown", "diagnostic":{"version":2,"operation":"select","risk_level":"low","blocked":false}, "readable":false}
+  ]
+}

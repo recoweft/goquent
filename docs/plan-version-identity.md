@@ -2,9 +2,10 @@
 
 GQ-AI-05 PR1 (1/2), [Issue #70](https://github.com/recoweft/goquent/issues/70).
 This implements diagnostic/input versions and internal correspondence primitives.
-PR2's validated binding, current-input comparison and public key/target supply
-are **not implemented**. No public execute-plan, persistent execution handle,
-IdentityContext, identity getter or key setting is introduced.
+PR2 adds [validated binding](validated-plan-binding.md), explicit current-input
+comparison and detached key/target supply for six Query operations. No public
+QueryPlan/JSON execution, persistent handle, identity getter or automatic key
+management is introduced.
 
 ## Envelope inventory and migration
 
@@ -209,7 +210,7 @@ database fingerprints remain skipped, even when aggregate fresh=true. A supplied
 target/connection label cannot attest physical Executor identity, honest driver
 behavior, authenticated tenant or truth of asserted schema/unique constraints.
 
-PR2 must connect explicit key/target supply, immutable validated reconstruction,
+PR2 connects explicit key/target supply, immutable validated reconstruction,
 current policy/schema/config/tenant/dialect/target comparison, expiry and final
 private SQL/args dispatch. Neither an old manifest comparison at startup nor a
 stored plan JSON supplies those runtime inputs. Live DB changes are not

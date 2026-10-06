@@ -33,6 +33,10 @@ type executor interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
+// ownedExecutor gives each Query an immutable executor reference, including when
+// the supplied executor is a non-comparable value. It delegates all six methods.
+type ownedExecutor struct{ executor }
+
 // Query wraps goquent QueryBuilder and the executor.
 type Query struct {
 	settings           Settings
@@ -97,7 +101,7 @@ func New(exec executor, table string, dialect driver.Dialect) *Query {
 func NewWithSettings(exec executor, table string, dialect driver.Dialect, settings Settings) *Query {
 	builder := newSelectBuilder(dialect)
 	builder.Table(table)
-	q := &Query{builder: builder, exec: exec, dialect: dialect, primaryKey: "id", settings: settings, err: settings.Err()}
+	q := &Query{builder: builder, exec: &ownedExecutor{exec}, dialect: dialect, primaryKey: "id", settings: settings, err: settings.Err()}
 	if policy, ok := settings.PolicySet().PolicyForTable(table); ok {
 		q.policy = &policy
 	}

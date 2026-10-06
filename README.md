@@ -237,4 +237,7 @@ QueryPlan, ReviewReport, TablePolicy and OperationSpec now write integer
 Decoded `any` numbers use `json.Number` instead of `float64`. Use fresh receivers
 for external JSON and discard them on error. See [versions and private identity](docs/plan-version-identity.md)
 for migration and limits. Public JSON is diagnostic, never an execution permit;
-GQ-AI-05 PR2 runtime binding remains separate.
+GQ-AI-05 PR2 adds opt-in [validated plan binding](docs/validated-plan-binding.md)
+for Query Select/Count/Insert/InsertBatch/Update/Delete with explicit current
+settings and key context. Generic/scoped/Raw/compound adapters are not included;
+ordinary CRUD keeps its existing behavior.

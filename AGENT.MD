@@ -97,7 +97,6 @@ receiver and discard it on error; no alias-wide invalidation is promised.
 
 Internal canonical/HMAC snapshots come from the actual private planner seal and
 owner inputs. They add no public ID/key/context or execution API, do not certify
-opaque forms, and cannot prove physical DB identity or live freshness. PR2
-current-input binding and key supply remain unimplemented; public diagnostics
-and identity equality are not authorization. GQ-AI-06 complete redaction remains
+opaque forms, and cannot prove physical DB identity or live freshness. PR2 adds explicit current-input binding and key supply for six Query families;
+see [validated binding](docs/validated-plan-binding.md). Public diagnostics and identity equality are not authorization. GQ-AI-06 complete redaction remains
 separate. Preserve the existing Strict/compatibility and private lifecycle limits.

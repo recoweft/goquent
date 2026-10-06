@@ -138,5 +138,10 @@ not native i64. `orm/version_contract_test.go` checks all four envelope types;
 ordering, typed differences, unavailable inputs and key/context mutations.
 `orm/query/identity_test.go` checks real private planner provenance and decode
 receiver boundaries. Read [the contract](../../docs/plan-version-identity.md) for
-exact encoding, migration and deferred PR2 binding. A fixture digest is never a
+exact encoding and migration, and [validated binding](../../docs/validated-plan-binding.md)
+for the PR2 lifecycle. A fixture digest is never a
 production key, executable artifact, authorization or live DB assertion.
+
+`testdata/validated_binding_v1.json` records diagnostic JSON migration/refusal
+cases. `TestBindingSharedJSONFixture` executes these cases with no Executor calls.
+It carries no key or serialized handle, and does not expand operation support.
