@@ -1,6 +1,8 @@
 package base
 
 import (
+	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/internal/writeinput"
 	"sort"
 	"strings"
 	"sync"
@@ -48,7 +50,7 @@ func (m InsertBaseBuilder) Insert(q *structs.InsertQuery) (string, []interface{}
 
 	// INSERT INTO
 	sb = append(sb, "INSERT INTO "...)
-	sb = m.u.EscapeRelation(sb, q.Table)
+	sb = writeTable(sb, m.u, q.Table, q.Options)
 	sb = append(sb, " "...)
 
 	columns := make([]string, 0, len(q.Values))
@@ -56,6 +58,9 @@ func (m InsertBaseBuilder) Insert(q *structs.InsertQuery) (string, []interface{}
 		columns = append(columns, column)
 	}
 	sort.Strings(columns)
+	if len(q.Options.Columns) > 0 {
+		columns = q.Options.Columns
+	}
 
 	values := make([]interface{}, 0, len(columns))
 	for _, column := range columns {
@@ -67,7 +72,7 @@ func (m InsertBaseBuilder) Insert(q *structs.InsertQuery) (string, []interface{}
 		if i > 0 {
 			sb = append(sb, ", "...)
 		}
-		sb = m.u.EscapeReference(sb, column)
+		sb = writeColumn(sb, m.u, column, q.Options.Literal)
 	}
 	sb = append(sb, ") "...)
 
@@ -121,7 +126,7 @@ func (m InsertBaseBuilder) InsertBatch(q *structs.InsertQuery) (string, []interf
 
 	// INSERT INTO
 	sb = append(sb, "INSERT INTO "...)
-	sb = m.u.EscapeRelation(sb, q.Table)
+	sb = writeTable(sb, m.u, q.Table, q.Options)
 	sb = append(sb, " "...)
 
 	// get all columns from all values
@@ -138,6 +143,9 @@ func (m InsertBaseBuilder) InsertBatch(q *structs.InsertQuery) (string, []interf
 		columns = append(columns, column)
 	}
 	sort.Strings(columns)
+	if len(q.Options.Columns) > 0 {
+		columns = q.Options.Columns
+	}
 
 	// COLUMNS
 	sb = append(sb, "("...)
@@ -145,7 +153,7 @@ func (m InsertBaseBuilder) InsertBatch(q *structs.InsertQuery) (string, []interf
 		if i > 0 {
 			sb = append(sb, ", "...)
 		}
-		sb = m.u.EscapeReference(sb, column)
+		sb = writeColumn(sb, m.u, column, q.Options.Literal)
 	}
 	sb = append(sb, ") VALUES "...)
 
@@ -207,7 +215,7 @@ func (m *InsertBaseBuilder) InsertUsing(q *structs.InsertQuery) (string, []inter
 
 	// INSERT INTO
 	sb = append(sb, "INSERT INTO "...)
-	sb = m.u.EscapeRelation(sb, q.Table)
+	sb = writeTable(sb, m.u, q.Table, q.Options)
 
 	// COLUMNS
 	columns := make([]string, 0, len(q.Columns))
@@ -217,7 +225,7 @@ func (m *InsertBaseBuilder) InsertUsing(q *structs.InsertQuery) (string, []inter
 		if i > 0 {
 			sb = append(sb, ", "...)
 		}
-		sb = m.u.EscapeReference(sb, column)
+		sb = writeColumn(sb, m.u, column, q.Options.Literal)
 	}
 	sb = append(sb, ") "...)
 
@@ -254,44 +262,21 @@ func (m InsertBaseBuilder) Upsert(q *structs.InsertQuery) (string, []interface{}
 		return "", nil, err
 	}
 
-	sb := []byte(baseQuery)
-
-	if m.u.Dialect() == consts.DialectMySQL {
-		sb = append(sb, []byte(" ON DUPLICATE KEY UPDATE ")...)
-		for i, col := range q.Upsert.UpdateColumns {
-			if i > 0 {
-				sb = append(sb, []byte(", ")...)
-			}
-			sb = m.u.EscapeReference(sb, col)
-			sb = append(sb, []byte(" = VALUES(")...)
-			sb = m.u.EscapeReference(sb, col)
-			sb = append(sb, []byte(")")...)
-		}
-	} else if m.u.Dialect() == consts.DialectPostgreSQL {
-		sb = append(sb, []byte(" ON CONFLICT (")...)
-		for i, col := range q.Upsert.UniqueColumns {
-			if i > 0 {
-				sb = append(sb, []byte(", ")...)
-			}
-			sb = m.u.EscapeReference(sb, col)
-		}
-		sb = append(sb, []byte(") DO UPDATE SET ")...)
-		for i, col := range q.Upsert.UpdateColumns {
-			if i > 0 {
-				sb = append(sb, []byte(", ")...)
-			}
-			sb = m.u.EscapeReference(sb, col)
-			sb = append(sb, []byte(" = EXCLUDED.")...)
-			sb = m.u.EscapeReference(sb, col)
-		}
+	c := q.Options.Conflict
+	if c == nil {
+		c = &writeinput.Conflict{Columns: q.Upsert.UniqueColumns, Updates: q.Upsert.UpdateColumns}
 	}
-
-	return string(sb), values, nil
+	var d driver.Dialect = driver.MySQLDialect{}
+	if m.u.Dialect() == consts.DialectPostgreSQL {
+		d = driver.PostgresDialect{}
+	}
+	sql, extra, err := writeinput.AppendConflict(d, baseQuery, c, q.Options.Assignments, len(values)+1, q.Options.Literal, func(col string) string { return string(m.u.EscapeReference(nil, col)) })
+	return sql, append(values, extra...), err
 }
 
 // BuildInsert builds the INSERT query.
 func (m InsertBaseBuilder) BuildInsert(q *structs.InsertQuery) (string, []interface{}, error) {
-	if q.Upsert != nil {
+	if q.Upsert != nil || q.Options.Conflict != nil {
 		return m.Upsert(q)
 	}
 

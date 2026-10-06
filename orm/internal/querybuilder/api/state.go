@@ -327,6 +327,10 @@ func (qb *UpdateQueryBuilder) BuildSnapshot() (string, []any, QuerySnapshot, err
 	for col := range built.Values {
 		snapshot.AssignmentColumns = append(snapshot.AssignmentColumns, col)
 	}
+	for _, a := range built.Options.Assignments {
+		snapshot.AssignmentColumns = append(snapshot.AssignmentColumns, a.Column)
+		snapshot.Unverified = append(snapshot.Unverified, "assignment_expression")
+	}
 	sort.Strings(snapshot.AssignmentColumns)
 	return sql, args, snapshot, nil
 }

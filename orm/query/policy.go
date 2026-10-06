@@ -250,8 +250,15 @@ func checkPolicyWithContext(plan *QueryPlan, policy *TablePolicy, ctx policyChec
 			true,
 		))
 	}
-	if plan.Operation == OperationSelect {
-		for _, col := range selectedPIIColumnsForPolicy(plan, policy.Table, policy.PIIColumns) {
+	projection := plan
+	returning, _ := plan.Metadata["returning_columns"].([]string)
+	if len(returning) > 0 {
+		v := *plan
+		v.Columns = columnRefsFromNames(returning)
+		projection = &v
+	}
+	if plan.Operation == OperationSelect || len(returning) > 0 {
+		for _, col := range selectedPIIColumnsForPolicy(projection, policy.Table, policy.PIIColumns) {
 			w := policyWarning(
 				WarningPIIColumnSelected,
 				policyModeLevel(policy.PIIMode, RiskMedium),

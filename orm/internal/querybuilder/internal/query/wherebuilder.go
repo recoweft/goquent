@@ -792,3 +792,8 @@ func (b *WhereBuilder[T]) addWhereTime(column string, condition string, value st
 func (b *WhereBuilder[T]) GetQuery() *structs.Query {
 	return b.query
 }
+
+// WhereLiteral retains the generic primary-key identifier and equality contract.
+func (b *WhereBuilder[T]) WhereLiteral(column string, value any) {
+	*b.query.Conditions = append(*b.query.Conditions, structs.Where{Column: column, Condition: "=", Value: []any{value}, Operator: consts.LogicalOperator_AND, LiteralColumn: true})
+}

@@ -90,6 +90,14 @@ func combine(nodes []*Predicate, ops []int) *Predicate {
 }
 
 func leafKind(c Where) string {
+	if c.LiteralColumn {
+		for i, b := range []byte(c.Column) {
+			if !(b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b == '_' || i > 0 && b >= '0' && b <= '9') {
+				return "opaque"
+			}
+		}
+	}
+
 	switch {
 	case c.Raw != "", c.Query != nil, c.Exists != nil, c.Function != "", c.FullText != nil, c.JsonContains != nil, c.JsonLength != nil:
 		return "opaque"

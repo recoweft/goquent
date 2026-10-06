@@ -110,7 +110,7 @@ error, returns a non-suppressible blocked plan. No custom CheckQuery method is
 called on these paths. Explicit WithRiskConfig or WithSettings replaces the
 unsupported default; it is never silently replaced with built-in defaults.
 Constructors retain their signatures and connection call timing. This is an
-intentional compatibility restriction. Generic paths outside the plan pipeline
+intentional compatibility restriction. Paths outside the documented plan pipeline
 remain outside this check as well; this is not universal execution gating.
 Custom engines can still be used directly through their existing interface.
 `orm.DefaultRiskEngine` is historically a separate interface-variable copy of
@@ -152,8 +152,9 @@ OperationSpec compilation has no DB argument and continues to use standalone
 query construction plus supplied manifest checks. Static review/MCP and explicit
 engine/registry APIs remain separate consumers; some review paths directly read
 the global risk engine. They do not acquire a DB/request context. Direct executor,
-SQLDB/driver calls, generic trusted writes, composite operations and incomplete
-RETURNING paths retain the exclusions in contracts v3. Supplying settings does
+SQLDB/driver calls and composite-operation orchestration retain their exclusions.
+GQ-AI-04/PR2 integrates generic CRUD/RETURNING and scoped destination helpers; see
+[the current entry inventory](planned-query-execution.md). Supplying settings does
 not mean these paths are policy-enforced. A separately supplied scoped Query and
 DB are still not bound by identity; GQ-AI-04/05 own that integration.
 

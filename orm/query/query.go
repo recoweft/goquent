@@ -12,6 +12,7 @@ import (
 	qbapi "github.com/recoweft/goquent/orm/internal/querybuilder/api"
 	qbmysql "github.com/recoweft/goquent/orm/internal/querybuilder/database/mysql"
 	qbpostgres "github.com/recoweft/goquent/orm/internal/querybuilder/database/postgres"
+	"github.com/recoweft/goquent/orm/internal/writeinput"
 	"github.com/recoweft/goquent/orm/scanner"
 )
 
@@ -50,7 +51,6 @@ type Query struct {
 	accessReason       string
 	withDeleted        bool
 	onlyDeleted        bool
-	policyApplied      bool
 }
 
 // CursorColumn describes an ordered column used by keyset cursor predicates.
@@ -248,25 +248,6 @@ func (q *Query) finalizePlan(plan *QueryPlan) {
 	finalizePlanWithSettings(plan, q.approval, q.suppressions, q.policy, q.settings)
 	q.finalizeTenantPolicy(plan)
 	q.sealExecution(plan)
-}
-
-func (q *Query) applyPolicyPredicates() {
-	if q.settings.strict {
-		return
-	}
-	if q.policyApplied || q.policy == nil || q.policy.SoftDeleteColumn == "" {
-		return
-	}
-	switch {
-	case q.onlyDeleted:
-		q.builder.WhereNotNull(q.policy.SoftDeleteColumn)
-		q.policyApplied = true
-	case q.withDeleted:
-		q.policyApplied = true
-	default:
-		q.builder.WhereNull(q.policy.SoftDeleteColumn)
-		q.policyApplied = true
-	}
 }
 
 func (q *Query) applyPolicyMetadata(plan *QueryPlan) {
@@ -468,7 +449,6 @@ func (q *Query) Count(cols ...string) (int64, error) {
 	if q.err != nil {
 		return 0, q.err
 	}
-	q.applyPolicyPredicates()
 
 	b := newSelectBuilder(q.dialect)
 	b.Table(q.tableName())
@@ -1492,7 +1472,6 @@ func (q *Query) Insert(data any) (sql.Result, error) {
 
 // PlanInsert builds an INSERT plan for data without executing it.
 func (q *Query) PlanInsert(ctx context.Context, data any) (*QueryPlan, error) {
-	_ = ctx
 	if q.err != nil {
 		return nil, q.err
 	}
@@ -1500,22 +1479,7 @@ func (q *Query) PlanInsert(ctx context.Context, data any) (*QueryPlan, error) {
 	if err != nil {
 		return nil, err
 	}
-	ib := newInsertBuilder(q.dialect)
-	rows, err := q.tenantRows([]map[string]any{m}, false, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	m = rows[0]
-	ib.Table(q.tableName()).Insert(m)
-	sqlStr, args, snapshot, err := ib.BuildSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
-	plan.Columns = columnRefsFromNames(snapshot.Columns)
-	q.finalizePlan(plan)
-	return plan, nil
+	return q.planInsertRows(ctx, []map[string]any{m}, writeinput.Options{}, "insert", false)
 }
 
 // InsertGetId executes an INSERT and returns the auto-increment ID.
@@ -1563,26 +1527,7 @@ func (q *Query) InsertBatch(data []map[string]any) (sql.Result, error) {
 
 // PlanInsertBatch builds a batch INSERT plan without executing it.
 func (q *Query) PlanInsertBatch(ctx context.Context, data []map[string]any) (*QueryPlan, error) {
-	_ = ctx
-	if q.err != nil {
-		return nil, q.err
-	}
-	ib := newInsertBuilder(q.dialect)
-	data, err := q.tenantRows(data, false, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	ib.Table(q.tableName()).InsertBatch(data)
-	sqlStr, args, snapshot, err := ib.BuildSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
-	plan.Columns = columnRefsFromNames(snapshot.Columns)
-	plan.Metadata = map[string]any{"batch_size": snapshot.BatchSize}
-	q.finalizePlan(plan)
-	return plan, nil
+	return q.planInsertRows(ctx, data, writeinput.Options{}, "insert", true)
 }
 
 // InsertOrIgnore executes an INSERT IGNORE.
@@ -1595,26 +1540,7 @@ func (q *Query) InsertOrIgnore(data []map[string]any) (sql.Result, error) {
 }
 
 func (q *Query) planInsertOrIgnore(ctx context.Context, data []map[string]any) (*QueryPlan, error) {
-	_ = ctx
-	if q.err != nil {
-		return nil, q.err
-	}
-	ib := newInsertBuilder(q.dialect)
-	data, err := q.tenantRows(data, false, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	ib.Table(q.tableName()).InsertOrIgnore(data)
-	sqlStr, args, snapshot, err := ib.BuildSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
-	plan.Columns = columnRefsFromNames(snapshot.Columns)
-	plan.Metadata = map[string]any{"insert_mode": "ignore", "batch_size": snapshot.BatchSize}
-	q.finalizePlan(plan)
-	return plan, nil
+	return q.planInsertRows(ctx, data, writeinput.Options{}, "ignore", true)
 }
 
 // Upsert executes an UPSERT using ON DUPLICATE KEY UPDATE.
@@ -1627,29 +1553,7 @@ func (q *Query) Upsert(data []map[string]any, unique []string, updateCols []stri
 }
 
 func (q *Query) planUpsert(ctx context.Context, data []map[string]any, unique []string, updateCols []string) (*QueryPlan, error) {
-	if q.settings.strict && (len(unique) == 0 || len(updateCols) == 0) {
-		return nil, tenantError("conflict_target_or_updates_missing")
-	}
-	_ = ctx
-	if q.err != nil {
-		return nil, q.err
-	}
-	ib := newInsertBuilder(q.dialect)
-	data, err := q.tenantRows(data, false, unique, updateCols)
-	if err != nil {
-		return nil, err
-	}
-	ib.Table(q.tableName()).Upsert(data, unique, updateCols)
-	sqlStr, args, snapshot, err := ib.BuildSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
-	plan.Columns = columnRefsFromNames(snapshot.Columns)
-	plan.Metadata = map[string]any{"insert_mode": "upsert", "unique_columns": snapshot.UniqueColumns, "update_columns": snapshot.UpdateColumns}
-	q.finalizePlan(plan)
-	return plan, nil
+	return q.planInsertRows(ctx, data, writeinput.Options{Conflict: &writeinput.Conflict{Columns: unique, Updates: updateCols}}, "upsert", false)
 }
 
 // UpdateOrInsert performs UPDATE or INSERT based on condition.
@@ -1732,37 +1636,14 @@ func (q *Query) Update(data any) (sql.Result, error) {
 
 // PlanUpdate builds an UPDATE plan for data without executing it.
 func (q *Query) PlanUpdate(ctx context.Context, data any) (*QueryPlan, error) {
-	_ = ctx
 	if q.err != nil {
 		return nil, q.err
 	}
-	q.applyPolicyPredicates()
 	m, err := dataToMap(data)
 	if err != nil {
 		return nil, err
 	}
-	ub := newUpdateBuilder(q.dialect)
-	rows, err := q.tenantRows([]map[string]any{m}, true, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	m = rows[0]
-	ub.Table(q.tableName()).Update(m)
-	source, err := q.policyBuilder(q.builder)
-	if err != nil {
-		return nil, err
-	}
-	copyBuilderState(source, ub)
-	sqlStr, args, snapshot, err := ub.BuildSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	plan := newQueryPlan(OperationUpdate, sqlStr, args)
-	appendTableRef(plan, snapshot.Table, "")
-	plan.Columns = columnRefsFromNames(snapshot.AssignmentColumns)
-	appendWriteSnapshotMetadata(plan, snapshot)
-	q.finalizePlan(plan)
-	return plan, nil
+	return q.planUpdateValues(ctx, m, writeinput.Options{})
 }
 
 // Delete executes a DELETE query using current conditions.
@@ -1780,7 +1661,6 @@ func (q *Query) PlanDelete(ctx context.Context) (*QueryPlan, error) {
 	if q.err != nil {
 		return nil, q.err
 	}
-	q.applyPolicyPredicates()
 	delBuilder := newDeleteBuilder(q.dialect)
 	delBuilder.Table(q.tableName()).Delete()
 	source, err := q.policyBuilder(q.builder)

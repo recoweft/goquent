@@ -5,6 +5,7 @@ import (
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/common/structs"
 	"github.com/recoweft/goquent/orm/internal/querybuilder/internal/db/interfaces"
 	"github.com/recoweft/goquent/orm/internal/valuecopy"
+	"github.com/recoweft/goquent/orm/internal/writeinput"
 )
 
 type UpdateBuilder struct {
@@ -71,6 +72,7 @@ func (u *UpdateBuilder) Build() (string, []interface{}, error) {
 	u.query.Query.Order = u.OrderByBuilder.Order
 
 	frozen := *u.query
+	frozen.Options = u.query.Options.Clone()
 	frozen.Values = make(map[string]any, len(u.query.Values))
 	copier := valuecopy.New()
 	for k, v := range u.query.Values {
@@ -100,3 +102,5 @@ func (b *UpdateBuilder) ReOrder() *UpdateBuilder {
 func (b *UpdateBuilder) GetQuery() *structs.UpdateQuery {
 	return b.query
 }
+
+func (b *UpdateBuilder) WriteOptions(o writeinput.Options) { b.query.Options = o.Clone() }

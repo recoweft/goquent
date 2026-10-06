@@ -1,6 +1,9 @@
 package structs
 
-import "github.com/recoweft/goquent/orm/predicate"
+import (
+	"github.com/recoweft/goquent/orm/internal/writeinput"
+	"github.com/recoweft/goquent/orm/predicate"
+)
 
 type Column struct {
 	Name     string
@@ -16,21 +19,22 @@ type Table struct {
 }
 
 type Where struct {
-	Nested       []WhereGroup
-	Column       string
-	Condition    string
-	Value        []interface{}
-	ValueColumn  string
-	ValueMap     map[string]any
-	Operator     int
-	Query        *Query
-	Between      *WhereBetween
-	Exists       *Exists
-	FullText     *FullText
-	JsonContains *JsonContains
-	JsonLength   *JsonLength
-	Raw          string
-	Function     string
+	LiteralColumn bool
+	Nested        []WhereGroup
+	Column        string
+	Condition     string
+	Value         []interface{}
+	ValueColumn   string
+	ValueMap      map[string]any
+	Operator      int
+	Query         *Query
+	Between       *WhereBetween
+	Exists        *Exists
+	FullText      *FullText
+	JsonContains  *JsonContains
+	JsonLength    *JsonLength
+	Raw           string
+	Function      string
 }
 
 type WhereBetween struct {
@@ -106,6 +110,7 @@ type SelectQuery struct {
 }
 
 type InsertQuery struct {
+	Options     writeinput.Options
 	Table       string
 	Values      map[string]interface{}
 	ValuesBatch []map[string]interface{}
@@ -121,9 +126,10 @@ type Upsert struct {
 }
 
 type UpdateQuery struct {
-	Table  string
-	Values map[string]interface{}
-	Query  *Query
+	Options writeinput.Options
+	Table   string
+	Values  map[string]interface{}
+	Query   *Query
 }
 
 type DeleteQuery struct {

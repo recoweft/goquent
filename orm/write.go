@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/internal/querybridge"
+	"github.com/recoweft/goquent/orm/internal/writeinput"
 	"github.com/recoweft/goquent/orm/model"
-	"github.com/recoweft/goquent/orm/query"
 )
 
 // WriteOpt configures write behavior.
@@ -38,22 +38,14 @@ type writeOptions struct {
 	zeroRowsErr        error
 }
 
-type writeAssignmentKind int
+type writeAssignment = writeinput.Assignment
 
 const (
-	writeAssignmentRaw writeAssignmentKind = iota
-	writeAssignmentExpr
-	writeAssignmentColumn
-	writeAssignmentIncrement
+	writeAssignmentRaw       = writeinput.Raw
+	writeAssignmentExpr      = writeinput.Expr
+	writeAssignmentColumn    = writeinput.Column
+	writeAssignmentIncrement = writeinput.Increment
 )
-
-type writeAssignment struct {
-	column       string
-	expression   string
-	args         []any
-	sourceColumn string
-	kind         writeAssignmentKind
-}
 
 // Columns limits write to specified columns.
 func Columns(cols ...string) WriteOpt {
@@ -176,9 +168,9 @@ func PK(cols ...string) WriteOpt {
 func SetRaw(column, expression string) WriteOpt {
 	return func(o *writeOptions) {
 		o.assignments = append(o.assignments, writeAssignment{
-			column:     column,
-			expression: expression,
-			kind:       writeAssignmentRaw,
+			Column:     column,
+			Expression: expression,
+			Kind:       writeAssignmentRaw,
 		})
 	}
 }
@@ -188,10 +180,10 @@ func SetRaw(column, expression string) WriteOpt {
 func SetExpr(column, expression string, args ...any) WriteOpt {
 	return func(o *writeOptions) {
 		o.assignments = append(o.assignments, writeAssignment{
-			column:     column,
-			expression: expression,
-			args:       append([]any(nil), args...),
-			kind:       writeAssignmentExpr,
+			Column:     column,
+			Expression: expression,
+			Args:       append([]any(nil), args...),
+			Kind:       writeAssignmentExpr,
 		})
 	}
 }
@@ -200,9 +192,9 @@ func SetExpr(column, expression string, args ...any) WriteOpt {
 func SetColumn(column, sourceColumn string) WriteOpt {
 	return func(o *writeOptions) {
 		o.assignments = append(o.assignments, writeAssignment{
-			column:       column,
-			sourceColumn: sourceColumn,
-			kind:         writeAssignmentColumn,
+			Column:       column,
+			SourceColumn: sourceColumn,
+			Kind:         writeAssignmentColumn,
 		})
 	}
 }
@@ -212,9 +204,9 @@ func SetColumn(column, sourceColumn string) WriteOpt {
 func Increment(column string, delta any) WriteOpt {
 	return func(o *writeOptions) {
 		o.assignments = append(o.assignments, writeAssignment{
-			column: column,
-			args:   []any{delta},
-			kind:   writeAssignmentIncrement,
+			Column: column,
+			Args:   []any{delta},
+			Kind:   writeAssignmentIncrement,
 		})
 	}
 }
@@ -265,52 +257,6 @@ func (o *writeOptions) isConflictColumn(col string) bool {
 	return false
 }
 
-func quote(d driver.Dialect, ident string) string { return d.QuoteIdent(ident) }
-
-func quoteIdentifierPath(d driver.Dialect, ident string) (string, error) {
-	return quoteIdentifierPathParts(d, strings.Split(ident, "."))
-}
-
-func quoteIdentifierPathParts(d driver.Dialect, parts []string) (string, error) {
-	if len(parts) == 0 {
-		return "", fmt.Errorf("goquent: identifier path is required")
-	}
-	quoted := make([]string, len(parts))
-	for i, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			return "", fmt.Errorf("goquent: identifier path contains an empty part")
-		}
-		quoted[i] = quote(d, part)
-	}
-	return strings.Join(quoted, "."), nil
-}
-
-func quoteWriteTable(d driver.Dialect, table string, o *writeOptions) (string, error) {
-	if len(o.tablePath) > 0 {
-		return quoteIdentifierPathParts(d, o.tablePath)
-	}
-	table = strings.TrimSpace(table)
-	if table == "" {
-		return "", fmt.Errorf("goquent: table name is required")
-	}
-	if schema := strings.TrimSpace(o.schema); schema != "" {
-		if strings.Contains(table, ".") {
-			return "", fmt.Errorf("goquent: Schema cannot be combined with schema-qualified table %q", table)
-		}
-		return quoteIdentifierPathParts(d, []string{schema, table})
-	}
-	return quoteIdentifierPath(d, table)
-}
-
-func buildPlaceholders(d driver.Dialect, n int, start int) []string {
-	ph := make([]string, n)
-	for i := 0; i < n; i++ {
-		ph[i] = d.Placeholder(start + i)
-	}
-	return ph
-}
-
 type returningResult struct {
 	rowsAffected int64
 }
@@ -321,92 +267,6 @@ func (r returningResult) LastInsertId() (int64, error) {
 
 func (r returningResult) RowsAffected() (int64, error) {
 	return r.rowsAffected, nil
-}
-
-func appendReturningClause(d driver.Dialect, sqlStr string, cols []string) (string, error) {
-	if len(cols) == 0 {
-		return sqlStr, nil
-	}
-	if _, ok := d.(driver.PostgresDialect); !ok {
-		return "", fmt.Errorf("Returning is not supported on dialect: %T", d)
-	}
-	rc := make([]string, len(cols))
-	for i, c := range cols {
-		quoted, err := quoteIdentifierPath(d, c)
-		if err != nil {
-			return "", err
-		}
-		rc[i] = quoted
-	}
-	return sqlStr + " RETURNING " + strings.Join(rc, ", "), nil
-}
-
-func execReturningRows(ctx context.Context, db *DB, sqlStr string, args ...any) (sql.Result, error) {
-	var (
-		rows *sql.Rows
-		err  error
-	)
-	if ctx != nil {
-		rows, err = db.exec.QueryContext(ctx, sqlStr, args...)
-	} else {
-		rows, err = db.exec.Query(sqlStr, args...)
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	cols, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-	scanDst := make([]any, len(cols))
-	values := make([]any, len(cols))
-	for i := range scanDst {
-		scanDst[i] = &values[i]
-	}
-
-	var count int64
-	for rows.Next() {
-		if len(scanDst) > 0 {
-			if err := rows.Scan(scanDst...); err != nil {
-				return nil, err
-			}
-		}
-		count++
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return returningResult{rowsAffected: count}, nil
-}
-
-func queryReturningOne[T any](ctx context.Context, db *DB, sqlStr string, args ...any) (T, error) {
-	var zero T
-	rows, err := db.queryContextTrusted(ctx, sqlStr, args...)
-	if err != nil {
-		return zero, err
-	}
-	defer rows.Close()
-	return scanRowsOne[T](db, rows)
-}
-
-func queryReturningAll[T any](ctx context.Context, db *DB, sqlStr string, args ...any) ([]T, error) {
-	rows, err := db.queryContextTrusted(ctx, sqlStr, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanRowsAll[T](db, rows)
-}
-
-func queryReturningOneWithOptions[T any](ctx context.Context, db *DB, sqlStr string, o *writeOptions, args ...any) (T, error) {
-	row, err := queryReturningOne[T](ctx, db, sqlStr, args...)
-	if err == nil || !IsNotFound(err) || o == nil || o.zeroRowsErr == nil {
-		return row, err
-	}
-	var zero T
-	return zero, RowsAffectedError{Expected: 1, Actual: 0, Cause: o.zeroRowsErr}
 }
 
 func ensureReturningColumns[T any](o *writeOptions) error {
@@ -441,25 +301,6 @@ func returningColumnsForQuery[T any]() ([]string, error) {
 	return cols, nil
 }
 
-func execWriteStatement(ctx context.Context, db *DB, sqlStr string, args []any, o *writeOptions) (sql.Result, error) {
-	var (
-		res sql.Result
-		err error
-	)
-	if o != nil && len(o.returning) > 0 {
-		res, err = execReturningRows(ctx, db, sqlStr, args...)
-	} else {
-		res, err = db.execContextTrusted(ctx, sqlStr, args...)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := checkRowsAffected(res, o); err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
 func checkRowsAffected(res sql.Result, o *writeOptions) error {
 	if res == nil || o == nil || (o.expectAffected == nil && o.zeroRowsErr == nil) {
 		return nil
@@ -485,154 +326,14 @@ func checkRowsAffected(res sql.Result, o *writeOptions) error {
 	return nil
 }
 
-func validateWriteRawSQLFragment(raw string) error {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return fmt.Errorf("goquent: raw SQL fragment is required")
-	}
-	if strings.ContainsAny(trimmed, ";\x00") ||
-		strings.Contains(trimmed, "--") ||
-		strings.Contains(trimmed, "/*") ||
-		strings.Contains(trimmed, "*/") {
-		return fmt.Errorf("goquent: raw SQL fragment contains a statement separator or comment")
-	}
-	upper := strings.ToUpper(trimmed)
-	for _, token := range []string{"ALTER", "CREATE", "DELETE", "DROP", "GRANT", "INSERT", "REVOKE", "TRUNCATE", "UPDATE"} {
-		if containsSQLWord(upper, token) {
-			return fmt.Errorf("goquent: raw SQL fragment contains disallowed SQL token %q", token)
-		}
-	}
-	return nil
-}
-
-func writeAssignmentTargets(assignments []writeAssignment) map[string]struct{} {
-	targets := make(map[string]struct{}, len(assignments))
-	for _, assignment := range assignments {
-		column := strings.TrimSpace(assignment.column)
-		if column == "" {
-			continue
-		}
-		targets[column] = struct{}{}
-	}
-	return targets
-}
-
-func validateWriteAssignments(assignments []writeAssignment) error {
-	seen := make(map[string]struct{}, len(assignments))
-	for _, assignment := range assignments {
-		column := strings.TrimSpace(assignment.column)
-		if column == "" {
-			return fmt.Errorf("goquent: assignment column is required")
-		}
-		if _, ok := seen[column]; ok {
-			return fmt.Errorf("goquent: duplicate assignment for column %s", column)
-		}
-		seen[column] = struct{}{}
-	}
-	return nil
-}
-
-func buildWriteSetParts(d driver.Dialect, setCols []string, setArgs []any, assignments []writeAssignment, start int) ([]string, []any, error) {
-	if err := validateWriteAssignments(assignments); err != nil {
-		return nil, nil, err
-	}
-	setParts := make([]string, 0, len(setCols)+len(assignments))
-	args := make([]any, 0, len(setArgs)+len(assignments))
-	argPos := start
-	for i, col := range setCols {
-		setParts = append(setParts, fmt.Sprintf("%s=%s", quote(d, col), d.Placeholder(argPos)))
-		args = append(args, setArgs[i])
-		argPos++
-	}
-	for _, assignment := range assignments {
-		target, err := quoteIdentifierPath(d, assignment.column)
-		if err != nil {
-			return nil, nil, err
-		}
-		expr, exprArgs, err := renderWriteAssignment(d, assignment, argPos)
-		if err != nil {
-			return nil, nil, err
-		}
-		setParts = append(setParts, fmt.Sprintf("%s=%s", target, expr))
-		args = append(args, exprArgs...)
-		argPos += len(exprArgs)
-	}
-	return setParts, args, nil
-}
-
-func renderWriteAssignment(d driver.Dialect, assignment writeAssignment, start int) (string, []any, error) {
-	switch assignment.kind {
-	case writeAssignmentRaw:
-		if len(assignment.args) > 0 {
-			return "", nil, fmt.Errorf("goquent: SetRaw does not accept args")
-		}
-		expr := strings.TrimSpace(assignment.expression)
-		if err := validateWriteRawSQLFragment(expr); err != nil {
-			return "", nil, err
-		}
-		if strings.Contains(expr, "?") {
-			return "", nil, fmt.Errorf("goquent: SetRaw expression contains placeholders; use SetExpr")
-		}
-		return expr, nil, nil
-	case writeAssignmentExpr:
-		expr := strings.TrimSpace(assignment.expression)
-		if err := validateWriteRawSQLFragment(expr); err != nil {
-			return "", nil, err
-		}
-		rendered, err := renderWriteExpressionPlaceholders(d, expr, len(assignment.args), start)
-		if err != nil {
-			return "", nil, err
-		}
-		return rendered, append([]any(nil), assignment.args...), nil
-	case writeAssignmentColumn:
-		if len(assignment.args) > 0 {
-			return "", nil, fmt.Errorf("goquent: SetColumn does not accept args")
-		}
-		expr, err := quoteIdentifierPath(d, assignment.sourceColumn)
-		return expr, nil, err
-	case writeAssignmentIncrement:
-		if len(assignment.args) != 1 {
-			return "", nil, fmt.Errorf("goquent: Increment requires one delta arg")
-		}
-		target, err := quoteIdentifierPath(d, assignment.column)
-		if err != nil {
-			return "", nil, err
-		}
-		return fmt.Sprintf("%s + %s", target, d.Placeholder(start)), append([]any(nil), assignment.args...), nil
-	default:
-		return "", nil, fmt.Errorf("goquent: unknown assignment kind")
-	}
-}
-
-func renderWriteExpressionPlaceholders(d driver.Dialect, expr string, argCount int, start int) (string, error) {
-	if strings.Count(expr, "?") != argCount {
-		return "", fmt.Errorf("goquent: SetExpr placeholder count does not match args")
-	}
-	if argCount == 0 {
-		return expr, nil
-	}
-	var b strings.Builder
-	b.Grow(len(expr) + argCount*2)
-	argIndex := 0
-	for i := 0; i < len(expr); i++ {
-		if expr[i] != '?' {
-			b.WriteByte(expr[i])
-			continue
-		}
-		b.WriteString(d.Placeholder(start + argIndex))
-		argIndex++
-	}
-	return b.String(), nil
-}
-
 // Insert inserts v into its table.
 func Insert[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (sql.Result, error) {
 	o := applyWriteOpts(opts)
-	sqlStr, args, err := buildInsertStatement(db, v, o)
+	input, err := buildInsertInput(db, v, o)
 	if err != nil {
 		return nil, err
 	}
-	return execWriteStatement(ctx, db, sqlStr, args, o)
+	return execWriteInput(ctx, db, input, o)
 }
 
 // InsertReturning inserts v and scans the Postgres RETURNING row into T.
@@ -642,11 +343,11 @@ func InsertReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...Wri
 	if err := ensureReturningColumns[T](o); err != nil {
 		return zero, err
 	}
-	sqlStr, args, err := buildInsertStatement(db, v, o)
+	input, err := buildInsertInput(db, v, o)
 	if err != nil {
 		return zero, err
 	}
-	return queryReturningOneWithOptions[T](ctx, db, sqlStr, o, args...)
+	return queryWriteOneWithOptions[T](ctx, db, input, o)
 }
 
 // InsertMany inserts all values in one INSERT statement.
@@ -655,11 +356,11 @@ func InsertReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...Wri
 // Table, and every row must provide the selected column set.
 func InsertMany[T any](ctx context.Context, db *DB, values []T, opts ...WriteOpt) (sql.Result, error) {
 	o := applyWriteOpts(opts)
-	sqlStr, args, err := buildInsertManyStatement(db, values, o)
+	input, err := buildInsertManyInput(db, values, o)
 	if err != nil {
 		return nil, err
 	}
-	return execWriteStatement(ctx, db, sqlStr, args, o)
+	return execWriteInput(ctx, db, input, o)
 }
 
 // InsertManyReturning inserts all values and scans PostgreSQL RETURNING rows.
@@ -671,11 +372,11 @@ func InsertManyReturning[R any, T any](ctx context.Context, db *DB, values []T, 
 	if err := ensureReturningColumns[R](o); err != nil {
 		return nil, err
 	}
-	sqlStr, args, err := buildInsertManyStatement(db, values, o)
+	input, err := buildInsertManyInput(db, values, o)
 	if err != nil {
 		return nil, err
 	}
-	return queryReturningAll[R](ctx, db, sqlStr, args...)
+	return queryWriteAll[R](ctx, db, input)
 }
 
 // UpsertMany inserts or updates all values in one bulk UPSERT statement.
@@ -685,11 +386,11 @@ func InsertManyReturning[R any, T any](ctx context.Context, db *DB, values []T, 
 // must provide the selected column set.
 func UpsertMany[T any](ctx context.Context, db *DB, values []T, opts ...WriteOpt) (sql.Result, error) {
 	o := applyWriteOpts(opts)
-	sqlStr, args, err := buildUpsertManyStatement(db, values, o)
+	input, err := buildUpsertManyInput(db, values, o)
 	if err != nil {
 		return nil, err
 	}
-	return execWriteStatement(ctx, db, sqlStr, args, o)
+	return execWriteInput(ctx, db, input, o)
 }
 
 // UpsertManyReturning upserts all values and scans PostgreSQL RETURNING rows.
@@ -701,18 +402,21 @@ func UpsertManyReturning[R any, T any](ctx context.Context, db *DB, values []T, 
 	if err := ensureReturningColumns[R](o); err != nil {
 		return nil, err
 	}
-	sqlStr, args, err := buildUpsertManyStatement(db, values, o)
+	input, err := buildUpsertManyInput(db, values, o)
 	if err != nil {
 		return nil, err
 	}
-	return queryReturningAll[R](ctx, db, sqlStr, args...)
+	return queryWriteAll[R](ctx, db, input)
 }
 
-func buildInsertStatement(db *DB, v any, o *writeOptions) (string, []any, error) {
+func buildInsertInput(db *DB, v any, o *writeOptions) (querybridge.Request, error) {
 	if len(o.assignments) > 0 {
-		return "", nil, fmt.Errorf("assignment options are not supported for Insert")
+		return querybridge.Request{}, fmt.Errorf("assignment options are not supported for Insert")
 	}
 	val := reflect.ValueOf(v)
+	if !val.IsValid() {
+		return querybridge.Request{}, fmt.Errorf("unsupported type <nil>")
+	}
 	typ := val.Type()
 	var table string
 	var cols []string
@@ -720,7 +424,7 @@ func buildInsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 
 	if isMapStringInterface(typ) {
 		if o.table == "" {
-			return "", nil, fmt.Errorf("Table option required for map writes")
+			return querybridge.Request{}, fmt.Errorf("Table option required for map writes")
 		}
 		table = o.table
 		iter := val.MapRange()
@@ -748,42 +452,28 @@ func buildInsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 		var err error
 		cols, args, err = insertStructColumnsAndArgs(val, o)
 		if err != nil {
-			return "", nil, err
+			return querybridge.Request{}, err
 		}
 	} else {
-		return "", nil, fmt.Errorf("unsupported type %s", typ)
+		return querybridge.Request{}, fmt.Errorf("unsupported type %s", typ)
 	}
 	if len(cols) == 0 {
-		return "", nil, fmt.Errorf("no columns to insert")
+		return querybridge.Request{}, fmt.Errorf("no columns to insert")
 	}
-	ph := buildPlaceholders(db.drv.Dialect, len(cols), 1)
-	quotedCols := make([]string, len(cols))
-	for i, c := range cols {
-		quotedCols[i] = quote(db.drv.Dialect, c)
-	}
-	tableSQL, err := quoteWriteTable(db.drv.Dialect, table, o)
-	if err != nil {
-		return "", nil, err
-	}
-	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableSQL, strings.Join(quotedCols, ", "), strings.Join(ph, ", "))
-	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
-	if err != nil {
-		return "", nil, err
-	}
-	return sqlStr, args, nil
+	return newWriteInput("insert", table, cols, args, 1, nil, o)
 }
 
-func buildInsertManyStatement[T any](db *DB, values []T, o *writeOptions) (string, []any, error) {
+func buildInsertManyInput[T any](db *DB, values []T, o *writeOptions) (querybridge.Request, error) {
 	if len(values) == 0 {
-		return "", nil, fmt.Errorf("goquent: no rows to insert")
+		return querybridge.Request{}, fmt.Errorf("goquent: no rows to insert")
 	}
 	if err := validateInsertManyOptions(o); err != nil {
-		return "", nil, err
+		return querybridge.Request{}, err
 	}
 
 	first := reflect.ValueOf(values[0])
 	if !first.IsValid() {
-		return "", nil, fmt.Errorf("unsupported type <nil>")
+		return querybridge.Request{}, fmt.Errorf("unsupported type <nil>")
 	}
 	typ := first.Type()
 
@@ -796,7 +486,7 @@ func buildInsertManyStatement[T any](db *DB, values []T, o *writeOptions) (strin
 	switch {
 	case isMapStringInterface(typ):
 		if o.table == "" {
-			return "", nil, fmt.Errorf("Table option required for map writes")
+			return querybridge.Request{}, fmt.Errorf("Table option required for map writes")
 		}
 		table = o.table
 		cols, args, err = insertManyMapColumnsAndArgs(values, o)
@@ -807,28 +497,30 @@ func buildInsertManyStatement[T any](db *DB, values []T, o *writeOptions) (strin
 		}
 		cols, args, err = insertManyStructColumnsAndArgs(values, typ, o)
 	default:
-		return "", nil, fmt.Errorf("unsupported type %s", typ)
+		return querybridge.Request{}, fmt.Errorf("unsupported type %s", typ)
 	}
 	if err != nil {
-		return "", nil, err
+		return querybridge.Request{}, err
 	}
-	return buildInsertManySQL(db, table, cols, len(values), args, o)
+	r, err := newWriteInput("insert", table, cols, args, len(values), nil, o)
+	r.Batch = true
+	return r, err
 }
 
-func buildUpsertManyStatement[T any](db *DB, values []T, o *writeOptions) (string, []any, error) {
+func buildUpsertManyInput[T any](db *DB, values []T, o *writeOptions) (querybridge.Request, error) {
 	if len(values) == 0 {
-		return "", nil, fmt.Errorf("goquent: no rows to upsert")
+		return querybridge.Request{}, fmt.Errorf("goquent: no rows to upsert")
 	}
 	if !o.wherePK && !o.hasConflictTarget() {
-		return "", nil, fmt.Errorf("UpsertMany[T] requires WherePK, ConflictColumns, or ConflictConstraint")
+		return querybridge.Request{}, fmt.Errorf("UpsertMany[T] requires WherePK, ConflictColumns, or ConflictConstraint")
 	}
 	if o.conflictDoNothing && (len(o.assignments) > 0 || len(o.upsertUpdateCols) > 0) {
-		return "", nil, fmt.Errorf("ConflictDoNothing cannot be combined with update or assignment options")
+		return querybridge.Request{}, fmt.Errorf("ConflictDoNothing cannot be combined with update or assignment options")
 	}
 
 	first := reflect.ValueOf(values[0])
 	if !first.IsValid() {
-		return "", nil, fmt.Errorf("unsupported type <nil>")
+		return querybridge.Request{}, fmt.Errorf("unsupported type <nil>")
 	}
 	typ := first.Type()
 
@@ -842,10 +534,10 @@ func buildUpsertManyStatement[T any](db *DB, values []T, o *writeOptions) (strin
 	switch {
 	case isMapStringInterface(typ):
 		if o.table == "" {
-			return "", nil, fmt.Errorf("Table option required for map writes")
+			return querybridge.Request{}, fmt.Errorf("Table option required for map writes")
 		}
 		if o.wherePK && len(o.pkCols) == 0 {
-			return "", nil, fmt.Errorf("WherePK for map writes requires PK columns via PK option")
+			return querybridge.Request{}, fmt.Errorf("WherePK for map writes requires PK columns via PK option")
 		}
 		table = o.table
 		cols, args, pkCols, err = upsertManyMapColumnsArgsAndPK(values, o)
@@ -856,35 +548,20 @@ func buildUpsertManyStatement[T any](db *DB, values []T, o *writeOptions) (strin
 		}
 		cols, args, pkCols, err = upsertManyStructColumnsArgsAndPK(values, typ, o)
 	default:
-		return "", nil, fmt.Errorf("unsupported type %s", typ)
+		return querybridge.Request{}, fmt.Errorf("unsupported type %s", typ)
 	}
 	if err != nil {
-		return "", nil, err
+		return querybridge.Request{}, err
 	}
 	if o.wherePK && len(pkCols) == 0 {
-		return "", nil, fmt.Errorf("WherePK requires pk values")
+		return querybridge.Request{}, fmt.Errorf("WherePK requires pk values")
 	}
 	if len(cols) == 0 {
-		return "", nil, fmt.Errorf("no columns to insert")
+		return querybridge.Request{}, fmt.Errorf("no columns to insert")
 	}
-	if err := ensureConflictColumnsPresent(o.conflictCols, cols); err != nil {
-		return "", nil, err
-	}
-	sqlStr, err := buildInsertManyBaseSQL(db, table, cols, len(values), o)
-	if err != nil {
-		return "", nil, err
-	}
-	targetCols := conflictTargetColumns(o, pkCols)
-	sqlStr, assignmentArgs, err := appendUpsertConflictClause(db.drv.Dialect, sqlStr, cols, targetCols, o, len(args)+1)
-	if err != nil {
-		return "", nil, err
-	}
-	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
-	if err != nil {
-		return "", nil, err
-	}
-	args = append(args, assignmentArgs...)
-	return sqlStr, args, nil
+	r, err := newWriteInput("upsert", table, cols, args, len(values), pkCols, o)
+	r.Batch = true
+	return r, err
 }
 
 func validateInsertManyOptions(o *writeOptions) error {
@@ -1160,45 +837,14 @@ func sameColumns(a, b []string) bool {
 	return true
 }
 
-func buildInsertManySQL(db *DB, table string, cols []string, rowCount int, args []any, o *writeOptions) (string, []any, error) {
-	sqlStr, err := buildInsertManyBaseSQL(db, table, cols, rowCount, o)
-	if err != nil {
-		return "", nil, err
-	}
-	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
-	if err != nil {
-		return "", nil, err
-	}
-	return sqlStr, args, nil
-}
-
-func buildInsertManyBaseSQL(db *DB, table string, cols []string, rowCount int, o *writeOptions) (string, error) {
-	quotedCols := make([]string, len(cols))
-	for i, c := range cols {
-		quotedCols[i] = quote(db.drv.Dialect, c)
-	}
-	values := make([]string, rowCount)
-	argPos := 1
-	for i := 0; i < rowCount; i++ {
-		ph := buildPlaceholders(db.drv.Dialect, len(cols), argPos)
-		values[i] = "(" + strings.Join(ph, ", ") + ")"
-		argPos += len(cols)
-	}
-	tableSQL, err := quoteWriteTable(db.drv.Dialect, table, o)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("INSERT INTO %s (%s) VALUES %s", tableSQL, strings.Join(quotedCols, ", "), strings.Join(values, ", ")), nil
-}
-
 // Update updates record v.
 func Update[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (sql.Result, error) {
 	o := applyWriteOpts(opts)
-	sqlStr, args, err := buildUpdateStatement(db, v, o)
+	input, err := buildUpdateInput(db, v, o)
 	if err != nil {
 		return nil, err
 	}
-	return execWriteStatement(ctx, db, sqlStr, args, o)
+	return execWriteInput(ctx, db, input, o)
 }
 
 // UpdateReturning updates v and scans the Postgres RETURNING row into T.
@@ -1208,19 +854,22 @@ func UpdateReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...Wri
 	if err := ensureReturningColumns[T](o); err != nil {
 		return zero, err
 	}
-	sqlStr, args, err := buildUpdateStatement(db, v, o)
+	input, err := buildUpdateInput(db, v, o)
 	if err != nil {
 		return zero, err
 	}
-	return queryReturningOneWithOptions[T](ctx, db, sqlStr, o, args...)
+	return queryWriteOneWithOptions[T](ctx, db, input, o)
 }
 
-func buildUpdateStatement(db *DB, v any, o *writeOptions) (string, []any, error) {
+func buildUpdateInput(db *DB, v any, o *writeOptions) (querybridge.Request, error) {
 	if !o.wherePK {
-		return "", nil, fmt.Errorf("Update[T] without WherePK is not allowed")
+		return querybridge.Request{}, fmt.Errorf("Update[T] without WherePK is not allowed")
 	}
-	assignmentTargets := writeAssignmentTargets(o.assignments)
+	assignmentTargets := writeinput.Targets(o.assignments)
 	val := reflect.ValueOf(v)
+	if !val.IsValid() {
+		return querybridge.Request{}, fmt.Errorf("unsupported type <nil>")
+	}
 	typ := val.Type()
 	var table string
 	var setCols []string
@@ -1230,10 +879,10 @@ func buildUpdateStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 
 	if isMapStringInterface(typ) {
 		if o.table == "" {
-			return "", nil, fmt.Errorf("Table option required for map writes")
+			return querybridge.Request{}, fmt.Errorf("Table option required for map writes")
 		}
 		if len(o.pkCols) == 0 {
-			return "", nil, fmt.Errorf("WherePK for map writes requires PK columns via PK option")
+			return querybridge.Request{}, fmt.Errorf("WherePK for map writes requires PK columns via PK option")
 		}
 		table = o.table
 		iter := val.MapRange()
@@ -1263,7 +912,7 @@ func buildUpdateStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 		}
 		for pk := range o.pkCols {
 			if !seen[pk] {
-				return "", nil, fmt.Errorf("WherePK requires pk column %s", pk)
+				return querybridge.Request{}, fmt.Errorf("WherePK requires pk column %s", pk)
 			}
 		}
 	} else if typ.Kind() == reflect.Struct {
@@ -1273,7 +922,7 @@ func buildUpdateStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 		}
 		meta, err := getTypeMeta(typ)
 		if err != nil {
-			return "", nil, err
+			return querybridge.Request{}, err
 		}
 		for _, fm := range meta.FieldsByName {
 			fv := val.FieldByIndex(fm.IndexPath)
@@ -1303,43 +952,28 @@ func buildUpdateStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 			setArgs = append(setArgs, fv.Interface())
 		}
 	} else {
-		return "", nil, fmt.Errorf("unsupported type %s", typ)
+		return querybridge.Request{}, fmt.Errorf("unsupported type %s", typ)
 	}
 	if len(whereCols) == 0 {
-		return "", nil, fmt.Errorf("WherePK requires pk values")
+		return querybridge.Request{}, fmt.Errorf("WherePK requires pk values")
 	}
 	if len(setCols) == 0 && len(o.assignments) == 0 {
-		return "", nil, fmt.Errorf("no columns to update")
+		return querybridge.Request{}, fmt.Errorf("no columns to update")
 	}
-	setParts, setArgs, err := buildWriteSetParts(db.drv.Dialect, setCols, setArgs, o.assignments, 1)
-	if err != nil {
-		return "", nil, err
-	}
-	whereParts := make([]string, len(whereCols))
-	for i, col := range whereCols {
-		whereParts[i] = fmt.Sprintf("%s=%s", quote(db.drv.Dialect, col), db.drv.Dialect.Placeholder(len(setArgs)+i+1))
-	}
-	args := append(append([]any(nil), setArgs...), whereArgs...)
-	tableSQL, err := quoteWriteTable(db.drv.Dialect, table, o)
-	if err != nil {
-		return "", nil, err
-	}
-	sqlStr := fmt.Sprintf("UPDATE %s SET %s WHERE %s", tableSQL, strings.Join(setParts, ", "), strings.Join(whereParts, " AND "))
-	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
-	if err != nil {
-		return "", nil, err
-	}
-	return sqlStr, args, nil
+	r, err := newWriteInput("update", table, setCols, setArgs, 1, nil, o)
+	r.WhereColumns = whereCols
+	r.WhereValues = whereArgs
+	return r, err
 }
 
 // Upsert inserts or updates v using primary keys.
 func Upsert[T any](ctx context.Context, db *DB, v T, opts ...WriteOpt) (sql.Result, error) {
 	o := applyWriteOpts(opts)
-	sqlStr, args, err := buildUpsertStatement(db, v, o)
+	input, err := buildUpsertInput(db, v, o)
 	if err != nil {
 		return nil, err
 	}
-	return execWriteStatement(ctx, db, sqlStr, args, o)
+	return execWriteInput(ctx, db, input, o)
 }
 
 // UpsertReturning upserts v and scans the Postgres RETURNING row into T.
@@ -1349,11 +983,11 @@ func UpsertReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...Wri
 	if err := ensureReturningColumns[T](o); err != nil {
 		return zero, err
 	}
-	sqlStr, args, err := buildUpsertStatement(db, v, o)
+	input, err := buildUpsertInput(db, v, o)
 	if err != nil {
 		return zero, err
 	}
-	return queryReturningOneWithOptions[T](ctx, db, sqlStr, o, args...)
+	return queryWriteOneWithOptions[T](ctx, db, input, o)
 }
 
 // InsertOnceReturning inserts v once and scans the inserted or existing row.
@@ -1372,11 +1006,11 @@ func InsertOnceReturning[T any, V any](ctx context.Context, db *DB, v V, opts ..
 	o.hasUpsertUpdates = true
 	o.conflictDoNothing = true
 
-	sqlStr, args, err := buildUpsertStatement(db, v, o)
+	input, err := buildUpsertInput(db, v, o)
 	if err != nil {
 		return zero, false, err
 	}
-	inserted, err := queryReturningOne[T](ctx, db, sqlStr, args...)
+	inserted, err := queryWriteOne[T](ctx, db, input)
 	if err == nil {
 		return inserted, true, nil
 	}
@@ -1391,14 +1025,17 @@ func InsertOnceReturning[T any, V any](ctx context.Context, db *DB, v V, opts ..
 	return existing, false, nil
 }
 
-func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error) {
+func buildUpsertInput(db *DB, v any, o *writeOptions) (querybridge.Request, error) {
 	if !o.wherePK && !o.hasConflictTarget() {
-		return "", nil, fmt.Errorf("Upsert[T] requires WherePK, ConflictColumns, or ConflictConstraint")
+		return querybridge.Request{}, fmt.Errorf("Upsert[T] requires WherePK, ConflictColumns, or ConflictConstraint")
 	}
 	if o.conflictDoNothing && (len(o.assignments) > 0 || len(o.upsertUpdateCols) > 0) {
-		return "", nil, fmt.Errorf("ConflictDoNothing cannot be combined with update or assignment options")
+		return querybridge.Request{}, fmt.Errorf("ConflictDoNothing cannot be combined with update or assignment options")
 	}
 	val := reflect.ValueOf(v)
+	if !val.IsValid() {
+		return querybridge.Request{}, fmt.Errorf("unsupported type <nil>")
+	}
 	typ := val.Type()
 	var table string
 	var cols []string
@@ -1407,10 +1044,10 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 
 	if isMapStringInterface(typ) {
 		if o.table == "" {
-			return "", nil, fmt.Errorf("Table option required for map writes")
+			return querybridge.Request{}, fmt.Errorf("Table option required for map writes")
 		}
 		if o.wherePK && len(o.pkCols) == 0 {
-			return "", nil, fmt.Errorf("WherePK for map writes requires PK columns via PK option")
+			return querybridge.Request{}, fmt.Errorf("WherePK for map writes requires PK columns via PK option")
 		}
 		table = o.table
 		iter := val.MapRange()
@@ -1444,7 +1081,7 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 		if o.wherePK {
 			for pk := range o.pkCols {
 				if !seen[pk] {
-					return "", nil, fmt.Errorf("WherePK requires pk column %s", pk)
+					return querybridge.Request{}, fmt.Errorf("WherePK requires pk column %s", pk)
 				}
 			}
 		}
@@ -1455,7 +1092,7 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 		}
 		meta, err := getTypeMeta(typ)
 		if err != nil {
-			return "", nil, err
+			return querybridge.Request{}, err
 		}
 		for _, fm := range meta.FieldsByName {
 			fv := val.FieldByIndex(fm.IndexPath)
@@ -1488,80 +1125,15 @@ func buildUpsertStatement(db *DB, v any, o *writeOptions) (string, []any, error)
 			args = append(args, fv.Interface())
 		}
 	} else {
-		return "", nil, fmt.Errorf("unsupported type %s", typ)
+		return querybridge.Request{}, fmt.Errorf("unsupported type %s", typ)
 	}
 	if o.wherePK && len(pkCols) == 0 {
-		return "", nil, fmt.Errorf("WherePK requires pk values")
+		return querybridge.Request{}, fmt.Errorf("WherePK requires pk values")
 	}
 	if len(cols) == 0 {
-		return "", nil, fmt.Errorf("no columns to insert")
+		return querybridge.Request{}, fmt.Errorf("no columns to insert")
 	}
-	if err := ensureConflictColumnsPresent(o.conflictCols, cols); err != nil {
-		return "", nil, err
-	}
-	ph := buildPlaceholders(db.drv.Dialect, len(cols), 1)
-	quotedCols := make([]string, len(cols))
-	for i, c := range cols {
-		quotedCols[i] = quote(db.drv.Dialect, c)
-	}
-	tableSQL, err := quoteWriteTable(db.drv.Dialect, table, o)
-	if err != nil {
-		return "", nil, err
-	}
-	sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableSQL, strings.Join(quotedCols, ", "), strings.Join(ph, ", "))
-	targetCols := conflictTargetColumns(o, pkCols)
-	sqlStr, assignmentArgs, err := appendUpsertConflictClause(db.drv.Dialect, sqlStr, cols, targetCols, o, len(args)+1)
-	if err != nil {
-		return "", nil, err
-	}
-	sqlStr, err = appendReturningClause(db.drv.Dialect, sqlStr, o.returning)
-	if err != nil {
-		return "", nil, err
-	}
-	args = append(args, assignmentArgs...)
-	return sqlStr, args, nil
-}
-
-func appendUpsertConflictClause(d driver.Dialect, sqlStr string, cols []string, targetCols []string, o *writeOptions, assignmentStart int) (string, []any, error) {
-	updateCols, err := upsertUpdateColumns(cols, targetCols, o)
-	if err != nil {
-		return "", nil, err
-	}
-	assignmentParts, assignmentArgs, err := buildWriteSetParts(d, nil, nil, o.assignments, assignmentStart)
-	if err != nil {
-		return "", nil, err
-	}
-	switch d.(type) {
-	case driver.MySQLDialect:
-		if strings.TrimSpace(o.conflictWhere) != "" || strings.TrimSpace(o.conflictConstraint) != "" || strings.TrimSpace(o.conflictTargetRaw) != "" {
-			return "", nil, fmt.Errorf("ConflictWhere, ConflictConstraint, and ConflictTargetRaw are not supported on dialect: %T", d)
-		}
-		if len(updateCols) > 0 || len(assignmentParts) > 0 {
-			assigns := make([]string, 0, len(updateCols)+len(assignmentParts))
-			for _, c := range updateCols {
-				assigns = append(assigns, fmt.Sprintf("%s=VALUES(%s)", quote(d, c), quote(d, c)))
-			}
-			assigns = append(assigns, assignmentParts...)
-			return sqlStr + " ON DUPLICATE KEY UPDATE " + strings.Join(assigns, ", "), assignmentArgs, nil
-		}
-		return strings.Replace(sqlStr, "INSERT", "INSERT IGNORE", 1), assignmentArgs, nil
-	case driver.PostgresDialect:
-		target, err := postgresConflictTarget(d, targetCols, o)
-		if err != nil {
-			return "", nil, err
-		}
-		if len(updateCols) > 0 || len(assignmentParts) > 0 {
-			assigns := make([]string, 0, len(updateCols)+len(assignmentParts))
-			for _, c := range updateCols {
-				assigns = append(assigns, fmt.Sprintf("%s=EXCLUDED.%s", quote(d, c), quote(d, c)))
-			}
-			assigns = append(assigns, assignmentParts...)
-			return fmt.Sprintf("%s ON CONFLICT %s DO UPDATE SET %s", sqlStr, target, strings.Join(assigns, ", ")), assignmentArgs, nil
-		}
-		return fmt.Sprintf("%s ON CONFLICT %s DO NOTHING", sqlStr, target), assignmentArgs, nil
-	default:
-		return "", nil, fmt.Errorf("upsert not supported on dialect: %T", d)
-	}
+	return newWriteInput("upsert", table, cols, args, 1, pkCols, o)
 }
 
 func selectExistingInsertOnceRow[T any](ctx context.Context, db *DB, v any, o *writeOptions) (T, error) {
@@ -1589,14 +1161,7 @@ func selectExistingInsertOnceRow[T any](ctx context.Context, db *DB, v any, o *w
 	if predicate := strings.TrimSpace(o.conflictWhere); predicate != "" {
 		q.WhereRawNoArgs(predicate)
 	}
-	plan, err := q.Plan(ctx)
-	if err != nil {
-		return zero, err
-	}
-	if err := query.EnsurePlanExecutable(plan); err != nil {
-		return zero, err
-	}
-	return SelectOne[T](ctx, db.RequireRawApproval("goquent generated insert-once lookup"), plan.SQL, plan.Params...)
+	return SelectOneBy[T](ctx, db, q)
 }
 
 func writeLookupValues(v any, o *writeOptions) (string, map[string]any, []string, error) {
@@ -1651,7 +1216,7 @@ func conflictTargetColumns(o *writeOptions, pkCols []string) []string {
 }
 
 func upsertUpdateColumns(cols []string, targetCols []string, o *writeOptions) ([]string, error) {
-	assignmentTargets := writeAssignmentTargets(o.assignments)
+	assignmentTargets := writeinput.Targets(o.assignments)
 	if o.hasUpsertUpdates {
 		updateCols := dedupeColumns(o.upsertUpdateCols)
 		updateCols = filterColumns(updateCols, assignmentTargets)
@@ -1708,22 +1273,6 @@ func dedupeColumns(cols []string) []string {
 	return out
 }
 
-func ensureConflictColumnsPresent(targetCols []string, cols []string) error {
-	if len(targetCols) == 0 {
-		return nil
-	}
-	present := make(map[string]struct{}, len(cols))
-	for _, col := range cols {
-		present[col] = struct{}{}
-	}
-	for _, col := range targetCols {
-		if _, ok := present[col]; !ok {
-			return fmt.Errorf("ConflictColumns requires column %s", col)
-		}
-	}
-	return nil
-}
-
 func ensureUpsertUpdateColumnsPresent(updateCols []string, insertCols []string) error {
 	if len(updateCols) == 0 {
 		return nil
@@ -1738,68 +1287,4 @@ func ensureUpsertUpdateColumnsPresent(updateCols []string, insertCols []string) 
 		}
 	}
 	return nil
-}
-
-func postgresConflictTarget(d driver.Dialect, cols []string, o *writeOptions) (string, error) {
-	rawTarget := strings.TrimSpace(o.conflictTargetRaw)
-	constraint := strings.TrimSpace(o.conflictConstraint)
-	predicate := strings.TrimSpace(o.conflictWhere)
-	if rawTarget != "" {
-		if len(o.conflictCols) > 0 {
-			return "", fmt.Errorf("ConflictTargetRaw cannot be combined with ConflictColumns")
-		}
-		if constraint != "" {
-			return "", fmt.Errorf("ConflictTargetRaw cannot be combined with ConflictConstraint")
-		}
-		if predicate != "" {
-			return "", fmt.Errorf("ConflictTargetRaw cannot be combined with ConflictWhere")
-		}
-		if err := validateWriteRawSQLFragment(rawTarget); err != nil {
-			return "", err
-		}
-		return rawTarget, nil
-	}
-	if constraint != "" {
-		if len(o.conflictCols) > 0 {
-			return "", fmt.Errorf("ConflictConstraint cannot be combined with ConflictColumns")
-		}
-		if predicate != "" {
-			return "", fmt.Errorf("ConflictConstraint cannot be combined with ConflictWhere")
-		}
-		return "ON CONSTRAINT " + quote(d, constraint), nil
-	}
-	if len(cols) == 0 {
-		return "", fmt.Errorf("Postgres upsert requires ConflictColumns or WherePK primary key columns")
-	}
-	quoted := make([]string, len(cols))
-	for i, col := range cols {
-		quoted[i] = quote(d, col)
-	}
-	target := "(" + strings.Join(quoted, ", ") + ")"
-	if predicate != "" {
-		if err := validateWriteRawSQLFragment(predicate); err != nil {
-			return "", err
-		}
-		target += " WHERE " + predicate
-	}
-	return target, nil
-}
-
-func containsSQLWord(upperSQL, token string) bool {
-	for i := 0; i+len(token) <= len(upperSQL); i++ {
-		if upperSQL[i:i+len(token)] != token {
-			continue
-		}
-		beforeOK := i == 0 || !isSQLWordByte(upperSQL[i-1])
-		after := i + len(token)
-		afterOK := after >= len(upperSQL) || !isSQLWordByte(upperSQL[after])
-		if beforeOK && afterOK {
-			return true
-		}
-	}
-	return false
-}
-
-func isSQLWordByte(b byte) bool {
-	return (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
 }

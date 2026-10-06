@@ -1,7 +1,9 @@
 # Conditional tenant and policy inspection
 
 GQ-AI-03/PR2, [Issue #60](https://github.com/recoweft/goquent/issues/60).
-This opt-in gate applies to the Query paths listed below. It is not a unified
+This opt-in gate applies to Query and the generic/scoped paths in the current
+[GQ-AI-04 entry inventory](planned-query-execution.md). The table below records
+the historical PR65 baseline. It is not a unified
 Strict profile, authentication service, universal CRUD gate, or ExecutionPermit.
 
 ## Application supply and migration
@@ -163,8 +165,9 @@ an arbitrary public/legacy plan is still not a general artifact validator.
 | OperationSpec/review/MCP/manifest | No acquisition of application trust; existing contracts unchanged |
 | Build/Dump/RawSQL/direct SQLDB/Tx/driver/Executor | No semantic execution gate |
 
-Do not enable this option expecting generic writes to become protected. Move the
-operation to a covered Query path or provide application enforcement until 04.
+GQ-AI-04/PR2 now protects the listed generic CRUD/RETURNING and scoped helpers.
+Consult the current inventory for exact coverage and migration; compound and
+low-level escape paths remain excluded.
 05 owns versioned plan/executor correspondence, 06 complete output masking, 07
 complex OperationSpec, 09 review reconstruction, 10 result checks, 11 schema
 freshness and 13 external permits. None is completed by this conditional gate.
@@ -191,6 +194,7 @@ err = requestDB.Table("orders").Select("id").Where("id", orderID).First(&order)
 Construct a new request derivation for each authorized tenant. Keeping the old
 NewExecutionContext call under this option intentionally fails closed.
 
-For GQ-AI-04/PR1 execution integration and the current entry boundaries, see
+For GQ-AI-04/PR2 execution integration and the current entry boundaries, see
 [planned Query execution](planned-query-execution.md). The historical table above
-describes the PR65 baseline; generic and compound coverage remains deferred.
+describes the PR65 baseline; generic integration is now in PR2, while compound
+completion remains PR3.

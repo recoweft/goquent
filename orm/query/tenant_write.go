@@ -1,8 +1,12 @@
 package query
 
 import (
+	"fmt"
+	"github.com/recoweft/goquent/orm/driver"
 	"reflect"
+	"strings"
 
+	"github.com/recoweft/goquent/orm/internal/valuecopy"
 	"github.com/recoweft/goquent/orm/internal/valueguard"
 )
 
@@ -145,7 +149,7 @@ func tenantWriteColumn(t tenantTarget, col string, update bool) error {
 }
 
 // planReturning checks the final generated projection before resealing this
-// internally generated plan. Generic/scoped RETURNING remains GQ-AI-04.
+// internally generated plan, including generic and scoped writes.
 func (q *Query) planReturning(p *QueryPlan, cols []string) error {
 	if p == nil || p.execution == nil || p.execution.owner != q || p.execution.used.Load() {
 		return tenantError("missing_or_consumed_execution_plan")
@@ -157,7 +161,16 @@ func (q *Query) planReturning(p *QueryPlan, cols []string) error {
 	// neither executable inputs nor proof that RETURNING was checked.
 	destination := p
 	original := *p.execution.inspection
+	metadata := original.Metadata
 	p = &original
+	p.Metadata = make(map[string]any, len(metadata))
+	for k, v := range metadata {
+		if required, ok := v.([]RequiredPredicate); ok {
+			p.Metadata[k] = append([]RequiredPredicate(nil), required...)
+		} else {
+			p.Metadata[k], _ = valuecopy.Copy(v)
+		}
+	}
 	if q.settings.strict {
 		if err := checkTenantEvidence(p); err != nil {
 			return err
@@ -170,13 +183,26 @@ func (q *Query) planReturning(p *QueryPlan, cols []string) error {
 			return err
 		}
 	}
+	if _, ok := q.dialect.(driver.PostgresDialect); !ok {
+		return fmt.Errorf("Returning is not supported on dialect: %T", q.dialect)
+	}
 	for i, col := range cols {
 		if i == 0 {
 			p.SQL += " RETURNING "
 		} else {
 			p.SQL += ", "
 		}
-		p.SQL += q.dialect.QuoteIdent(col)
+		parts := strings.Split(col, ".")
+		for j, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				return fmt.Errorf("goquent: identifier path contains an empty part")
+			}
+			if j > 0 {
+				p.SQL += "."
+			}
+			p.SQL += q.dialect.QuoteIdent(part)
+		}
 	}
 	p.Metadata["returning_columns"] = append([]string(nil), cols...)
 	q.finalizePlan(p)

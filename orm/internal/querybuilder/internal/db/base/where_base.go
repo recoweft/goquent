@@ -138,6 +138,12 @@ func (wb *WhereBaseBuilder) ProcessBetweenCondition(sb *[]byte, c structs.Where)
 }
 
 func (wb *WhereBaseBuilder) ProcessRawCondition(sb *[]byte, c structs.Where) ([]interface{}, error) {
+	if c.LiteralColumn {
+		*sb = writeColumn(*sb, wb.u, c.Column, true)
+		*sb = append(*sb, "="+wb.u.GetPlaceholder()...)
+		return c.Value, nil
+	}
+
 	if c.Raw != "" {
 		if c.ValueMap != nil {
 			rawSQL, values, err := sqlutils.ExpandNamedPlaceholders(c.Raw, c.ValueMap, wb.u.GetPlaceholder)

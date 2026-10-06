@@ -354,9 +354,6 @@ func (q *Query) planSelectBuilder(ctx context.Context, builder *qbapi.SelectQuer
 	if q.err != nil {
 		return nil, q.err
 	}
-	if builder == q.builder {
-		q.applyPolicyPredicates()
-	}
 	builder, err := q.policyBuilder(builder)
 	if err != nil {
 		return nil, err
