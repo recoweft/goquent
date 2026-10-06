@@ -3,7 +3,7 @@
 [Issue #66](https://github.com/recoweft/goquent/issues/66), PR3 of 3.
 Work `1cb93652-1caf-48e7-a631-1f3dd023269b`, revision **3**, execution
 `5723e31a-8b47-4ad2-8751-b2455b29dfce`.
-Implementation/test source: `1e4f5823f1c0b477be85c0ce3530a0e198dc0dcb`.
+Implementation/test source: `dfad4890cc2a79e8c10440810d5975aca346d9c0`.
 The subsequent documentation commit changes documentation only. PR [#69](https://github.com/recoweft/goquent/pull/69) uses the specified branch/base/title.
 Final head and head CI are reported through RelayWeft after the last push.
 No merge, Issue closure or user completion is performed.
@@ -62,7 +62,7 @@ IDs are provenance only, not answer-delivery targets.
 ## Runtime checks
 
 Healthy repository containers were reused, with observed versions MySQL **8.4.6**
-and PostgreSQL **16.10**. All final suites ran sequentially at 1e4f582 with:
+and PostgreSQL **16.10**. All final suites ran sequentially at dfad489 with:
 
 - `GOCACHE=/home/murai/github/goquent/.gocache`
 - `TEST_MYSQL_DSN=root:password@tcp(127.0.0.1:3306)/testdb?parseTime=true`
@@ -71,9 +71,9 @@ and PostgreSQL **16.10**. All final suites ran sequentially at 1e4f582 with:
 
 | Command | Observed result |
 | --- | --- |
-| `go test ./... -count=1 -json` | Exit 0; 1,428 test/subtest pass, 0 fail, 0 test skips |
-| `make test-integration GOFLAGS=-json` with explicit DB DSNs | Exit 0; 1,428 pass, 0 fail, 0 test skips |
-| `go test -race ./... -count=1 -json` | Exit 0; 1,428 pass, 0 fail, 0 test skips |
+| `go test ./... -count=1 -json` | Exit 0; 1,431 test/subtest pass, 0 fail, 0 test skips |
+| `make test-integration GOFLAGS=-json` with explicit DB DSNs | Exit 0; 1,431 pass, 0 fail, 0 test skips |
+| `go test -race ./... -count=1 -json` | Exit 0; 1,431 pass, 0 fail, 0 test skips |
 | `git diff --check` | Passed |
 
 Each suite reports 18 passing packages and 22 packages without test files; those
@@ -82,7 +82,10 @@ not inferred from CI green. Initial home-cache writes failed due to sandbox
 permissions; workspace cache resolved that. During edits, existing nested fixtures
 expecting contiguous IDs/one PG multirow statement failed and were updated to the
 intentional per-row contract, including noncontiguous IDs. A test policy-field
-compile typo was corrected. No failing safety test was hidden or skipped.
+compile typo was corrected. An added integration fixture initially attempted Begin through an external
+WrapExecutor (which has no owned DB/Begin capability); it was corrected to use
+the owning DB for transaction recipes and the wrapper for statement execution.
+No failing safety test was hidden or skipped.
 
 New tests cover all-six-method refusal spies, Raw and Row error identity/delegation,
 context/plain dispatch and no redispatch, no-row/driver/scan/bool outcomes,
@@ -103,6 +106,11 @@ Executor over caller-owned sql.Tx it verifies each actual ID against input_key,
 assigned ID and the grandchild foreign key. It does not infer arbitrary custom
 Executor honesty or universal multirow RETURNING order.
 
+`TestCompoundRecipeDatabaseSemantics` additionally runs hooks (ordered single/many
+writes and rollback on a later hook error), idempotent initial-apply/existing-result
+lookup, bool results, PG insert-once/conflict lookup and MySQL RETURNING refusal
+on the two real databases. External wrappers are not assumed to own Begin.
+
 ## Static review and manifest
 
 `go run ./cmd/goquent review --fail-on high --format json ./...` returned **exit 1**.
@@ -112,14 +120,14 @@ for comparison, also exit 1. No thresholds, suppressions or rule files changed.
 | Source | Blocked | Destructive | High | Medium | Total |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | main c30f8dc | 11 | 11 | 55 | 344 | 421 |
-| PR3 1e4f582 | 11 | 15 | 64 | 357 | 447 |
+| PR3 dfad489 | 11 | 16 | 65 | 357 | 449 |
 
-Line-independent path/code/severity/precision multiset comparison gives 26 added
+Line-independent path/code/severity/precision multiset comparison gives 28 added
 findings, none removed. Additions: two partial reconstructions (compound test and
 internal DELETE adapter), three unsupported Raw facade reconstructions, seven
-unsupported Row fixture calls, one unsupported dynamic DB fixture, nine high Raw
-fixture findings, and four destructive fixture statements (Row refusal and test
-DDL/cleanup). Final precision: 227 precise, 140 partial, 80 unsupported; suppressed
+unsupported Row fixture calls, one unsupported dynamic DB fixture, ten high Raw
+fixture findings, and five destructive fixture statements (Row refusal and test
+DDL/cleanup). Final precision: 229 precise, 140 partial, 80 unsupported; suppressed
 0. This is a failing review threshold, not a clean review or runtime proof.
 Line shifts in existing files are not counted as new findings.
 
