@@ -3,7 +3,6 @@ package query
 import (
 	"reflect"
 
-	"github.com/recoweft/goquent/orm/internal/valuecopy"
 	"github.com/recoweft/goquent/orm/internal/valueguard"
 )
 
@@ -148,6 +147,17 @@ func tenantWriteColumn(t tenantTarget, col string, update bool) error {
 // planReturning checks the final generated projection before resealing this
 // internally generated plan. Generic/scoped RETURNING remains GQ-AI-04.
 func (q *Query) planReturning(p *QueryPlan, cols []string) error {
+	if p == nil || p.execution == nil || p.execution.owner != q || p.execution.used.Load() {
+		return tenantError("missing_or_consumed_execution_plan")
+	}
+	if p.execution.gate != nil {
+		return p.execution.gate
+	}
+	// Only the private original can be extended. Public SQL/metadata edits are
+	// neither executable inputs nor proof that RETURNING was checked.
+	destination := p
+	original := *p.execution.inspection
+	p = &original
 	if q.settings.strict {
 		if err := checkTenantEvidence(p); err != nil {
 			return err
@@ -168,9 +178,11 @@ func (q *Query) planReturning(p *QueryPlan, cols []string) error {
 		}
 		p.SQL += q.dialect.QuoteIdent(col)
 	}
-	if q.settings.strict {
-		p.tenantEvidence.view.SQL = p.SQL
-		p.tenantEvidence.view.Params = valuecopy.Slice(p.Params)
+	p.Metadata["returning_columns"] = append([]string(nil), cols...)
+	q.finalizePlan(p)
+	if p.execution.gate != nil {
+		return p.execution.gate
 	}
-	return ensurePlanExecutable(p)
+	*destination = *p
+	return nil
 }
