@@ -163,6 +163,7 @@ func (q *Query) planReturningProjection(p *QueryPlan, cols []string, paths bool)
 	}
 	// Only the private original can be extended. Public SQL/metadata edits are
 	// neither executable inputs nor proof that RETURNING was checked.
+	insertRows := p.execution.insertRows
 	destination := p
 	original := *p.execution.inspection
 	metadata := original.Metadata
@@ -222,6 +223,7 @@ func (q *Query) planReturningProjection(p *QueryPlan, cols []string, paths bool)
 	}
 	p.Metadata["returning_columns"] = append([]string(nil), cols...)
 	q.finalizePlan(p)
+	p.execution.insertRows = cloneInsertRows(insertRows)
 	if p.execution.gate != nil {
 		return p.execution.gate
 	}

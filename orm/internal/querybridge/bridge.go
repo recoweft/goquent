@@ -34,6 +34,7 @@ type Request struct {
 
 type Planned struct {
 	Diagnostic any
+	InsertRows []map[string]any // Detached final INSERT candidates; never public verdicts.
 	Check      func() error
 	Rows       func() (*sql.Rows, error)
 	Row        func() (*sql.Row, error)

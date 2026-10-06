@@ -1020,7 +1020,7 @@ func InsertOnceReturning[T any, V any](ctx context.Context, db *DB, v V, opts ..
 	}
 	q := db.Table(input.Table).Select(o.returning...)
 	for _, col := range lookupCols {
-		value, ok := input.Rows[0][col]
+		value, ok := parent.steps[0].plan.InsertRows[0][col]
 		if !ok {
 			return zero, false, fmt.Errorf("InsertOnceReturning lookup requires column %s", col)
 		}

@@ -377,3 +377,22 @@ func TestCompatibilityScopeChangesLaterDelete(t *testing.T) {
 		t.Fatal(calls, exec.statements)
 	}
 }
+
+func TestInsertOnceAutomaticTenantSharedWithLookup(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	spy := &genericSpy{Executor: sqlDB}
+	db := NewDBWithExecutor(spy, driver.PostgresDialect{}, WithSettings(genericSettings(t, "postgres", true)))
+	mock.ExpectQuery(`INSERT INTO "users".*DO NOTHING RETURNING "id"`).WithArgs(3, 1).WillReturnRows(sqlmock.NewRows([]string{"id"}))
+	mock.ExpectQuery(`SELECT "id" FROM "users"`).WithArgs(1, 3, 1).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(3))
+	out, inserted, err := InsertOnceReturning[genericID](context.Background(), db, map[string]any{"id": 3}, Table("users"), ConflictColumns("tenant_id", "id"))
+	if err != nil || inserted || out.ID != 3 || len(spy.calls) != 2 {
+		t.Fatal(out, inserted, err, spy.calls)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

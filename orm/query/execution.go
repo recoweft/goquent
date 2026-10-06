@@ -20,6 +20,7 @@ type plannedExecution struct {
 	sql        string
 	args       []any
 	inspection *QueryPlan
+	insertRows []map[string]any
 	gate       error
 	expires    *time.Time
 	used       atomic.Bool

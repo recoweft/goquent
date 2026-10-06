@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/recoweft/goquent/orm/internal/querybridge"
+	"github.com/recoweft/goquent/orm/internal/valuecopy"
 	"github.com/recoweft/goquent/orm/internal/writeinput"
 )
 
@@ -80,6 +81,9 @@ func prepareGeneric(r querybridge.Request) (querybridge.Planned, error) {
 		if err = q.planReturningProjection(p, r.Returning, true); err != nil {
 			return out, err
 		}
+	}
+	if p.execution != nil {
+		out.InsertRows = cloneInsertRows(p.execution.insertRows)
 	}
 	out.Check = func() error { return q.checkExecution(p) }
 	out.Diagnostic = p
@@ -166,7 +170,23 @@ func (q *Query) planInsertRows(ctx context.Context, rows []map[string]any, o wri
 	}
 	p.Unverified = append(p.Unverified, snapshot.Unverified...)
 	q.finalizePlan(p)
+	p.execution.insertRows = cloneInsertRows(rows)
 	return p, nil
+}
+
+func cloneInsertRows(rows []map[string]any) []map[string]any {
+	if rows == nil {
+		return nil
+	}
+	out := make([]map[string]any, len(rows))
+	copier := valuecopy.New()
+	for i, row := range rows {
+		out[i] = make(map[string]any, len(row))
+		for k, v := range row {
+			out[i][k], _ = copier.Copy(v)
+		}
+	}
+	return out
 }
 
 func (q *Query) planUpdateValues(ctx context.Context, m map[string]any, o writeinput.Options) (*QueryPlan, error) {
