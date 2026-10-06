@@ -61,7 +61,7 @@ func (q *Query) tenantRows(rows []map[string]any, update bool, unique, updateCol
 		}
 	}
 	if unique != nil || updateCols != nil {
-		if len(unique) == 0 || len(updateCols) == 0 || !t.schema.CompleteUniqueConstraints || len(t.schema.Constraints) == 0 {
+		if len(unique) == 0 || !t.schema.CompleteUniqueConstraints || len(t.schema.Constraints) == 0 {
 			return nil, tenantError("conflict_constraints_incomplete")
 		}
 		for _, col := range updateCols {

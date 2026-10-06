@@ -56,6 +56,9 @@ func RunTransactionWithHooks[T any](ctx context.Context, db *DB, spec Transactio
 	if db.drv == nil || db.exec == nil {
 		return zero, fmt.Errorf("goquent: db is not initialized")
 	}
+	if err := rejectOpaqueCompound(db); err != nil {
+		return zero, err
+	}
 	if spec.Apply == nil {
 		return zero, fmt.Errorf("goquent: transaction apply is required")
 	}

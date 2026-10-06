@@ -10,7 +10,11 @@ import (
 	"github.com/recoweft/goquent/orm/internal/writeinput"
 )
 
-func init() { querybridge.Prepare = prepareGeneric }
+func init() {
+	querybridge.Prepare = prepareGeneric
+	querybridge.PrepareRaw = prepareRaw
+	querybridge.Strict = func(v any) bool { s, ok := v.(Settings); return ok && s.strict }
+}
 
 // prepareGeneric is the sole internal facade adapter. It creates a fresh Query
 // owned by the destination settings/executor, then uses the private lifecycle.
@@ -55,6 +59,8 @@ func prepareGeneric(r querybridge.Request) (querybridge.Planned, error) {
 	var p *QueryPlan
 	var err error
 	switch r.Operation {
+	case "delete":
+		p, err = q.PlanDelete(r.Context)
 	case "select":
 		p, err = q.Plan(r.Context)
 	case "update":
@@ -75,6 +81,7 @@ func prepareGeneric(r querybridge.Request) (querybridge.Planned, error) {
 			return out, err
 		}
 	}
+	out.Check = func() error { return q.checkExecution(p) }
 	out.Diagnostic = p
 	out.Exec = func() (sql.Result, error) { return q.executeResult(p) }
 	out.Scan = func(scan func(*sql.Rows) error) error { return q.executeRows(p, scan) }
@@ -100,9 +107,9 @@ func (q *Query) planInsertRows(ctx context.Context, rows []map[string]any, o wri
 		}
 	}
 	var unique, updates []string
-	if c := o.Conflict; c != nil && !c.DoNothing {
+	if c := o.Conflict; c != nil {
 		unique, updates = c.Columns, c.Updates
-		if q.settings.strict && (len(unique) == 0 || len(updates) == 0) {
+		if q.settings.strict && (len(unique) == 0 || (!c.DoNothing && len(updates) == 0)) {
 			return nil, tenantError("conflict_target_or_updates_missing")
 		}
 	}

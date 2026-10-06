@@ -34,6 +34,9 @@ type Request struct {
 
 type Planned struct {
 	Diagnostic any
+	Check      func() error
+	Rows       func() (*sql.Rows, error)
+	Row        func() (*sql.Row, error)
 	Exec       func() (sql.Result, error)
 	Scan       func(func(*sql.Rows) error) error
 }
@@ -42,3 +45,15 @@ type Planned struct {
 // so initialization finishes before it can call this internal-only connection.
 // It accepts structural input, never SQL, public diagnostics or authorization.
 var Prepare func(Request) (Planned, error)
+
+// RawRequest carries raw input, not a public diagnostic or a semantic assertion.
+type RawRequest struct {
+	Request
+	SQL      string
+	Args     []any
+	Approval any
+	Tables   []string
+}
+
+var PrepareRaw func(RawRequest) (Planned, error)
+var Strict func(any) bool

@@ -43,8 +43,8 @@ func TestDeprecatedQueryRowDoesNotExecuteUnapprovedRawSQL(t *testing.T) {
 	if len(exec.queryRows) != 0 {
 		t.Fatalf("expected QueryRow not to execute caller SQL, got %#v", exec.queryRows)
 	}
-	if len(exec.queryRowsContext) != 1 || exec.queryRowsContext[0] != rawQueryRowRejectedSQL {
-		t.Fatalf("expected rejected sentinel query, got %#v", exec.queryRowsContext)
+	if len(exec.queryRowsContext) != 0 {
+		t.Fatalf("expected zero executor calls, got %#v", exec.queryRowsContext)
 	}
 }
 
@@ -56,8 +56,8 @@ func TestDeprecatedQueryRowContextDoesNotExecuteUnapprovedRawSQL(t *testing.T) {
 	if len(exec.queryRows) != 0 {
 		t.Fatalf("expected QueryRowContext not to execute caller SQL, got %#v", exec.queryRows)
 	}
-	if len(exec.queryRowsContext) != 1 || exec.queryRowsContext[0] != rawQueryRowRejectedSQL {
-		t.Fatalf("expected rejected sentinel query, got %#v", exec.queryRowsContext)
+	if len(exec.queryRowsContext) != 0 {
+		t.Fatalf("expected zero executor calls, got %#v", exec.queryRowsContext)
 	}
 }
 

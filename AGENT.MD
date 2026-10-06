@@ -49,8 +49,10 @@ examples/, docs/, specs/   Runnable examples, usage guides and design contracts
   A low risk level, `precise`, predicate column name, reason or suppression is not
   authorization or proof that all conditions were checked.
 - Generic CRUD/RETURNING and scoped destination helpers share the Query pipeline;
-  see docs/planned-query-execution.md. Compound orchestration and complete Raw
-  boundaries remain deferred. Do not claim all public CRUD is universally checked.
+  see docs/planned-query-execution.md. PR3 adds private compound preflight and Raw binding, a source-breaking Row
+  wrapper, and Strict refusal of opaque recipes/non-nil nested scopes. Preserve
+  the explicit support limits; statement gates do not prove arbitrary callbacks
+  or complete collection replacement safe.
 - AI/MCP workflows must remain read-only for database execution. Migration apply
   remains a human-controlled deployment operation.
 - Use `OpenWithDriver(orm.MySQL, dsn)` or `OpenWithDriver(orm.Postgres, dsn)`.

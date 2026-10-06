@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"github.com/recoweft/goquent/orm/model"
 	"github.com/recoweft/goquent/orm/query"
 )
@@ -271,135 +272,68 @@ func (db *DB) TablePath(parts ...string) *query.Query {
 	return db.Table(strings.Join(parts, "."))
 }
 
-func (db *DB) rawPlan(ctx context.Context, q string, args ...any) (*query.QueryPlan, error) {
+func (db *DB) prepareRaw(ctx context.Context, q string, args ...any) (querybridge.Planned, error) {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return querybridge.Planned{}, err
 		}
 	}
 	if db.rawErr != nil {
-		return nil, db.rawErr
+		return querybridge.Planned{}, db.rawErr
 	}
-	if err := db.settings.Err(); err != nil {
-		return nil, err
-	}
-	plan := query.NewRawPlanWithSettings(db.settings, q, args...)
-	if db.rawApproval != nil {
-		copied := *db.rawApproval
-		plan.Approval = &copied
-	}
-	for _, table := range db.rawTables {
-		plan.Tables = append(plan.Tables, query.TableRef{Name: table})
-	}
-	return plan, nil
+	return querybridge.PrepareRaw(querybridge.RawRequest{Request: querybridge.Request{Settings: db.settings, Executor: db.exec, Dialect: db.drv.Dialect, Context: ctx}, SQL: q, Args: args, Approval: db.rawApproval, Tables: db.rawTables})
 }
 
-func (db *DB) ensureRawExecutable(ctx context.Context, q string, args ...any) (*query.QueryPlan, error) {
-	plan, err := db.rawPlan(ctx, q, args...)
+// RawPlan inspects caller-supplied SQL without dispatch. Its result is diagnostic only.
+func (db *DB) RawPlan(ctx context.Context, q string, args ...any) (*QueryPlan, error) {
+	p, err := db.prepareRaw(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
-	if err := query.EnsurePlanExecutable(plan); err != nil {
-		return plan, err
-	}
-	return plan, nil
-}
-
-func (db *DB) queryContextTrusted(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
-	if ctx != nil {
-		return db.exec.QueryContext(ctx, q, args...)
-	}
-	return db.exec.Query(q, args...)
-}
-
-func (db *DB) execContextTrusted(ctx context.Context, q string, args ...any) (sql.Result, error) {
-	if ctx != nil {
-		return db.exec.ExecContext(ctx, q, args...)
-	}
-	return db.exec.Exec(q, args...)
-}
-
-const rawQueryRowRejectedSQL = "SELECT 1 WHERE 1 = 0"
-
-func (db *DB) rejectedQueryRow(ctx context.Context) *sql.Row {
-	if ctx == nil || ctx.Err() == nil {
-		canceled, cancel := context.WithCancel(context.Background())
-		cancel()
-		ctx = canceled
-	}
-	return db.exec.QueryRowContext(ctx, rawQueryRowRejectedSQL)
+	return p.Diagnostic.(*QueryPlan), nil
 }
 
 // Query runs a raw SQL query returning multiple rows.
 func (db *DB) Query(q string, args ...any) (*sql.Rows, error) {
-	if _, err := db.ensureRawExecutable(nil, q, args...); err != nil {
-		return nil, err
-	}
-	return db.queryContextTrusted(nil, q, args...)
+	return db.QueryContext(nil, q, args...)
 }
 
 // QueryContext runs Query with a context.
 func (db *DB) QueryContext(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
-	if _, err := db.ensureRawExecutable(ctx, q, args...); err != nil {
+	p, err := db.prepareRaw(ctx, q, args...)
+	if err != nil {
 		return nil, err
 	}
-	return db.queryContextTrusted(ctx, q, args...)
-}
-
-// RawPlan creates a plan for caller-supplied SQL without executing it.
-func (db *DB) RawPlan(ctx context.Context, q string, args ...any) (*QueryPlan, error) {
-	return db.rawPlan(ctx, q, args...)
+	return p.Rows()
 }
 
 // Exec executes a raw SQL statement.
-func (db *DB) Exec(q string, args ...any) (sql.Result, error) {
-	if _, err := db.ensureRawExecutable(nil, q, args...); err != nil {
-		return nil, err
-	}
-	return db.execContextTrusted(nil, q, args...)
-}
+func (db *DB) Exec(q string, args ...any) (sql.Result, error) { return db.ExecContext(nil, q, args...) }
 
 // ExecContext executes a raw SQL statement with a context.
 func (db *DB) ExecContext(ctx context.Context, q string, args ...any) (sql.Result, error) {
-	if _, err := db.ensureRawExecutable(ctx, q, args...); err != nil {
+	p, err := db.prepareRaw(ctx, q, args...)
+	if err != nil {
 		return nil, err
 	}
-	return db.execContextTrusted(ctx, q, args...)
+	return p.Exec()
 }
 
-// QueryRow executes a query that is expected to return at most one row.
-//
-// Deprecated: use QueryRowE so raw SQL safety errors can be returned before
-// Scan. QueryRow cannot surface pre-execution approval errors because *sql.Row
-// has no public error constructor. When raw SQL approval checks fail, QueryRow
-// does not execute the caller-supplied SQL.
-func (db *DB) QueryRow(q string, args ...any) *sql.Row {
-	if _, err := db.ensureRawExecutable(nil, q, args...); err != nil {
-		return db.rejectedQueryRow(nil)
-	}
-	return db.exec.QueryRow(q, args...)
+// QueryRow returns a Row that carries inspection errors without executor calls.
+// Use QueryRowE when a concrete *sql.Row is required.
+func (db *DB) QueryRow(q string, args ...any) *Row { return db.QueryRowContext(nil, q, args...) }
+
+// QueryRowContext returns a Row that carries inspection errors without executor calls.
+func (db *DB) QueryRowContext(ctx context.Context, q string, args ...any) *Row {
+	row, err := db.QueryRowE(ctx, q, args...)
+	return &Row{row: row, err: err}
 }
 
-// QueryRowContext executes a query with context returning at most one row.
-//
-// Deprecated: use QueryRowE so raw SQL safety errors can be returned before
-// Scan. QueryRowContext cannot surface pre-execution approval errors because
-// *sql.Row has no public error constructor. When raw SQL approval checks fail,
-// QueryRowContext does not execute the caller-supplied SQL.
-func (db *DB) QueryRowContext(ctx context.Context, q string, args ...any) *sql.Row {
-	if _, err := db.ensureRawExecutable(ctx, q, args...); err != nil {
-		return db.rejectedQueryRow(ctx)
-	}
-	return db.exec.QueryRowContext(ctx, q, args...)
-}
-
-// QueryRowE validates raw SQL policy and executes a context-aware single-row query.
+// QueryRowE validates raw SQL policy before dispatch and returns *sql.Row.
 func (db *DB) QueryRowE(ctx context.Context, q string, args ...any) (*sql.Row, error) {
-	if _, err := db.ensureRawExecutable(ctx, q, args...); err != nil {
+	p, err := db.prepareRaw(ctx, q, args...)
+	if err != nil {
 		return nil, err
 	}
-	if ctx == nil {
-		return db.exec.QueryRow(q, args...), nil
-	}
-	return db.exec.QueryRowContext(ctx, q, args...), nil
+	return p.Row()
 }

@@ -220,3 +220,12 @@ The integration tests create the required tables. Override `TEST_MYSQL_DSN` and 
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+### Compound inspection and Row migration
+
+See the [current execution inventory](docs/planned-query-execution.md) for private
+compound preflight, Strict unsupported callbacks/scopes, and compatibility partial
+execution. DB.QueryRow/QueryRowContext now return *orm.Row; Scan/Err chaining remains
+available. Explicit *sql.Row consumers and interfaces must use QueryRowE and check
+its error first. The Executor interface is unchanged, but *orm.DB no longer itself
+implements it. SQLDB/direct Executor bypasses are not safe migration substitutes.

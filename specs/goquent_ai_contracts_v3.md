@@ -19,10 +19,15 @@ execution gating, and result inspection. A path implementing one does not imply
 the others. Scanning is not tenant authorization or an affected-row bound.
 Static review is a separate path and does not mediate runtime execution.
 
-GQ-AI-04/PR2 update: the inventory below remains the historical GQ-AI-01 baseline.
+GQ-AI-04/PR3 update: the inventory below remains the historical GQ-AI-01 baseline.
 [Planned execution](../docs/planned-query-execution.md) records the current Query,
 generic CRUD/RETURNING, diagnostic plan and scoped-destination integration, plus
-PR3 compound/Raw exclusions. Generic `PlanInsert`, `PlanUpdate`, `PlanUpsert`,
+private compound preflight, Raw binding and explicit opaque-recipe exclusions.
+DB.QueryRow/QueryRowContext now return *orm.Row (source-breaking); Executor and
+QueryRowE retain *sql.Row. Strict nested excludes nonnil scopes and ID callbacks;
+Strict hook/idempotent recipes refuse before Begin/callbacks. Compatibility can
+have earlier statement/external effects before a later refusal. These are current
+limited guarantees, not changes to the historical rows below. Generic `PlanInsert`, `PlanUpdate`, `PlanUpsert`,
 `PlanInsertMany` and `PlanUpsertMany` now exist; they are nonexecuting diagnostics,
 not public execution artifacts or authorization APIs.
 
