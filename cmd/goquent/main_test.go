@@ -72,7 +72,7 @@ func TestReviewCommandConfigSuppressionAndPrecisionGate(t *testing.T) {
 		t.Fatalf("expected config suppression to avoid high failure, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
 
-	var report review.ReviewReport
+	var report review.ReportView
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestReviewCommandExpiredConfigSuppression(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit=%d stderr=%s", code, &stderr)
 	}
-	var report review.ReviewReport
+	var report review.ReportView
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}

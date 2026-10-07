@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/publicoutput"
 )
 
 func TestMigratePlanFailOnAndJSON(t *testing.T) {
@@ -61,7 +62,7 @@ func TestMigratePlanBackfillReviewMode(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected backfill review plan success, got %d stderr=%s", code, stderr.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"review_mode": "backfill"`)) ||
+	if bytes.Contains(stdout.Bytes(), []byte(`"review_mode"`)) ||
 		!bytes.Contains(stdout.Bytes(), []byte(migration.WarningMigrationBackfillReview)) {
 		t.Fatalf("expected backfill metadata/warning, got %s", stdout.String())
 	}
@@ -128,11 +129,11 @@ func TestMigrateDriftCommand(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("expected drift exit code 1, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
-	var report migration.DriftReport
+	var report publicoutput.SummaryView
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatalf("decode drift report: %v", err)
 	}
-	if !report.Drifted || len(report.Steps) != 1 {
+	if !report.Drifted || report.Count != 1 {
 		t.Fatalf("unexpected drift report: %#v", report)
 	}
 
@@ -142,14 +143,14 @@ func TestMigrateDriftCommand(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected no-drift exit code 0, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte("No schema drift detected")) {
+	if !bytes.Contains(stdout.Bytes(), []byte(`"drifted":false`)) {
 		t.Fatalf("expected no drift pretty output, got %s", stdout.String())
 	}
 
 	stdout.Reset()
 	stderr.Reset()
 	code = run([]string{"migrate", "drift", "--desired-schema", desiredPath}, &stdout, &stderr)
-	if code != 2 || !bytes.Contains(stderr.Bytes(), []byte("requires --database-schema or --driver and --dsn")) {
+	if code != 2 || !bytes.Contains(stderr.Bytes(), []byte("PUBLIC_OUTPUT")) {
 		t.Fatalf("expected input error, got code=%d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
 }

@@ -113,7 +113,7 @@ func TestArgumentOwnershipBoundaries(t *testing.T) {
 						t.Fatalf("output limit: %v", err)
 					}
 				}
-				if !strings.Contains(p.String(), "omitted; unverified") {
+				if !strings.Contains(p.String(), `"details_omitted":true`) {
 					t.Fatal("missing String marker")
 				}
 				assertOwnershipArgs(t, p.Params, want)

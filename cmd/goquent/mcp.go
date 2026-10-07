@@ -14,7 +14,7 @@ import (
 
 func runMCP(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent mcp", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	manifestPath := fs.String("manifest", "", "stored manifest JSON path")
 	schemaPath := fs.String("schema", "", "schema JSON path used to generate or verify manifest")
 	policyPath := fs.String("policy", "", "table policy JSON path used to generate or verify manifest")
@@ -32,11 +32,12 @@ func runMCP(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	m, err := loadMCPManifest(*manifestPath, *schemaPath, *policyPath, *databaseSchemaPath, codePaths)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	server := mcpserver.NewServer(mcpserver.Options{
@@ -46,7 +47,7 @@ func runMCP(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		Prompts:   prompts,
 	})
 	if err := server.Serve(context.Background(), stdin, stdout); err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	return 0

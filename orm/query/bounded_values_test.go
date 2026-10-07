@@ -67,7 +67,7 @@ func TestRecursivePayloadsAcrossBuilderAndPlan(t *testing.T) {
 				if plan.SQL != sql || len(plan.Params) != len(args) || reflect.TypeOf(plan.Params[0]) != reflect.TypeOf(v) {
 					t.Fatal("SQL/argument contract changed")
 				}
-				if !strings.Contains(plan.String(), "omitted; unverified") || !strings.Contains(plan.String(), "cyclic") {
+				if !strings.Contains(plan.String(), `"details_omitted":true`) {
 					t.Fatal("missing safe String marker")
 				}
 				for _, marshal := range []func() ([]byte, error){plan.ToJSON, func() ([]byte, error) { return json.Marshal(plan) }, func() ([]byte, error) { return json.MarshalIndent(plan, "", "  ") }, func() ([]byte, error) { return json.Marshal(*plan) }} {
@@ -112,8 +112,8 @@ func TestDAGOutputAndIndependentSnapshots(t *testing.T) {
 	if err != nil || string(got) != string(want) {
 		t.Fatal("ordinary JSON changed")
 	}
-	if !strings.Contains(p.String(), fmt.Sprintf("params: %v", p.Params)) {
-		t.Fatal("ordinary String changed")
+	if strings.Contains(p.String(), fmt.Sprintf("params: %v", p.Params)) {
+		t.Fatal("public String leaked params")
 	}
 	first := snap1.WhereTree.Values[0].Data.(map[string]any)["shared"].([]any)
 	first[0].(map[string]any)["bytes"].([]byte)[0] = 9
@@ -139,7 +139,7 @@ func TestDAGOutputAndIndependentSnapshots(t *testing.T) {
 	if _, err := bigPlan.ToJSON(); !errors.Is(err, ErrOutputBudget) {
 		t.Fatalf("DAG output: %v", err)
 	}
-	if !strings.Contains(bigPlan.String(), "budget") {
+	if !strings.Contains(bigPlan.String(), `"details_omitted":true`) {
 		t.Fatal("DAG String not bounded")
 	}
 }
@@ -163,7 +163,7 @@ func TestOutputAllPayloadLocationsAndNil(t *testing.T) {
 	}
 	var p *QueryPlan
 	b, err := p.ToJSON()
-	if err != nil || string(b) != "null" || p.String() != "<nil query plan>" {
+	if err != nil || string(b) != "null" || p.String() != "PUBLIC_VIEW_SOURCE: unsupported diagnostic source" {
 		t.Fatal("nil Plan contract")
 	}
 	var deep any = 1
@@ -178,7 +178,7 @@ func TestOutputAllPayloadLocationsAndNil(t *testing.T) {
 		if _, err := json.MarshalIndent(p, "", "  "); !errors.Is(err, tc.err) {
 			t.Fatalf("output boundary: %v", err)
 		}
-		if !strings.Contains(p.String(), "omitted; unverified") {
+		if !strings.Contains(p.String(), `"details_omitted":true`) {
 			t.Fatal("missing marker")
 		}
 	}
@@ -201,16 +201,16 @@ func TestPreflightDoesNotCallCustomOutputMethods(t *testing.T) {
 	if _, err := p.ToJSON(); err != nil || v.jsonCalls != 2 {
 		t.Fatal("custom JSON evaluation changed")
 	}
-	p.String()
-	if v.formatCalls != 1 || v.stringCalls != 0 {
+	_ = p.String()
+	if v.formatCalls != 0 || v.stringCalls != 0 {
 		t.Fatal("custom format timing changed")
 	}
 	p.Params = append(p.Params, recursivePayloads()["map"])
 	if _, err := p.ToJSON(); !errors.Is(err, ErrOutputCycle) || v.jsonCalls != 2 {
 		t.Fatal("failed preflight evaluated marshaler")
 	}
-	p.String()
-	if v.formatCalls != 1 {
+	_ = p.String()
+	if v.formatCalls != 0 {
 		t.Fatal("marker formatted dangerous payload")
 	}
 	// Copy budget is shared by different arguments, not reset per argument.
@@ -252,7 +252,7 @@ func TestCustomOutputErrorsAndStringerTiming(t *testing.T) {
 	if err := valueguard.Check(*p); err != nil || s.calls != 0 {
 		t.Fatal("early Stringer")
 	}
-	if !strings.Contains(p.String(), "normal-stringer") || s.calls != 1 {
+	if strings.Contains(p.String(), "normal-stringer") || s.calls != 0 {
 		t.Fatal("Stringer contract changed")
 	}
 }

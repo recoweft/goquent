@@ -95,7 +95,7 @@ func (wb *WherePostgreSQLBuilder) ProcessJsonContains(sb *[]byte, c structs.Wher
 		jsonVal, err = json.Marshal(c.JsonContains.Values)
 	}
 	if err != nil {
-		log.Printf("json marshal error: %v", err)
+		log.Print("PUBLIC_OUTPUT: JSON encoding failed; details omitted")
 	}
 	return []interface{}{string(jsonVal)}
 }

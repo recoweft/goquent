@@ -42,7 +42,7 @@ type Manifest struct {
 	Verification             *Verification `json:"verification,omitempty"`
 }
 
-// ToJSON returns stable, indented JSON for the manifest.
+// ToJSON returns sensitive internal manifest data; use PublicView for publication.
 func (m *Manifest) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(m, "", "  ")
 }

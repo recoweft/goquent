@@ -1,5 +1,9 @@
 # Redacted public views (GQ-AI-06 PR1)
 
+PR2 update: [current output inventory and migration](redacted-output.md) supersedes
+the historical PR2-work column and legacy-display statements below. PR1 view and
+source JSON contracts remain unchanged.
+
 [Issue #73](https://github.com/recoweft/goquent/issues/73), PR1 of 2. These additive
 APIs implement the published revision-2 fixed-policy contract. CLI/CI/MCP output
 switching belongs to PR2 after PR1 merges. Existing diagnostics can still expose

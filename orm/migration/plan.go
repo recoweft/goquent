@@ -92,7 +92,8 @@ type MigrationPlan struct {
 	Metadata          map[string]any          `json:"metadata,omitempty"`
 }
 
-// ToJSON returns stable, indented JSON for the migration plan.
+// ToJSON returns internal diagnostic data that can contain secrets.
+// Use PublicView for public output.
 func (p *MigrationPlan) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(p, "", "  ")
 }
@@ -104,33 +105,11 @@ func (p *MigrationPlan) RequiresApproval() bool {
 
 // String returns a compact human-readable migration summary.
 func (p *MigrationPlan) String() string {
-	if p == nil {
-		return "<nil migration plan>"
+	v, err := p.PublicView()
+	if err != nil {
+		return "PUBLIC_VIEW_SOURCE: unsupported diagnostic source"
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "migration plan\n")
-	fmt.Fprintf(&b, "risk: %s\n", p.RiskLevel)
-	fmt.Fprintf(&b, "precision: %s\n", p.AnalysisPrecision)
-	if p.RequiredApproval {
-		b.WriteString("requires_approval: true\n")
-	}
-	for _, step := range p.Steps {
-		fmt.Fprintf(&b, "step[%s]: %s", step.RiskLevel, step.Type)
-		if step.Table != "" {
-			fmt.Fprintf(&b, " table=%s", step.Table)
-		}
-		if step.Column != "" {
-			fmt.Fprintf(&b, " column=%s", step.Column)
-		}
-		if step.Index != "" {
-			fmt.Fprintf(&b, " index=%s", step.Index)
-		}
-		b.WriteByte('\n')
-		for _, warning := range step.Warnings {
-			fmt.Fprintf(&b, "  warning[%s]: %s - %s\n", warning.Level, warning.Code, warning.Message)
-		}
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return v.String()
 }
 
 // Migrator builds and optionally applies a migration plan.

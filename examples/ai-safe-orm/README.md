@@ -53,3 +53,7 @@ go run ./cmd/goquent mcp \
 
 The MCP command exposes context and review tools only. It does not perform DB writes, raw SQL
 execution, or migration apply.
+
+The executable prints redacted PlanView/MigrationPlanView output and fixed error
+messages. Checked-in fictional source JSON is internal fixture data, not a public
+display API. MCP returns structural summaries without real schema discovery.

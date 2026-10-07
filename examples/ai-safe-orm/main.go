@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"github.com/recoweft/goquent/orm/query"
 	"log"
 	"time"
 
@@ -36,7 +36,7 @@ func main() {
 		RequiredFilter("tenant_id").
 		PII("email").
 		Register(); err != nil {
-		log.Fatal(err)
+		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 	}
 
 	simpleInsert, err := db.Table("users").
@@ -133,14 +133,32 @@ func main() {
 
 func must(label string, err error) {
 	if err != nil {
-		log.Fatalf("%s: %v", label, err)
+		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 	}
 }
 
 func printJSON(label string, v any) {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		log.Fatal(err)
+	var b []byte
+	var err error
+	switch p := v.(type) {
+	case *query.QueryPlan:
+		view, e := p.PublicView()
+		err = e
+		if err == nil {
+			b, err = view.ToJSON()
+		}
+	case *migration.MigrationPlan:
+		view, e := p.PublicView()
+		err = e
+		if err == nil {
+			b, err = view.ToJSON()
+		}
+	default:
+		log.Fatal("PUBLIC_OUTPUT: unsupported example output")
 	}
+	if err != nil {
+		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
+	}
+
 	fmt.Printf("== %s ==\n%s\n\n", label, b)
 }

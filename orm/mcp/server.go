@@ -8,6 +8,7 @@ import (
 
 	"github.com/recoweft/goquent/orm/manifest"
 	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/publicoutput"
 	"github.com/recoweft/goquent/orm/query"
 
 	"github.com/recoweft/goquent/orm/internal/planversion"
@@ -96,13 +97,13 @@ type PromptMessage struct {
 // Resources lists read-only Goquent resources.
 func (s *Server) Resources() []Resource {
 	resources := []Resource{
-		{URI: "goquent://schema", Name: "schema", Description: "Manifest table and column metadata", MimeType: "application/json"},
-		{URI: "goquent://manifest", Name: "manifest", Description: "Full Goquent manifest including freshness status", MimeType: "application/json"},
-		{URI: "goquent://models", Name: "models", Description: "Model-to-table metadata", MimeType: "application/json"},
-		{URI: "goquent://relations", Name: "relations", Description: "Relation metadata from the manifest", MimeType: "application/json"},
-		{URI: "goquent://policies", Name: "policies", Description: "Policy metadata from the manifest", MimeType: "application/json"},
+		{URI: "goquent://schema", Name: "schema", Description: "Redacted structural schema summary; names omitted", MimeType: "application/json"},
+		{URI: "goquent://manifest", Name: "manifest", Description: "Redacted manifest summary; not a reusable manifest", MimeType: "application/json"},
+		{URI: "goquent://models", Name: "models", Description: "Redacted model structure; names omitted", MimeType: "application/json"},
+		{URI: "goquent://relations", Name: "relations", Description: "Redacted per-table relation counts", MimeType: "application/json"},
+		{URI: "goquent://policies", Name: "policies", Description: "Redacted per-table policy counts", MimeType: "application/json"},
 		{URI: "goquent://migrations", Name: "migrations", Description: "Migration review capabilities; apply is not exposed", MimeType: "text/plain"},
-		{URI: "goquent://query-examples", Name: "query-examples", Description: "Safe query-shape examples from the manifest", MimeType: "application/json"},
+		{URI: "goquent://query-examples", Name: "query-examples", Description: "Redacted per-table example counts; source examples omitted", MimeType: "application/json"},
 		{URI: "goquent://review-rules", Name: "review-rules", Description: "Built-in review warning codes", MimeType: "application/json"},
 		{URI: "goquent://manifest-status", Name: "manifest-status", Description: "Manifest freshness status", MimeType: "application/json"},
 	}
@@ -117,26 +118,33 @@ func (s *Server) Resources() []Resource {
 
 // ReadResource returns a resource body.
 func (s *Server) ReadResource(uri string) (string, string, error) {
+	text, mime, err := s.readResource(uri)
+	if err != nil {
+		return "", "", publicoutput.ErrOutput
+	}
+	return text, mime, nil
+}
+func (s *Server) readResource(uri string) (string, string, error) {
 	if !s.resourceAllowed(uri) && !s.resourceAllowed(resourceName(uri)) {
 		return "", "", fmt.Errorf("resource %q is not exposed", uri)
 	}
 	switch uri {
 	case "goquent://manifest":
-		return s.jsonText(s.manifestPayload()), "application/json", nil
+		return s.manifest.PublicView().String(), "application/json", nil
 	case "goquent://manifest-status":
-		return s.jsonText(s.manifestStatus()), "application/json", nil
+		return s.publicManifestStatus().String(), "application/json", nil
 	case "goquent://schema":
-		return s.jsonText(schemaPayload{Tables: s.tables()}), "application/json", nil
+		return s.resourceView("goquent.schema_view").String(), "application/json", nil
 	case "goquent://models":
-		return s.jsonText(modelsPayload{Models: s.models()}), "application/json", nil
+		return s.resourceView("goquent.models_view").String(), "application/json", nil
 	case "goquent://relations":
-		return s.jsonText(relationsPayload{Relations: s.relations()}), "application/json", nil
+		return s.resourceView("goquent.relations_view").String(), "application/json", nil
 	case "goquent://policies":
-		return s.jsonText(policiesPayload{Policies: s.policies()}), "application/json", nil
+		return s.resourceView("goquent.policies_view").String(), "application/json", nil
 	case "goquent://migrations":
 		return "Migration planning and review are available through review_migration. Migration apply is intentionally not exposed by MCP.", "text/plain", nil
 	case "goquent://query-examples":
-		return s.jsonText(queryExamplesPayload{Examples: s.queryExamples()}), "application/json", nil
+		return s.resourceView("goquent.query_examples_view").String(), "application/json", nil
 	case "goquent://review-rules":
 		return s.jsonText(reviewRules()), "application/json", nil
 	default:
@@ -149,16 +157,16 @@ func (s *Server) Tools() []Tool {
 	stringProp := map[string]any{"type": "string"}
 	objectProp := map[string]any{"type": "object"}
 	tools := []Tool{
-		{Name: "get_schema", Description: "Return manifest schema tables and columns", InputSchema: objectSchema(nil)},
-		{Name: "get_manifest", Description: "Return the full manifest", InputSchema: objectSchema(nil)},
+		{Name: "get_schema", Description: "Return a redacted schema summary; names omitted", InputSchema: objectSchema(nil)},
+		{Name: "get_manifest", Description: "Return a redacted manifest summary; not a reusable manifest", InputSchema: objectSchema(nil)},
 		{Name: "get_manifest_status", Description: "Return manifest freshness status", InputSchema: objectSchema(nil)},
 		{Name: "explain_query", Description: "Create a raw SQL QueryPlan without executing SQL", InputSchema: objectSchema(map[string]any{"sql": stringProp})},
 		{Name: "review_query", Description: "Review raw SQL without executing it", InputSchema: objectSchema(map[string]any{"sql": stringProp})},
 		{Name: "review_migration", Description: "Review migration SQL without applying it", InputSchema: objectSchema(map[string]any{"sql": stringProp})},
 		{Name: "generate_query_plan", Description: "Generate a QueryPlan from raw SQL or read-only OperationSpec", InputSchema: objectSchema(map[string]any{"sql": stringProp, "operation_spec": objectProp, "values": objectProp})},
 		{Name: "compile_operation_spec", Description: "Compile read-only select OperationSpec to QueryPlan", InputSchema: objectSchema(map[string]any{"spec": objectProp, "values": objectProp, "require_fresh_manifest": map[string]any{"type": "boolean"}})},
-		{Name: "propose_repository_method", Description: "Return a safe repository method skeleton for an OperationSpec", InputSchema: objectSchema(map[string]any{"name": stringProp, "spec": objectProp})},
-		{Name: "generate_test_fixture", Description: "Generate a small JSON fixture for manifest and OperationSpec tests", InputSchema: objectSchema(nil)},
+		{Name: "propose_repository_method", Description: "Return fixed FindRows teaching text; caller arguments are not used", InputSchema: objectSchema(nil)},
+		{Name: "generate_test_fixture", Description: "Return fixed fictional teaching data; caller arguments and manifest are not used", InputSchema: objectSchema(nil)},
 	}
 	out := tools[:0]
 	for _, tool := range tools {
@@ -171,6 +179,16 @@ func (s *Server) Tools() []Tool {
 
 // CallTool executes a read-only MCP tool.
 func (s *Server) CallTool(ctx context.Context, name string, args map[string]any) (ToolResult, error) {
+	if _, err := primitiveJSON(args); err != nil {
+		return ToolResult{}, publicoutput.ErrOutput
+	}
+	out, err := s.callTool(ctx, name, args)
+	if err != nil {
+		return ToolResult{}, publicoutput.ErrOutput
+	}
+	return out, nil
+}
+func (s *Server) callTool(ctx context.Context, name string, args map[string]any) (ToolResult, error) {
 	_ = ctx
 	if !s.toolAllowed(name) {
 		return ToolResult{}, fmt.Errorf("tool %q is not exposed", name)
@@ -188,7 +206,11 @@ func (s *Server) CallTool(ctx context.Context, name string, args map[string]any)
 			return ToolResult{}, err
 		}
 		plan := query.NewRawPlan(sqlText)
-		b, err := plan.ToJSON()
+		view, err := plan.PublicView()
+		if err != nil {
+			return ToolResult{}, err
+		}
+		b, err := view.ToJSON()
 		if err != nil {
 			return ToolResult{}, err
 		}
@@ -202,7 +224,11 @@ func (s *Server) CallTool(ctx context.Context, name string, args map[string]any)
 		if err != nil {
 			return ToolResult{}, err
 		}
-		b, err := plan.ToJSON()
+		view, err := plan.PublicView()
+		if err != nil {
+			return ToolResult{}, err
+		}
+		b, err := view.ToJSON()
 		if err != nil {
 			return ToolResult{}, err
 		}
@@ -210,7 +236,11 @@ func (s *Server) CallTool(ctx context.Context, name string, args map[string]any)
 	case "generate_query_plan":
 		if sqlText, ok := optionalString(args, "sql"); ok {
 			plan := query.NewRawPlan(sqlText)
-			b, err := plan.ToJSON()
+			view, err := plan.PublicView()
+			if err != nil {
+				return ToolResult{}, err
+			}
+			b, err := view.ToJSON()
 			if err != nil {
 				return ToolResult{}, err
 			}
@@ -231,10 +261,10 @@ func (s *Server) CallTool(ctx context.Context, name string, args map[string]any)
 // Prompts lists prompt templates.
 func (s *Server) Prompts() []Prompt {
 	prompts := []Prompt{
-		{Name: "add_repository_method", Description: "Guide an AI to add a safe repository method", Arguments: []PromptArgument{{Name: "model", Required: true}, {Name: "operation", Required: false}}},
+		{Name: "add_repository_method", Description: "Guide an AI to add a safe repository method", Arguments: nil},
 		{Name: "review_database_change", Description: "Review a DB code or migration change with Goquent safety rules"},
 		{Name: "write_safe_migration", Description: "Write a staged migration and review it before apply"},
-		{Name: "debug_slow_query", Description: "Use QueryPlan and manifest context to debug a slow query"},
+		{Name: "debug_slow_query", Description: "Discuss redacted query structure and analysis limits"},
 		{Name: "explain_query_plan", Description: "Explain a QueryPlan for human review"},
 	}
 	out := prompts[:0]
@@ -248,21 +278,30 @@ func (s *Server) Prompts() []Prompt {
 
 // GetPrompt returns a prompt body.
 func (s *Server) GetPrompt(name string, args map[string]any) ([]PromptMessage, error) {
+	if _, err := primitiveJSON(args); err != nil {
+		return nil, publicoutput.ErrOutput
+	}
+	out, err := s.getPrompt(name, args)
+	if err != nil {
+		return nil, publicoutput.ErrOutput
+	}
+	return out, nil
+}
+func (s *Server) getPrompt(name string, args map[string]any) ([]PromptMessage, error) {
 	if !s.promptAllowed(name) {
 		return nil, fmt.Errorf("prompt %q is not exposed", name)
 	}
-	modelName, _ := optionalString(args, "model")
 	switch name {
 	case "add_repository_method":
-		return userPrompt("Add a Goquent repository method for " + modelName + ". Use OperationSpec or QueryPlan first, enforce manifest policies, avoid raw SQL unless explicitly justified, and include tests for required filters and PII handling."), nil
+		return userPrompt("Add a Goquent repository method. Caller arguments are omitted. Use OperationSpec or QueryPlan first, enforce manifest policies, avoid raw SQL unless explicitly justified, and include tests for required filters and PII handling."), nil
 	case "review_database_change":
 		return userPrompt("Review this database change with Goquent. Check QueryPlan or MigrationPlan output, risk warnings, approval requirements, suppressions, and manifest freshness. Do not treat RiskLow as business approval."), nil
 	case "write_safe_migration":
 		return userPrompt("Write a safe staged migration. Run goquent migrate plan, avoid destructive changes without preflight checks and explicit approval, and do not use MCP to apply migrations."), nil
 	case "debug_slow_query":
-		return userPrompt("Debug the slow query using manifest schema/index context and QueryPlan output. Suggest builder changes without executing database writes."), nil
+		return userPrompt("Discuss the redacted plan and structural counts; actual schema names and SQL are unavailable. Suggest builder changes without executing database writes."), nil
 	case "explain_query_plan":
-		return userPrompt("Explain the QueryPlan in review-friendly terms: SQL, params, tables, predicates, risk, warnings, approval, and policy implications."), nil
+		return userPrompt("Explain the redacted public plan risk, precision and warning codes. SQL, names and values are omitted; this view cannot authorize execution."), nil
 	default:
 		return nil, fmt.Errorf("unknown prompt %q", name)
 	}
@@ -337,7 +376,11 @@ func (s *Server) compileOperationSpec(args map[string]any) (ToolResult, error) {
 	if err != nil {
 		return ToolResult{}, err
 	}
-	b, err := plan.ToJSON()
+	view, err := plan.PublicView()
+	if err != nil {
+		return ToolResult{}, err
+	}
+	b, err := view.ToJSON()
 	if err != nil {
 		return ToolResult{}, err
 	}
@@ -345,11 +388,7 @@ func (s *Server) compileOperationSpec(args map[string]any) (ToolResult, error) {
 }
 
 func (s *Server) proposeRepositoryMethod(args map[string]any) (ToolResult, error) {
-	name, _ := optionalString(args, "name")
-	if name == "" {
-		name = "FindRows"
-	}
-	text := fmt.Sprintf(`func (r *Repository) %s(ctx context.Context, spec operation.OperationSpec, values map[string]any) (*query.QueryPlan, error) {
+	text := `func (r *Repository) FindRows(ctx context.Context, spec operation.OperationSpec, values map[string]any) (*query.QueryPlan, error) {
 	plan, err := operation.Compile(ctx, spec, operation.Options{
 		Manifest: r.manifest,
 		Values: values,
@@ -360,61 +399,20 @@ func (s *Server) proposeRepositoryMethod(args map[string]any) (ToolResult, error
 	}
 	return plan, nil
 }
-`, name)
+`
 	return s.textTool(text), nil
 }
 
-func (s *Server) manifestPayload() any {
-	if s.manifest == nil {
-		return map[string]any{"version": manifest.Version, "tables": []any{}, "verification": s.manifestStatus()}
-	}
-	return s.manifest
-}
-
-func (s *Server) manifestStatus() manifest.Verification {
+func (s *Server) publicManifestStatus() publicoutput.SummaryView {
 	if s.manifest != nil && s.manifest.Verification != nil {
-		return *s.manifest.Verification
+		return s.manifest.Verification.PublicView()
 	}
-	return manifest.Verification{Fresh: true}
+	return publicoutput.SummaryView{Kind: "goquent.verification_view", Version: 1, Present: s.manifest != nil, Unknown: true, DetailsOmitted: true}
 }
-
-func (s *Server) tables() []manifest.Table {
-	if s.manifest == nil {
-		return nil
-	}
-	return s.manifest.Tables
-}
-
-func (s *Server) models() []map[string]any {
-	var out []map[string]any
-	for _, table := range s.tables() {
-		out = append(out, map[string]any{"model": table.Model, "table": table.Name, "columns": table.Columns})
-	}
-	return out
-}
-
-func (s *Server) relations() []manifest.Relation {
-	var out []manifest.Relation
-	for _, table := range s.tables() {
-		out = append(out, table.Relations...)
-	}
-	return out
-}
-
-func (s *Server) policies() []manifest.Policy {
-	var out []manifest.Policy
-	for _, table := range s.tables() {
-		out = append(out, table.Policies...)
-	}
-	return out
-}
-
-func (s *Server) queryExamples() []manifest.QueryExample {
-	var out []manifest.QueryExample
-	for _, table := range s.tables() {
-		out = append(out, table.QueryExamples...)
-	}
-	return out
+func (s *Server) resourceView(kind string) publicoutput.SummaryView {
+	v := s.manifest.PublicView()
+	v.Kind = kind
+	return v
 }
 
 func (s *Server) mustRead(uri string) string {
@@ -432,29 +430,9 @@ func (s *Server) textTool(text string) ToolResult {
 func (s *Server) jsonText(v any) string {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		return `{"error":"` + err.Error() + `"}`
+		return `{"error":"PUBLIC_OUTPUT: encoding failed"}`
 	}
 	return string(b)
-}
-
-type schemaPayload struct {
-	Tables []manifest.Table `json:"tables"`
-}
-
-type modelsPayload struct {
-	Models []map[string]any `json:"models"`
-}
-
-type relationsPayload struct {
-	Relations []manifest.Relation `json:"relations"`
-}
-
-type policiesPayload struct {
-	Policies []manifest.Policy `json:"policies"`
-}
-
-type queryExamplesPayload struct {
-	Examples []manifest.QueryExample `json:"examples"`
 }
 
 type reviewRule struct {
@@ -523,9 +501,12 @@ func optionalBool(args map[string]any, key string) (bool, bool) {
 
 func decodeAny(v any, out any) error {
 	if s, ok := v.(string); ok {
+		if !validateJSON([]byte(s)) {
+			return publicoutput.ErrOutput
+		}
 		return planversion.Decode([]byte(s), out)
 	}
-	b, err := json.Marshal(v)
+	b, err := primitiveJSON(v)
 	if err != nil {
 		return err
 	}
