@@ -5,6 +5,7 @@ PR1 [#77](https://github.com/recoweft/goquent/pull/77) merged at
 471b24a69282668744fe3f035da435ff4399d250. This change keeps single-model,
 read-only SELECT and the existing typed validator, settings, gates and planner.
 It adds no SQL execution, write spec, join, driver adapter or dependency.
+See the [validation record](operation-diagnostics-validation.md) for measured results.
 
 ## API and single-pass behavior
 
