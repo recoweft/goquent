@@ -3,7 +3,7 @@
 The manifest is an AI-readable export of schema and policy metadata. It gives review tools and AI
 editors the context they need without granting database access.
 
-Generate a manifest:
+Generate a sensitive internal manifest in a new local file (not allowed in CI):
 
 ```bash
 go run ./cmd/goquent manifest --format json \
@@ -11,7 +11,7 @@ go run ./cmd/goquent manifest --format json \
   --schema schema.json \
   --policy policies.json \
   --code ./orm \
-  > goquent.manifest.json
+  --unsafe-local-output goquent.manifest.json
 ```
 
 The manifest contains:
@@ -78,7 +78,8 @@ Generate a repository skeleton for one manifest table:
 go run ./cmd/goquent manifest repository \
   --manifest goquent.manifest.json \
   --table users \
-  --package infra
+  --package infra \
+  --unsafe-local-output users_repository.go
 ```
 
 The generated skeleton includes:
@@ -90,3 +91,8 @@ The generated skeleton includes:
 - basic `SelectAll`, `Insert`, and primary-key `FindByID` / `UpdateByID` / `DeleteByID` methods when a single primary column is known.
 
 Regenerate the manifest whenever schema, policy, generated ORM code, or database state changes.
+
+Default output omits schema names and fingerprints. Internal manifest fields listed
+above are available only through internal data APIs or explicit local export.
+Public verification is a supplied snapshot claim, not authorization or a live DB
+proof. See [public output migration](redacted-output.md).

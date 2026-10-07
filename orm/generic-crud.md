@@ -131,7 +131,7 @@ if errors.Is(err, sql.ErrNoRows) {
     return
 }
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 _ = u
 ```
@@ -1028,16 +1028,16 @@ _ = result
 ```go
 tx, err := db.BeginTx(ctx, nil)
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 defer tx.Rollback()
 
 if _, err := orm.Insert(ctx, tx.DB, User{Name: "sam", Age: 18}); err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 
 if err := tx.Commit(); err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 ```
 
@@ -1675,7 +1675,7 @@ plan, err := orm.PlanDeleteBy(
 ```go
 user, err := orm.SelectOne[User](ctx, db, "SELECT id, name, age, active FROM users WHERE id = ?", 1)
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 _ = user
 ```
@@ -1685,7 +1685,7 @@ _ = user
 ```go
 users, err := orm.SelectAll[User](ctx, db, "SELECT id, name, age, active FROM users WHERE active = ? ORDER BY id", true)
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 _ = users
 ```
@@ -1695,7 +1695,7 @@ _ = users
 ```go
 row, err := orm.SelectOne[map[string]any](ctx, db, "SELECT id, name FROM users WHERE id = ?", 1)
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 _ = row
 ```
@@ -1705,7 +1705,7 @@ _ = row
 ```go
 _, err := orm.Insert(ctx, db, User{Name: "sam", Age: 18, Active: true})
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 ```
 
@@ -1714,7 +1714,7 @@ if err != nil {
 ```go
 created, err := orm.InsertReturning[User](ctx, db, User{Name: "sam", Age: 18, Active: true})
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 _ = created
 ```
@@ -1730,7 +1730,7 @@ _, err := orm.Update(
     orm.WherePK(),
 )
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 ```
 
@@ -1747,7 +1747,7 @@ updated, err := orm.UpdateByReturning[User](
     },
 )
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 _ = updated
 ```
@@ -1769,7 +1769,7 @@ _, err := orm.Update(
     orm.WherePK(),
 )
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 ```
 
@@ -1783,7 +1783,7 @@ _, err := orm.Upsert(
     orm.WherePK(),
 )
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 ```
 
@@ -1805,6 +1805,6 @@ err := db.TransactionContext(ctx, func(tx orm.Tx) error {
     return err
 })
 if err != nil {
-    log.Fatal(err)
+    log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 }
 ```

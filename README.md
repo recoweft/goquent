@@ -3295,6 +3295,7 @@ import "github.com/recoweft/goquent/orm/manifest"
   - [func AttachVerification\(m \*Manifest, v Verification\) \*Manifest](<#AttachVerification>)
   - [func Generate\(opts Options\) \(\*Manifest, error\)](<#Generate>)
   - [func Load\(path string\) \(\*Manifest, error\)](<#Load>)
+  - [func \(m \*Manifest\) PublicView\(\) publicoutput.SummaryView](<#Manifest.PublicView>)
   - [func \(m \*Manifest\) ToJSON\(\) \(\[\]byte, error\)](<#Manifest.ToJSON>)
 - [type Options](<#Options>)
 - [type Policy](<#Policy>)
@@ -3304,6 +3305,7 @@ import "github.com/recoweft/goquent/orm/manifest"
 - [type Table](<#Table>)
 - [type Verification](<#Verification>)
   - [func Verify\(stored, current \*Manifest, checkedAt time.Time\) Verification](<#Verify>)
+  - [func \(v Verification\) PublicView\(\) publicoutput.SummaryView](<#Verification.PublicView>)
 
 
 ## Constants
@@ -3364,7 +3366,7 @@ Validate checks the minimal versioned manifest contract.
 func WriteJSON(w io.Writer, m *Manifest) error
 ```
 
-WriteJSON writes a stable manifest JSON document.
+WriteJSON writes internal manifest data that can contain secrets.
 
 <a name="WritePretty"></a>
 ## func WritePretty
@@ -3373,7 +3375,7 @@ WriteJSON writes a stable manifest JSON document.
 func WritePretty(w io.Writer, m *Manifest) error
 ```
 
-WritePretty writes a compact human\-readable manifest summary.
+WritePretty writes a redacted manifest summary.
 
 <a name="WriteVerificationJSON"></a>
 ## func WriteVerificationJSON
@@ -3382,7 +3384,7 @@ WritePretty writes a compact human\-readable manifest summary.
 func WriteVerificationJSON(w io.Writer, v Verification) error
 ```
 
-WriteVerificationJSON writes a machine\-readable freshness result.
+WriteVerificationJSON writes sensitive internal verification data.
 
 <a name="WriteVerificationPretty"></a>
 ## func WriteVerificationPretty
@@ -3391,7 +3393,7 @@ WriteVerificationJSON writes a machine\-readable freshness result.
 func WriteVerificationPretty(w io.Writer, v Verification) error
 ```
 
-WriteVerificationPretty writes freshness checks in a human\-readable form.
+WriteVerificationPretty writes redacted supplied verification claims.
 
 <a name="Column"></a>
 ## type Column
@@ -3505,6 +3507,15 @@ func Load(path string) (*Manifest, error)
 
 Load reads a manifest JSON file.
 
+<a name="Manifest.PublicView"></a>
+### func \(\*Manifest\) PublicView
+
+```go
+func (m *Manifest) PublicView() publicoutput.SummaryView
+```
+
+PublicView omits names, fingerprints and all opaque or free\-form data.
+
 <a name="Manifest.ToJSON"></a>
 ### func \(\*Manifest\) ToJSON
 
@@ -3512,7 +3523,7 @@ Load reads a manifest JSON file.
 func (m *Manifest) ToJSON() ([]byte, error)
 ```
 
-ToJSON returns stable, indented JSON for the manifest.
+ToJSON returns sensitive internal manifest data; use PublicView for publication.
 
 <a name="Options"></a>
 ## type Options
@@ -3629,6 +3640,15 @@ func Verify(stored, current *Manifest, checkedAt time.Time) Verification
 ```
 
 Verify compares a stored manifest with a freshly generated one.
+
+<a name="Verification.PublicView"></a>
+### func \(Verification\) PublicView
+
+```go
+func (v Verification) PublicView() publicoutput.SummaryView
+```
+
+PublicView describes supplied verification claims, not live database evidence.
 
 # mcp
 
@@ -3881,6 +3901,7 @@ import "github.com/recoweft/goquent/orm/migration"
 - [func WriteDriftPretty\(w io.Writer, report DriftReport\) error](<#WriteDriftPretty>)
 - [func WriteJSON\(w io.Writer, plan \*MigrationPlan\) error](<#WriteJSON>)
 - [func WritePretty\(w io.Writer, plan \*MigrationPlan\) error](<#WritePretty>)
+- [func WritePublicJSON\(w io.Writer, v MigrationPlanView\) error](<#WritePublicJSON>)
 - [func WriteSchemaJSON\(w io.Writer, schema Schema\) error](<#WriteSchemaJSON>)
 - [func WriteSchemaPretty\(w io.Writer, schema Schema\) error](<#WriteSchemaPretty>)
 - [func WriteStatusJSON\(w io.Writer, status Status\) error](<#WriteStatusJSON>)
@@ -3889,15 +3910,24 @@ import "github.com/recoweft/goquent/orm/migration"
 - [type ColumnSchema](<#ColumnSchema>)
 - [type DriftReport](<#DriftReport>)
   - [func CompareSchemaDrift\(desired, current Schema\) DriftReport](<#CompareSchemaDrift>)
+  - [func \(s DriftReport\) PublicView\(\) publicoutput.SummaryView](<#DriftReport.PublicView>)
 - [type Executor](<#Executor>)
 - [type IndexSchema](<#IndexSchema>)
 - [type MigrationPlan](<#MigrationPlan>)
   - [func DiffSchemas\(current, desired Schema\) \*MigrationPlan](<#DiffSchemas>)
   - [func PlanSQL\(sqlText string\) \(\*MigrationPlan, error\)](<#PlanSQL>)
   - [func PlanSteps\(steps \[\]MigrationStep\) \*MigrationPlan](<#PlanSteps>)
+  - [func \(p \*MigrationPlan\) PublicView\(\) \(MigrationPlanView, error\)](<#MigrationPlan.PublicView>)
   - [func \(p \*MigrationPlan\) RequiresApproval\(\) bool](<#MigrationPlan.RequiresApproval>)
   - [func \(p \*MigrationPlan\) String\(\) string](<#MigrationPlan.String>)
   - [func \(p \*MigrationPlan\) ToJSON\(\) \(\[\]byte, error\)](<#MigrationPlan.ToJSON>)
+- [type MigrationPlanView](<#MigrationPlanView>)
+  - [func DecodeMigrationPlanView\(b \[\]byte\) \(MigrationPlanView, error\)](<#DecodeMigrationPlanView>)
+  - [func \(v MigrationPlanView\) Format\(s fmt.State, \_ rune\)](<#MigrationPlanView.Format>)
+  - [func \(v MigrationPlanView\) MarshalJSON\(\) \(\[\]byte, error\)](<#MigrationPlanView.MarshalJSON>)
+  - [func \(v MigrationPlanView\) String\(\) string](<#MigrationPlanView.String>)
+  - [func \(v MigrationPlanView\) ToJSON\(\) \(\[\]byte, error\)](<#MigrationPlanView.ToJSON>)
+  - [func \(v \*MigrationPlanView\) UnmarshalJSON\(b \[\]byte\) error](<#MigrationPlanView.UnmarshalJSON>)
 - [type MigrationStatement](<#MigrationStatement>)
 - [type MigrationStep](<#MigrationStep>)
 - [type MigrationStepType](<#MigrationStepType>)
@@ -3911,12 +3941,14 @@ import "github.com/recoweft/goquent/orm/migration"
 - [type ReviewMode](<#ReviewMode>)
 - [type Schema](<#Schema>)
   - [func ReadSchema\(ctx context.Context, exec StatusExecutor, dialect driver.Dialect, opts ...SchemaReadOption\) \(Schema, error\)](<#ReadSchema>)
+  - [func \(s Schema\) PublicView\(\) publicoutput.SummaryView](<#Schema.PublicView>)
 - [type SchemaReadOption](<#SchemaReadOption>)
   - [func WithSchemaReadSchema\(schema string\) SchemaReadOption](<#WithSchemaReadSchema>)
   - [func WithSchemaReadTables\(tables ...string\) SchemaReadOption](<#WithSchemaReadTables>)
 - [type SchemaReadOptions](<#SchemaReadOptions>)
 - [type Status](<#Status>)
   - [func ReadStatus\(ctx context.Context, exec StatusExecutor, dialect driver.Dialect, desired \[\]string, opts ...StatusOption\) \(Status, error\)](<#ReadStatus>)
+  - [func \(s Status\) PublicView\(\) publicoutput.SummaryView](<#Status.PublicView>)
 - [type StatusExecutor](<#StatusExecutor>)
 - [type StatusOption](<#StatusOption>)
   - [func WithStatusAppliedAtColumn\(column string\) StatusOption](<#WithStatusAppliedAtColumn>)
@@ -3924,6 +3956,10 @@ import "github.com/recoweft/goquent/orm/migration"
   - [func WithStatusTable\(table string\) StatusOption](<#WithStatusTable>)
   - [func WithStatusVersionColumn\(column string\) StatusOption](<#WithStatusVersionColumn>)
 - [type StatusOptions](<#StatusOptions>)
+- [type StepView](<#StepView>)
+  - [func \(v StepView\) Format\(s fmt.State, \_ rune\)](<#StepView.Format>)
+  - [func \(v StepView\) MarshalJSON\(\) \(\[\]byte, error\)](<#StepView.MarshalJSON>)
+  - [func \(v StepView\) String\(\) string](<#StepView.String>)
 - [type TableSchema](<#TableSchema>)
 
 
@@ -3945,6 +3981,12 @@ const (
     WarningMigrationDropIndex             = "MIGRATION_DROP_INDEX"
     WarningMigrationBackfillReview        = "MIGRATION_BACKFILL_REVIEW"
 )
+```
+
+<a name="MigrationPlanViewKind"></a>
+
+```go
+const MigrationPlanViewKind = "goquent.migration_plan_view"
 ```
 
 <a name="ApplyReviewMode"></a>
@@ -3972,7 +4014,7 @@ EnsureExecutable enforces migration approval requirements before execution.
 func WriteDriftJSON(w io.Writer, report DriftReport) error
 ```
 
-WriteDriftJSON writes a machine\-readable schema drift report.
+WriteDriftJSON writes sensitive internal drift data; use PublicView for display.
 
 <a name="WriteDriftPretty"></a>
 ## func WriteDriftPretty
@@ -3990,7 +4032,7 @@ WriteDriftPretty writes a human\-readable schema drift report.
 func WriteJSON(w io.Writer, plan *MigrationPlan) error
 ```
 
-WriteJSON writes a machine\-readable migration plan.
+WriteJSON writes sensitive internal migration data, not public display JSON.
 
 <a name="WritePretty"></a>
 ## func WritePretty
@@ -4001,6 +4043,15 @@ func WritePretty(w io.Writer, plan *MigrationPlan) error
 
 WritePretty writes a human\-readable migration plan.
 
+<a name="WritePublicJSON"></a>
+## func WritePublicJSON
+
+```go
+func WritePublicJSON(w io.Writer, v MigrationPlanView) error
+```
+
+
+
 <a name="WriteSchemaJSON"></a>
 ## func WriteSchemaJSON
 
@@ -4008,7 +4059,7 @@ WritePretty writes a human\-readable migration plan.
 func WriteSchemaJSON(w io.Writer, schema Schema) error
 ```
 
-WriteSchemaJSON writes a machine\-readable migration schema export.
+WriteSchemaJSON writes sensitive internal schema data; use PublicView for display.
 
 <a name="WriteSchemaPretty"></a>
 ## func WriteSchemaPretty
@@ -4026,7 +4077,7 @@ WriteSchemaPretty writes a compact human\-readable schema export summary.
 func WriteStatusJSON(w io.Writer, status Status) error
 ```
 
-WriteStatusJSON writes a machine\-readable migration status.
+WriteStatusJSON writes sensitive internal status data; use PublicView for display.
 
 <a name="WriteStatusPretty"></a>
 ## func WriteStatusPretty
@@ -4090,6 +4141,15 @@ func CompareSchemaDrift(desired, current Schema) DriftReport
 CompareSchemaDrift compares current database schema against desired schema.
 
 The returned steps are the migration steps that would transform current into desired. This is a structural drift report over migration.Schema values; it does not introspect a live database by itself.
+
+<a name="DriftReport.PublicView"></a>
+### func \(DriftReport\) PublicView
+
+```go
+func (s DriftReport) PublicView() publicoutput.SummaryView
+```
+
+
 
 <a name="Executor"></a>
 ## type Executor
@@ -4163,6 +4223,15 @@ func PlanSteps(steps []MigrationStep) *MigrationPlan
 
 PlanSteps builds a MigrationPlan from structured steps.
 
+<a name="MigrationPlan.PublicView"></a>
+### func \(\*MigrationPlan\) PublicView
+
+```go
+func (p *MigrationPlan) PublicView() (MigrationPlanView, error)
+```
+
+
+
 <a name="MigrationPlan.RequiresApproval"></a>
 ### func \(\*MigrationPlan\) RequiresApproval
 
@@ -4188,7 +4257,83 @@ String returns a compact human\-readable migration summary.
 func (p *MigrationPlan) ToJSON() ([]byte, error)
 ```
 
-ToJSON returns stable, indented JSON for the migration plan.
+ToJSON returns internal diagnostic data that can contain secrets. Use PublicView for public output.
+
+<a name="MigrationPlanView"></a>
+## type MigrationPlanView
+
+MigrationPlanView is detached display data, never an apply or approval input.
+
+```go
+type MigrationPlanView struct {
+    Kind             string              `json:"kind"`
+    Version          int                 `json:"version"`
+    Risk             string              `json:"risk"`
+    Precision        string              `json:"precision"`
+    RequiredApproval bool                `json:"required_approval"`
+    Blocked          bool                `json:"blocked"`
+    StepCount        int                 `json:"step_count"`
+    WarningCount     int                 `json:"warning_count"`
+    Steps            []StepView          `json:"steps"`
+    Warnings         []query.WarningView `json:"warnings"`
+    Truncated        bool                `json:"truncated"`
+    DetailsOmitted   bool                `json:"details_omitted"`
+}
+```
+
+<a name="DecodeMigrationPlanView"></a>
+### func DecodeMigrationPlanView
+
+```go
+func DecodeMigrationPlanView(b []byte) (MigrationPlanView, error)
+```
+
+
+
+<a name="MigrationPlanView.Format"></a>
+### func \(MigrationPlanView\) Format
+
+```go
+func (v MigrationPlanView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="MigrationPlanView.MarshalJSON"></a>
+### func \(MigrationPlanView\) MarshalJSON
+
+```go
+func (v MigrationPlanView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="MigrationPlanView.String"></a>
+### func \(MigrationPlanView\) String
+
+```go
+func (v MigrationPlanView) String() string
+```
+
+
+
+<a name="MigrationPlanView.ToJSON"></a>
+### func \(MigrationPlanView\) ToJSON
+
+```go
+func (v MigrationPlanView) ToJSON() ([]byte, error)
+```
+
+
+
+<a name="MigrationPlanView.UnmarshalJSON"></a>
+### func \(\*MigrationPlanView\) UnmarshalJSON
+
+```go
+func (v *MigrationPlanView) UnmarshalJSON(b []byte) error
+```
+
+
 
 <a name="MigrationStatement"></a>
 ## type MigrationStatement
@@ -4360,6 +4505,15 @@ func ReadSchema(ctx context.Context, exec StatusExecutor, dialect driver.Dialect
 
 ReadSchema exports a minimal migration.Schema from database metadata.
 
+<a name="Schema.PublicView"></a>
+### func \(Schema\) PublicView
+
+```go
+func (s Schema) PublicView() publicoutput.SummaryView
+```
+
+
+
 <a name="SchemaReadOption"></a>
 ## type SchemaReadOption
 
@@ -4425,6 +4579,15 @@ func ReadStatus(ctx context.Context, exec StatusExecutor, dialect driver.Dialect
 ```
 
 ReadStatus reads the migration table state and compares it with desired versions supplied by the caller. It is intended for readiness checks, not as a complete schema drift detector.
+
+<a name="Status.PublicView"></a>
+### func \(Status\) PublicView
+
+```go
+func (s Status) PublicView() publicoutput.SummaryView
+```
+
+
 
 <a name="StatusExecutor"></a>
 ## type StatusExecutor
@@ -4495,6 +4658,51 @@ type StatusOptions struct {
     AppliedAtColumn string
 }
 ```
+
+<a name="StepView"></a>
+## type StepView
+
+StepView omits all executable statements, identifiers, preflight and defaults.
+
+```go
+type StepView struct {
+    Ordinal      int                 `json:"ordinal"`
+    Type         string              `json:"type"`
+    Risk         string              `json:"risk"`
+    Precision    string              `json:"precision"`
+    Line         int                 `json:"line"`
+    WarningCount int                 `json:"warning_count"`
+    Warnings     []query.WarningView `json:"warnings"`
+    Truncated    bool                `json:"truncated"`
+}
+```
+
+<a name="StepView.Format"></a>
+### func \(StepView\) Format
+
+```go
+func (v StepView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="StepView.MarshalJSON"></a>
+### func \(StepView\) MarshalJSON
+
+```go
+func (v StepView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="StepView.String"></a>
+### func \(StepView\) String
+
+```go
+func (v StepView) String() string
+```
+
+
 
 <a name="TableSchema"></a>
 ## type TableSchema
@@ -4665,7 +4873,7 @@ type OperationSpec struct {
 func (s OperationSpec) MarshalJSON() ([]byte, error)
 ```
 
-MarshalJSON migrates legacy input format without certifying its provenance.
+MarshalJSON preserves sensitive internal source data, not public display JSON. It migrates legacy input format without certifying its provenance.
 
 <a name="OperationSpec.UnmarshalJSON"></a>
 ### func \(\*OperationSpec\) UnmarshalJSON
@@ -4768,7 +4976,7 @@ type Node struct {
 func (n Node) MarshalJSON() ([]byte, error)
 ```
 
-MarshalJSON applies the same built\-in output limits to standalone condition views as to plans. Unverified generated payloads remain omitted by the builder.
+MarshalJSON emits sensitive internal data, not a public display view. It applies the same built\-in output limits to standalone condition views as to plans. Unverified generated payloads remain omitted by the builder.
 
 <a name="Value"></a>
 ## type Value
@@ -4788,6 +4996,202 @@ type Value struct {
 
 ```go
 func (v Value) MarshalJSON() ([]byte, error)
+```
+
+
+
+# publicoutput
+
+```go
+import "github.com/recoweft/goquent/orm/publicoutput"
+```
+
+Package publicoutput provides detached display summaries and fixed public errors. Internal data APIs and runtime error identities remain separate contracts.
+
+## Index
+
+- [Variables](<#variables>)
+- [func Write\(w io.Writer, b \[\]byte\) error](<#Write>)
+- [func WriteSummary\(w io.Writer, v SummaryView\) error](<#WriteSummary>)
+- [type Error](<#Error>)
+  - [func \(Error\) Error\(\) string](<#Error.Error>)
+- [type ItemView](<#ItemView>)
+  - [func \(v ItemView\) Format\(s fmt.State, \_ rune\)](<#ItemView.Format>)
+  - [func \(v ItemView\) MarshalJSON\(\) \(\[\]byte, error\)](<#ItemView.MarshalJSON>)
+  - [func \(v ItemView\) String\(\) string](<#ItemView.String>)
+- [type SummaryView](<#SummaryView>)
+  - [func DecodeSummaryView\(b \[\]byte\) \(SummaryView, error\)](<#DecodeSummaryView>)
+  - [func \(v SummaryView\) Format\(s fmt.State, \_ rune\)](<#SummaryView.Format>)
+  - [func \(v SummaryView\) MarshalJSON\(\) \(\[\]byte, error\)](<#SummaryView.MarshalJSON>)
+  - [func \(v SummaryView\) String\(\) string](<#SummaryView.String>)
+  - [func \(v SummaryView\) ToJSON\(\) \(\[\]byte, error\)](<#SummaryView.ToJSON>)
+  - [func \(v \*SummaryView\) UnmarshalJSON\(b \[\]byte\) error](<#SummaryView.UnmarshalJSON>)
+
+
+## Variables
+
+<a name="ErrOutput"></a>ErrOutput retains neither caller data nor an underlying error.
+
+```go
+var ErrOutput = Error{}
+```
+
+<a name="Write"></a>
+## func Write
+
+```go
+func Write(w io.Writer, b []byte) error
+```
+
+Write writes library\-owned public bytes and discards sink error details.
+
+<a name="WriteSummary"></a>
+## func WriteSummary
+
+```go
+func WriteSummary(w io.Writer, v SummaryView) error
+```
+
+
+
+<a name="Error"></a>
+## type Error
+
+Error has no payload or cause. Its zero value is a safe public error.
+
+```go
+type Error struct{}
+```
+
+<a name="Error.Error"></a>
+### func \(Error\) Error
+
+```go
+func (Error) Error() string
+```
+
+
+
+<a name="ItemView"></a>
+## type ItemView
+
+ItemView contains structural counts and fixed check vocabulary only.
+
+```go
+type ItemView struct {
+    Ordinal   int    `json:"ordinal"`
+    Columns   int    `json:"columns"`
+    Indexes   int    `json:"indexes"`
+    Relations int    `json:"relations"`
+    Policies  int    `json:"policies"`
+    Examples  int    `json:"examples"`
+    Check     string `json:"check"`
+    Status    string `json:"status"`
+}
+```
+
+<a name="ItemView.Format"></a>
+### func \(ItemView\) Format
+
+```go
+func (v ItemView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="ItemView.MarshalJSON"></a>
+### func \(ItemView\) MarshalJSON
+
+```go
+func (v ItemView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="ItemView.String"></a>
+### func \(ItemView\) String
+
+```go
+func (v ItemView) String() string
+```
+
+
+
+<a name="SummaryView"></a>
+## type SummaryView
+
+SummaryView is a bounded, non\-executable resource/status display. Counts and booleans are supplied snapshot claims, never authorization or live evidence.
+
+```go
+type SummaryView struct {
+    Kind           string     `json:"kind"`
+    Version        int        `json:"version"`
+    Present        bool       `json:"present"`
+    Known          bool       `json:"known"`
+    Fresh          bool       `json:"fresh"`
+    Exists         bool       `json:"exists"`
+    Dirty          bool       `json:"dirty"`
+    Unknown        bool       `json:"unknown"`
+    Drifted        bool       `json:"drifted"`
+    Count          int        `json:"count"`
+    PendingCount   int        `json:"pending_count"`
+    WarningCount   int        `json:"warning_count"`
+    Items          []ItemView `json:"items"`
+    Truncated      bool       `json:"truncated"`
+    DetailsOmitted bool       `json:"details_omitted"`
+}
+```
+
+<a name="DecodeSummaryView"></a>
+### func DecodeSummaryView
+
+```go
+func DecodeSummaryView(b []byte) (SummaryView, error)
+```
+
+DecodeSummaryView accepts only a known display kind and strict integer v1.
+
+<a name="SummaryView.Format"></a>
+### func \(SummaryView\) Format
+
+```go
+func (v SummaryView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="SummaryView.MarshalJSON"></a>
+### func \(SummaryView\) MarshalJSON
+
+```go
+func (v SummaryView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="SummaryView.String"></a>
+### func \(SummaryView\) String
+
+```go
+func (v SummaryView) String() string
+```
+
+
+
+<a name="SummaryView.ToJSON"></a>
+### func \(SummaryView\) ToJSON
+
+```go
+func (v SummaryView) ToJSON() ([]byte, error)
+```
+
+
+
+<a name="SummaryView.UnmarshalJSON"></a>
+### func \(\*SummaryView\) UnmarshalJSON
+
+```go
+func (v *SummaryView) UnmarshalJSON(b []byte) error
 ```
 
 
@@ -5863,7 +6267,7 @@ Avg adds AVG aggregate function.
 func (q *Query) Build() (string, []any, error)
 ```
 
-Build returns the SQL and args.
+Build returns sensitive execution SQL and typed args, not public display data.
 
 <a name="Query.Count"></a>
 ### func \(\*Query\) Count
@@ -5908,7 +6312,7 @@ Distinct marks columns as DISTINCT.
 func (q *Query) Dump() (string, []any, error)
 ```
 
-Dump returns SQL and args for debugging.
+Dump returns sensitive SQL and args for local diagnostics, not publication.
 
 <a name="Query.ExecuteValidatedCount"></a>
 ### func \(\*Query\) ExecuteValidatedCount
@@ -6529,7 +6933,7 @@ PrimaryKey sets the primary key column for the table.
 func (q *Query) RawSQL() (string, error)
 ```
 
-RawSQL returns interpolated SQL for debugging.
+RawSQL returns sensitive interpolated SQL for local diagnostics, not publication.
 
 <a name="Query.ReOrder"></a>
 ### func \(\*Query\) ReOrder
@@ -7164,7 +7568,7 @@ NewRawPlanWithSettings inspects raw SQL with an explicit snapshot. It does not p
 func (p QueryPlan) MarshalJSON() ([]byte, error)
 ```
 
-MarshalJSON preserves ordinary output while rejecting unsafe built\-in expansion. A value receiver also covers json.Marshal\(\*plan\). Nil pointers remain JSON null.
+MarshalJSON emits sensitive internal diagnostic data; use PublicView for display. It preserves ordinary output while rejecting unsafe built\-in expansion. A value receiver also covers json.Marshal\(\*plan\). Nil pointers remain JSON null.
 
 <a name="QueryPlan.PublicView"></a>
 ### func \(\*QueryPlan\) PublicView
@@ -7200,7 +7604,7 @@ String returns a compact pretty format suitable for logs and CLI output.
 func (p *QueryPlan) ToJSON() ([]byte, error)
 ```
 
-ToJSON returns stable, indented JSON for the plan.
+ToJSON returns internal diagnostic JSON containing sensitive execution data. Use PublicView for public output.
 
 <a name="QueryPlan.UnmarshalJSON"></a>
 ### func \(\*QueryPlan\) UnmarshalJSON
@@ -7930,7 +8334,7 @@ ParseRiskLevel parses a CLI threshold.
 func WriteGitHub(w io.Writer, report ReviewReport) error
 ```
 
-WriteGitHub writes GitHub Actions annotations for review findings.
+WriteGitHub writes redacted annotations without source paths or messages.
 
 <a name="WriteJSON"></a>
 ## func WriteJSON
@@ -7939,7 +8343,7 @@ WriteGitHub writes GitHub Actions annotations for review findings.
 func WriteJSON(w io.Writer, report ReviewReport) error
 ```
 
-WriteJSON writes a stable machine\-readable review report.
+WriteJSON writes internal diagnostic data that can contain secrets. Public consumers must use PublicView and WritePublicJSON.
 
 <a name="WritePretty"></a>
 ## func WritePretty
@@ -7948,7 +8352,7 @@ WriteJSON writes a stable machine\-readable review report.
 func WritePretty(w io.Writer, report ReviewReport) error
 ```
 
-WritePretty writes a human\-readable review report.
+WritePretty writes a redacted public report. Decisions must use the source report.
 
 <a name="WritePublicGitHub"></a>
 ## func WritePublicGitHub
