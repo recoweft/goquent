@@ -1,6 +1,7 @@
 package planidentity
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 )
@@ -80,4 +81,9 @@ func Compute(m Material, k Key) (IDs, error) {
 		return IDs{}, e
 	}
 	return s.Identify(k)
+}
+
+// Equal compares complete private canonical material, never only its digests.
+func (s *Snapshot) Equal(other *Snapshot) bool {
+	return s != nil && other != nil && bytes.Equal(s.shape, other.shape) && bytes.Equal(s.execution, other.execution) && bytes.Equal(s.policy, other.policy) && bytes.Equal(s.schema, other.schema) && bytes.Equal(s.config, other.config)
 }
