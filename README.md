@@ -85,6 +85,7 @@ import "github.com/recoweft/goquent/orm"
   - [func \(db \*DB\) BeginTx\(ctx context.Context, opts \*sql.TxOptions\) \(Tx, error\)](<#DB.BeginTx>)
   - [func \(db \*DB\) Clone\(\) \*DB](<#DB.Clone>)
   - [func \(db \*DB\) Close\(\) error](<#DB.Close>)
+  - [func \(db \*DB\) CompileOperation\(ctx context.Context, spec operation.OperationSpec, opts operation.Options\) \(\*QueryPlan, error\)](<#DB.CompileOperation>)
   - [func \(db \*DB\) Dialect\(\) driver.Dialect](<#DB.Dialect>)
   - [func \(db \*DB\) Exec\(q string, args ...any\) \(sql.Result, error\)](<#DB.Exec>)
   - [func \(db \*DB\) ExecContext\(ctx context.Context, q string, args ...any\) \(sql.Result, error\)](<#DB.ExecContext>)
@@ -105,6 +106,7 @@ import "github.com/recoweft/goquent/orm"
   - [func \(db \*DB\) TouchedTables\(tables ...string\) \*DB](<#DB.TouchedTables>)
   - [func \(db \*DB\) Transaction\(fn func\(tx Tx\) error\) error](<#DB.Transaction>)
   - [func \(db \*DB\) TransactionContext\(ctx context.Context, fn func\(tx Tx\) error\) error](<#DB.TransactionContext>)
+  - [func \(db \*DB\) ValidateOperation\(spec operation.OperationSpec, opts operation.Options\) \(\[\]Warning, error\)](<#DB.ValidateOperation>)
   - [func \(db \*DB\) WithOptions\(opts ...Option\) \*DB](<#DB.WithOptions>)
   - [func \(db \*DB\) WrapExecutor\(exec Executor, opts ...Option\) \*DB](<#DB.WrapExecutor>)
   - [func \(db \*DB\) WrapTx\(tx \*sql.Tx, opts ...Option\) \*DB](<#DB.WrapTx>)
@@ -1171,6 +1173,15 @@ func (db *DB) Close() error
 
 Close closes the owned underlying DB. DB values created around an external executor or transaction do not own a sql.DB, so Close is a no\-op for them.
 
+<a name="DB.CompileOperation"></a>
+### func \(\*DB\) CompileOperation
+
+```go
+func (db *DB) CompileOperation(ctx context.Context, spec operation.OperationSpec, opts operation.Options) (*QueryPlan, error)
+```
+
+CompileOperation plans a read\-only operation using this DB's current immutable settings and dialect. Caller options cannot replace them. No SQL is executed.
+
 <a name="DB.Dialect"></a>
 ### func \(\*DB\) Dialect
 
@@ -1350,6 +1361,15 @@ func (db *DB) TransactionContext(ctx context.Context, fn func(tx Tx) error) erro
 ```
 
 TransactionContext executes fn in a transaction using ctx.
+
+<a name="DB.ValidateOperation"></a>
+### func \(\*DB\) ValidateOperation
+
+```go
+func (db *DB) ValidateOperation(spec operation.OperationSpec, opts operation.Options) ([]Warning, error)
+```
+
+ValidateOperation uses the same DB\-scoped validation and DB\-free planner.
 
 <a name="DB.WithOptions"></a>
 ### func \(\*DB\) WithOptions
@@ -3288,6 +3308,8 @@ import "github.com/recoweft/goquent/orm/manifest"
 - [func WriteVerificationJSON\(w io.Writer, v Verification\) error](<#WriteVerificationJSON>)
 - [func WriteVerificationPretty\(w io.Writer, v Verification\) error](<#WriteVerificationPretty>)
 - [type Column](<#Column>)
+  - [func \(c Column\) MarshalJSON\(\) \(\[\]byte, error\)](<#Column.MarshalJSON>)
+  - [func \(c \*Column\) UnmarshalJSON\(b \[\]byte\) error](<#Column.UnmarshalJSON>)
 - [type ColumnFlags](<#ColumnFlags>)
 - [type FreshnessCheck](<#FreshnessCheck>)
 - [type Index](<#Index>)
@@ -3402,10 +3424,14 @@ Column describes a table column.
 
 ```go
 type Column struct {
-    Name           string   `json:"name"`
-    Type           string   `json:"type,omitempty"`
-    Primary        bool     `json:"primary,omitempty"`
-    Nullable       bool     `json:"nullable"`
+    Name string `json:"name"`
+    Type string `json:"type,omitempty"`
+    // TypeSource declares the type namespace (sql or go), not verification.
+    TypeSource string `json:"type_source,omitempty"`
+    Primary    bool   `json:"primary,omitempty"`
+    Nullable   bool   `json:"nullable"`
+    // NullableKnown distinguishes an explicit declaration from missing data.
+    NullableKnown  bool     `json:"-"`
     Default        string   `json:"default,omitempty"`
     Generated      bool     `json:"generated,omitempty"`
     EnumValues     []string `json:"enum_values,omitempty"`
@@ -3416,6 +3442,24 @@ type Column struct {
     RequiredFilter bool     `json:"required_filter,omitempty"`
 }
 ```
+
+<a name="Column.MarshalJSON"></a>
+### func \(Column\) MarshalJSON
+
+```go
+func (c Column) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON never promotes missing nullability to a declaration.
+
+<a name="Column.UnmarshalJSON"></a>
+### func \(\*Column\) UnmarshalJSON
+
+```go
+func (c *Column) UnmarshalJSON(b []byte) error
+```
+
+UnmarshalJSON preserves nullable presence and refuses ambiguous declarations.
 
 <a name="ColumnFlags"></a>
 ## type ColumnFlags
@@ -3908,6 +3952,8 @@ import "github.com/recoweft/goquent/orm/migration"
 - [func WriteStatusPretty\(w io.Writer, status Status\) error](<#WriteStatusPretty>)
 - [type AppliedMigration](<#AppliedMigration>)
 - [type ColumnSchema](<#ColumnSchema>)
+  - [func \(c ColumnSchema\) MarshalJSON\(\) \(\[\]byte, error\)](<#ColumnSchema.MarshalJSON>)
+  - [func \(c \*ColumnSchema\) UnmarshalJSON\(b \[\]byte\) error](<#ColumnSchema.UnmarshalJSON>)
 - [type DriftReport](<#DriftReport>)
   - [func CompareSchemaDrift\(desired, current Schema\) DriftReport](<#CompareSchemaDrift>)
   - [func \(s DriftReport\) PublicView\(\) publicoutput.SummaryView](<#DriftReport.PublicView>)
@@ -4108,13 +4154,33 @@ ColumnSchema describes a column in a schema diff.
 
 ```go
 type ColumnSchema struct {
-    Name              string `json:"name"`
-    Type              string `json:"type,omitempty"`
-    Nullable          bool   `json:"nullable"`
+    Name     string `json:"name"`
+    Type     string `json:"type,omitempty"`
+    Nullable bool   `json:"nullable"`
+    // NullableKnown records an explicit declaration, not live evidence.
+    NullableKnown     bool   `json:"-"`
     HasDefault        bool   `json:"has_default,omitempty"`
     DefaultExpression string `json:"default_expression,omitempty"`
 }
 ```
+
+<a name="ColumnSchema.MarshalJSON"></a>
+### func \(ColumnSchema\) MarshalJSON
+
+```go
+func (c ColumnSchema) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON never promotes missing nullability to a declaration.
+
+<a name="ColumnSchema.UnmarshalJSON"></a>
+### func \(\*ColumnSchema\) UnmarshalJSON
+
+```go
+func (c *ColumnSchema) UnmarshalJSON(b []byte) error
+```
+
+UnmarshalJSON preserves nullable presence and refuses ambiguous declarations.
 
 <a name="DriftReport"></a>
 ## type DriftReport
@@ -4751,11 +4817,14 @@ import "github.com/recoweft/goquent/orm/operation"
 - [func JSONSchema\(\) \(\[\]byte, error\)](<#JSONSchema>)
 - [func Validate\(spec OperationSpec, opts Options\) \(\[\]query.Warning, error\)](<#Validate>)
 - [type FilterSpec](<#FilterSpec>)
+  - [func \(f FilterSpec\) MarshalJSON\(\) \(\[\]byte, error\)](<#FilterSpec.MarshalJSON>)
+  - [func \(f \*FilterSpec\) UnmarshalJSON\(b \[\]byte\) error](<#FilterSpec.UnmarshalJSON>)
 - [type OperationSpec](<#OperationSpec>)
   - [func \(s OperationSpec\) MarshalJSON\(\) \(\[\]byte, error\)](<#OperationSpec.MarshalJSON>)
   - [func \(s \*OperationSpec\) UnmarshalJSON\(b \[\]byte\) error](<#OperationSpec.UnmarshalJSON>)
 - [type Options](<#Options>)
 - [type OrderSpec](<#OrderSpec>)
+  - [func \(o \*OrderSpec\) UnmarshalJSON\(b \[\]byte\) error](<#OrderSpec.UnmarshalJSON>)
 
 
 ## Constants
@@ -4798,6 +4867,19 @@ var (
     ErrRequiredFilterMissing   = errors.New("goquent operation: required filter missing")
     ErrPIIAccessReasonRequired = errors.New("goquent operation: PII access reason required")
     ErrStaleManifest           = errors.New("goquent operation: stale manifest")
+)
+```
+
+<a name="ErrInputLimit"></a>
+
+```go
+var (
+    ErrInputLimit      = errors.New("goquent operation: invalid or excessive input")
+    ErrTypeMismatch    = errors.New("goquent operation: value does not satisfy the declared type")
+    ErrTypeUnverified  = errors.New("goquent operation: required type information is unverified")
+    ErrArrayBinding    = errors.New("goquent operation: array column binding is unsupported")
+    ErrReservedBinding = errors.New("goquent operation: reserved binding requires application context")
+    ErrInvalidManifest = errors.New("goquent operation: invalid or ambiguous manifest declaration")
 )
 ```
 
@@ -4845,8 +4927,29 @@ type FilterSpec struct {
     Op       string `json:"op"`
     Value    any    `json:"value,omitempty"`
     ValueRef string `json:"value_ref,omitempty"`
+    // ValuePresent permits explicit nil in Go construction and is never a wire verdict.
+    ValuePresent bool `json:"-"`
+    // contains filtered or unexported fields
 }
 ```
+
+<a name="FilterSpec.MarshalJSON"></a>
+### func \(FilterSpec\) MarshalJSON
+
+```go
+func (f FilterSpec) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="FilterSpec.UnmarshalJSON"></a>
+### func \(\*FilterSpec\) UnmarshalJSON
+
+```go
+func (f *FilterSpec) UnmarshalJSON(b []byte) error
+```
+
+UnmarshalJSON preserves even null and empty declarations for arity validation.
 
 <a name="OperationSpec"></a>
 ## type OperationSpec
@@ -4863,6 +4966,7 @@ type OperationSpec struct {
     OrderBy      []OrderSpec  `json:"order_by,omitempty"`
     Limit        *int64       `json:"limit,omitempty"`
     AccessReason string       `json:"access_reason,omitempty"`
+    // contains filtered or unexported fields
 }
 ```
 
@@ -4891,6 +4995,7 @@ Options controls validation and compilation.
 
 ```go
 type Options struct {
+    Settings             *query.Settings
     Manifest             *manifest.Manifest
     Dialect              driver.Dialect
     Values               map[string]any
@@ -4910,6 +5015,15 @@ type OrderSpec struct {
     Direction string `json:"direction"`
 }
 ```
+
+<a name="OrderSpec.UnmarshalJSON"></a>
+### func \(\*OrderSpec\) UnmarshalJSON
+
+```go
+func (o *OrderSpec) UnmarshalJSON(b []byte) error
+```
+
+
 
 # predicate
 
@@ -5299,6 +5413,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) LeftJoinQuery\(table string, fn func\(b \*JoinClause\)\) \*Query](<#Query.LeftJoinQuery>)
   - [func \(q \*Query\) LeftJoinSubQuery\(sub \*Query, alias, my, condition, target string\) \*Query](<#Query.LeftJoinSubQuery>)
   - [func \(q \*Query\) Limit\(n int\) \*Query](<#Query.Limit>)
+  - [func \(q \*Query\) LimitExact\(n int\) \*Query](<#Query.LimitExact>)
   - [func \(q \*Query\) LockForUpdate\(\) \*Query](<#Query.LockForUpdate>)
   - [func \(q \*Query\) Max\(col string\) \*Query](<#Query.Max>)
   - [func \(q \*Query\) Min\(col string\) \*Query](<#Query.Min>)
@@ -5424,8 +5539,10 @@ import "github.com/recoweft/goquent/orm/query"
 - [type Settings](<#Settings>)
   - [func NewSettings\(policies PolicySet, risk RiskConfig, execution ExecutionContext\) Settings](<#NewSettings>)
   - [func SnapshotDefaultSettings\(\) Settings](<#SnapshotDefaultSettings>)
+  - [func \(s Settings\) ApplicationTenantContext\(\) \(ExecutionContext, error\)](<#Settings.ApplicationTenantContext>)
   - [func \(s Settings\) Err\(\) error](<#Settings.Err>)
   - [func \(s Settings\) ExecutionContext\(\) ExecutionContext](<#Settings.ExecutionContext>)
+  - [func \(s Settings\) IsStrict\(\) bool](<#Settings.IsStrict>)
   - [func \(s Settings\) PolicySet\(\) PolicySet](<#Settings.PolicySet>)
   - [func \(s Settings\) RiskConfig\(\) RiskConfig](<#Settings.RiskConfig>)
   - [func \(s Settings\) WithExecutionContext\(c ExecutionContext\) Settings](<#Settings.WithExecutionContext>)
@@ -5567,6 +5684,12 @@ var (
     ErrUnsupportedExecutionContext = errors.New("goquent: execution context contains an unsupported, recursive, deep or oversized value")
     ErrUnsupportedRiskEngine       = errors.New("goquent: custom global risk engine cannot be snapshotted; supply an explicit RiskConfig")
 )
+```
+
+<a name="ErrInvalidLimit"></a>ErrInvalidLimit identifies a negative LimitExact input without retaining it.
+
+```go
+var ErrInvalidLimit = errors.New("goquent: limit must be non-negative")
 ```
 
 <a name="ErrJSONVersion"></a>ErrJSONVersion identifies invalid, ambiguous or unsupported envelope versions.
@@ -6556,6 +6679,15 @@ func (q *Query) Limit(n int) *Query
 ```
 
 Limit sets a limit.
+
+<a name="Query.LimitExact"></a>
+### func \(\*Query\) LimitExact
+
+```go
+func (q *Query) LimitExact(n int) *Query
+```
+
+LimitExact sets an explicit SELECT limit, including zero rows. Its range is 0..max int for the current architecture. Legacy Limit and Take retain their zero\-as\-unlimited behavior and clear this state. Errors remain sticky.
 
 <a name="Query.LockForUpdate"></a>
 ### func \(\*Query\) LockForUpdate
@@ -7752,6 +7884,15 @@ func SnapshotDefaultSettings() Settings
 
 SnapshotDefaultSettings imports legacy defaults once. Global engine assignment must finish before concurrent use; the historical exported variable cannot synchronize caller writes. Arbitrary custom engines cannot be copied safely. Such a snapshot records ErrUnsupportedRiskEngine and blocks inspected paths until explicitly replaced with WithRiskConfig. No custom method is invoked.
 
+<a name="Settings.ApplicationTenantContext"></a>
+### func \(Settings\) ApplicationTenantContext
+
+```go
+func (s Settings) ApplicationTenantContext() (ExecutionContext, error)
+```
+
+ApplicationTenantContext preserves application provenance and returns detached data through ExecutionContext.Input. It does not authenticate the application.
+
 <a name="Settings.Err"></a>
 ### func \(Settings\) Err
 
@@ -7769,6 +7910,15 @@ func (s Settings) ExecutionContext() ExecutionContext
 ```
 
 
+
+<a name="Settings.IsStrict"></a>
+### func \(Settings\) IsStrict
+
+```go
+func (s Settings) IsStrict() bool
+```
+
+IsStrict reports the immutable profile, not authorization.
 
 <a name="Settings.PolicySet"></a>
 ### func \(Settings\) PolicySet
