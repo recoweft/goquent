@@ -1,0 +1,80 @@
+{
+  "plan_valid": [
+    {
+      "kind": "goquent.plan_view",
+      "version": 1
+    }
+  ],
+  "plan_invalid": [
+    {},
+    {
+      "kind": "goquent.plan_view"
+    },
+    {
+      "kind": "goquent.plan_view",
+      "version": 0
+    },
+    {
+      "kind": "goquent.plan_view",
+      "version": 2
+    },
+    {
+      "kind": "goquent.plan_view",
+      "version": "1"
+    },
+    {
+      "kind": "goquent.plan_view",
+      "version": null
+    },
+    {
+      "kind": "goquent.other_view",
+      "version": 1
+    },
+    {
+      "kind": "goquent.plan_view",
+      "version": 1,
+      "unknown": "fictional-view@example.invalid"
+    },
+    null,
+    []
+  ],
+  "report_valid": [
+    {
+      "kind": "goquent.report_view",
+      "version": 1
+    }
+  ],
+  "report_invalid": [
+    {},
+    {
+      "kind": "goquent.report_view"
+    },
+    {
+      "kind": "goquent.report_view",
+      "version": 0
+    },
+    {
+      "kind": "goquent.report_view",
+      "version": 2
+    },
+    {
+      "kind": "goquent.report_view",
+      "version": "1"
+    },
+    {
+      "kind": "goquent.report_view",
+      "version": null
+    },
+    {
+      "kind": "goquent.other_view",
+      "version": 1
+    },
+    {
+      "kind": "goquent.report_view",
+      "version": 1,
+      "unknown": "fictional-view@example.invalid"
+    },
+    null,
+    []
+  ]
+}

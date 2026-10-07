@@ -99,6 +99,15 @@ func TestBindingSixDispatchAndPrivateMaterial(t *testing.T) {
 					if spy.calls != [6]int{} || p.execution != nil || p.tenantEvidence != nil {
 						t.Fatal("plan dispatched or retained evidence")
 					}
+					view, viewErr := p.PublicView()
+					if viewErr != nil {
+						t.Fatal(viewErr)
+					}
+					view.Operation = viewCanaries[0]
+					exercisePlanView(t, view)
+					if spy.calls != [6]int{} || h.state.used.Load() {
+						t.Fatal("view consumed handle or dispatched")
+					}
 					sqlText := p.SQL
 					args := append([]any(nil), p.Params...)
 					switch family {

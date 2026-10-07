@@ -390,3 +390,14 @@ owner inputs. They add no public ID/key/context or execution API, do not certify
 opaque forms, and cannot prove physical DB identity or live freshness. PR2 adds explicit current-input binding and key supply for six Query families;
 see [validated binding](../docs/validated-plan-binding.md). Public diagnostics and identity equality are not authorization. GQ-AI-06 complete redaction remains
 separate. Preserve the existing Strict/compatibility and private lifecycle limits.
+
+## GQ-AI-06 PR1 public views
+
+Additive `query.PlanView` and `review.ReportView` now provide detached, bounded,
+non-executable output with fixed classification and strict independent v1 readers.
+SQL, identifiers, values and opaque Evidence/Metadata are omitted without evaluating
+custom value methods. See [public view APIs and output migration](../docs/public-plan-views.md).
+Existing ToJSON/String/review writers and CLI/CI/MCP outputs are unchanged and can
+still expose sensitive data. Their migration and whole-Issue leak regression belong
+to PR2. Public views are not execution, approval or CI decision inputs; existing
+private execution, typed binding, Strict and wire compatibility remain in force.
