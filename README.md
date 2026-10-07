@@ -4843,6 +4843,13 @@ import "github.com/recoweft/goquent/orm/query"
 - [type JoinRef](<#JoinRef>)
 - [type OperationType](<#OperationType>)
 - [type OutputError](<#OutputError>)
+- [type PlanView](<#PlanView>)
+  - [func DecodePlanView\(b \[\]byte\) \(PlanView, error\)](<#DecodePlanView>)
+  - [func \(v PlanView\) Format\(s fmt.State, \_ rune\)](<#PlanView.Format>)
+  - [func \(v PlanView\) MarshalJSON\(\) \(\[\]byte, error\)](<#PlanView.MarshalJSON>)
+  - [func \(v PlanView\) String\(\) string](<#PlanView.String>)
+  - [func \(v PlanView\) ToJSON\(\) \(\[\]byte, error\)](<#PlanView.ToJSON>)
+  - [func \(v \*PlanView\) UnmarshalJSON\(b \[\]byte\) error](<#PlanView.UnmarshalJSON>)
 - [type PolicyMode](<#PolicyMode>)
 - [type PolicySet](<#PolicySet>)
   - [func NewPolicySet\(policies ...TablePolicy\) \(PolicySet, error\)](<#NewPolicySet>)
@@ -4997,6 +5004,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func NewRawPlan\(sqlStr string, args ...any\) \*QueryPlan](<#NewRawPlan>)
   - [func NewRawPlanWithSettings\(settings Settings, sqlStr string, args ...any\) \*QueryPlan](<#NewRawPlanWithSettings>)
   - [func \(p QueryPlan\) MarshalJSON\(\) \(\[\]byte, error\)](<#QueryPlan.MarshalJSON>)
+  - [func \(p \*QueryPlan\) PublicView\(\) \(PlanView, error\)](<#QueryPlan.PublicView>)
   - [func \(p \*QueryPlan\) RequiresApproval\(\) bool](<#QueryPlan.RequiresApproval>)
   - [func \(p \*QueryPlan\) String\(\) string](<#QueryPlan.String>)
   - [func \(p \*QueryPlan\) ToJSON\(\) \(\[\]byte, error\)](<#QueryPlan.ToJSON>)
@@ -5041,6 +5049,10 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(ValidatedPlan\) MarshalJSON\(\) \(\[\]byte, error\)](<#ValidatedPlan.MarshalJSON>)
   - [func \(h \*ValidatedPlan\) UnmarshalJSON\(\[\]byte\) error](<#ValidatedPlan.UnmarshalJSON>)
 - [type Warning](<#Warning>)
+- [type WarningView](<#WarningView>)
+  - [func \(v WarningView\) Format\(s fmt.State, \_ rune\)](<#WarningView.Format>)
+  - [func \(v WarningView\) MarshalJSON\(\) \(\[\]byte, error\)](<#WarningView.MarshalJSON>)
+  - [func \(v WarningView\) String\(\) string](<#WarningView.String>)
 - [type WriteKeyColumn](<#WriteKeyColumn>)
 - [type WriteKeyConstraint](<#WriteKeyConstraint>)
 - [type WriteKeyContext](<#WriteKeyContext>)
@@ -5088,6 +5100,12 @@ const (
 const JSONVersion = planversion.Current
 ```
 
+<a name="MaxPlanViewWarnings"></a>MaxPlanViewWarnings applies independently to active and suppressed warnings.
+
+```go
+const MaxPlanViewWarnings = 128
+```
+
 <a name="MetadataRequiredPredicates"></a>MetadataRequiredPredicates stores \[\]RequiredPredicate in QueryPlan.Metadata.
 
 ```go
@@ -5098,6 +5116,18 @@ const MetadataRequiredPredicates = "required_predicates"
 
 ```go
 const MetadataTableRisk = "table_risk_metadata"
+```
+
+<a name="PlanViewKind"></a>
+
+```go
+const PlanViewKind = "goquent.plan_view"
+```
+
+<a name="PlanViewVersion"></a>
+
+```go
+const PlanViewVersion = 1
 ```
 
 ## Variables
@@ -5611,6 +5641,87 @@ OutputError distinguishes display preflight failures from custom marshaler error
 ```go
 type OutputError = valueguard.Error
 ```
+
+<a name="PlanView"></a>
+## type PlanView
+
+PlanView is detached, non\-executable display data. SQL and all names/values are omitted. Its claims are not authorization or a complete inspection.
+
+```go
+type PlanView struct {
+    Kind                   string        `json:"kind"`
+    Version                int           `json:"version"`
+    Operation              string        `json:"operation"`
+    Risk                   string        `json:"risk"`
+    Precision              string        `json:"precision"`
+    RequiredApproval       bool          `json:"required_approval"`
+    Blocked                bool          `json:"blocked"`
+    DetailsOmitted         bool          `json:"details_omitted"`
+    TableCount             int           `json:"table_count"`
+    ColumnCount            int           `json:"column_count"`
+    JoinCount              int           `json:"join_count"`
+    PredicateCount         int           `json:"predicate_count"`
+    WarningCount           int           `json:"warning_count"`
+    SuppressedWarningCount int           `json:"suppressed_warning_count"`
+    Warnings               []WarningView `json:"warnings"`
+    SuppressedWarnings     []WarningView `json:"suppressed_warnings"`
+    Truncated              bool          `json:"truncated"`
+}
+```
+
+<a name="DecodePlanView"></a>
+### func DecodePlanView
+
+```go
+func DecodePlanView(b []byte) (PlanView, error)
+```
+
+DecodePlanView reads one bounded document into a fresh, display\-only value.
+
+<a name="PlanView.Format"></a>
+### func \(PlanView\) Format
+
+```go
+func (v PlanView) Format(s fmt.State, _ rune)
+```
+
+Format covers all fmt verbs, including %\#v, for values and pointers.
+
+<a name="PlanView.MarshalJSON"></a>
+### func \(PlanView\) MarshalJSON
+
+```go
+func (v PlanView) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON reapplies policy even to caller\-modified exported fields.
+
+<a name="PlanView.String"></a>
+### func \(PlanView\) String
+
+```go
+func (v PlanView) String() string
+```
+
+
+
+<a name="PlanView.ToJSON"></a>
+### func \(PlanView\) ToJSON
+
+```go
+func (v PlanView) ToJSON() ([]byte, error)
+```
+
+ToJSON is the safe JSON entry, including its returned errors.
+
+<a name="PlanView.UnmarshalJSON"></a>
+### func \(\*PlanView\) UnmarshalJSON
+
+```go
+func (v *PlanView) UnmarshalJSON(b []byte) error
+```
+
+
 
 <a name="PolicyMode"></a>
 ## type PolicyMode
@@ -7055,6 +7166,15 @@ func (p QueryPlan) MarshalJSON() ([]byte, error)
 
 MarshalJSON preserves ordinary output while rejecting unsafe built\-in expansion. A value receiver also covers json.Marshal\(\*plan\). Nil pointers remain JSON null.
 
+<a name="QueryPlan.PublicView"></a>
+### func \(\*QueryPlan\) PublicView
+
+```go
+func (p *QueryPlan) PublicView() (PlanView, error)
+```
+
+PublicView does not walk payloads, copy private evidence, or call value methods.
+
 <a name="QueryPlan.RequiresApproval"></a>
 ### func \(\*QueryPlan\) RequiresApproval
 
@@ -7552,6 +7672,51 @@ type Warning struct {
 }
 ```
 
+<a name="WarningView"></a>
+## type WarningView
+
+WarningView contains only fixed vocabulary, local ordinal and source position. Message is regenerated from Code by every provided display method.
+
+```go
+type WarningView struct {
+    Ordinal        int    `json:"ordinal"`
+    Code           string `json:"code"`
+    Level          string `json:"level"`
+    Message        string `json:"message"`
+    Line           int    `json:"line"`
+    Column         int    `json:"column"`
+    Suppressible   bool   `json:"suppressible"`
+    RequiresReason bool   `json:"requires_reason"`
+}
+```
+
+<a name="WarningView.Format"></a>
+### func \(WarningView\) Format
+
+```go
+func (v WarningView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="WarningView.MarshalJSON"></a>
+### func \(WarningView\) MarshalJSON
+
+```go
+func (v WarningView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="WarningView.String"></a>
+### func \(WarningView\) String
+
+```go
+func (v WarningView) String() string
+```
+
+
+
 <a name="WriteKeyColumn"></a>
 ## type WriteKeyColumn
 
@@ -7648,15 +7813,30 @@ import "github.com/recoweft/goquent/orm/review"
 - [func WriteGitHub\(w io.Writer, report ReviewReport\) error](<#WriteGitHub>)
 - [func WriteJSON\(w io.Writer, report ReviewReport\) error](<#WriteJSON>)
 - [func WritePretty\(w io.Writer, report ReviewReport\) error](<#WritePretty>)
+- [func WritePublicGitHub\(w io.Writer, v ReportView\) error](<#WritePublicGitHub>)
+- [func WritePublicJSON\(w io.Writer, v ReportView\) error](<#WritePublicJSON>)
+- [func WritePublicPretty\(w io.Writer, v ReportView\) error](<#WritePublicPretty>)
 - [type Config](<#Config>)
   - [func LoadConfig\(path string\) \(Config, error\)](<#LoadConfig>)
 - [type ConfigSuppression](<#ConfigSuppression>)
 - [type Finding](<#Finding>)
+- [type FindingView](<#FindingView>)
+  - [func \(v FindingView\) Format\(s fmt.State, \_ rune\)](<#FindingView.Format>)
+  - [func \(v FindingView\) MarshalJSON\(\) \(\[\]byte, error\)](<#FindingView.MarshalJSON>)
+  - [func \(v FindingView\) String\(\) string](<#FindingView.String>)
 - [type ManifestStatus](<#ManifestStatus>)
 - [type Options](<#Options>)
+- [type ReportView](<#ReportView>)
+  - [func DecodeReportView\(b \[\]byte\) \(ReportView, error\)](<#DecodeReportView>)
+  - [func \(v ReportView\) Format\(s fmt.State, \_ rune\)](<#ReportView.Format>)
+  - [func \(v ReportView\) MarshalJSON\(\) \(\[\]byte, error\)](<#ReportView.MarshalJSON>)
+  - [func \(v ReportView\) String\(\) string](<#ReportView.String>)
+  - [func \(v ReportView\) ToJSON\(\) \(\[\]byte, error\)](<#ReportView.ToJSON>)
+  - [func \(v \*ReportView\) UnmarshalJSON\(b \[\]byte\) error](<#ReportView.UnmarshalJSON>)
 - [type ReviewReport](<#ReviewReport>)
   - [func Run\(opts Options\) \(ReviewReport, error\)](<#Run>)
   - [func \(p ReviewReport\) MarshalJSON\(\) \(\[\]byte, error\)](<#ReviewReport.MarshalJSON>)
+  - [func \(r ReviewReport\) PublicView\(\) \(ReportView, error\)](<#ReviewReport.PublicView>)
   - [func \(p \*ReviewReport\) UnmarshalJSON\(b \[\]byte\) error](<#ReviewReport.UnmarshalJSON>)
 - [type ReviewSummary](<#ReviewSummary>)
 
@@ -7679,6 +7859,24 @@ const (
 
 ```go
 const JSONVersion = planversion.Current
+```
+
+<a name="MaxReportViewFindings"></a>MaxReportViewFindings applies independently to each finding list.
+
+```go
+const MaxReportViewFindings = 256
+```
+
+<a name="ReportViewKind"></a>
+
+```go
+const ReportViewKind = "goquent.report_view"
+```
+
+<a name="ReportViewVersion"></a>
+
+```go
+const ReportViewVersion = 1
 ```
 
 ## Variables
@@ -7752,6 +7950,33 @@ func WritePretty(w io.Writer, report ReviewReport) error
 
 WritePretty writes a human\-readable review report.
 
+<a name="WritePublicGitHub"></a>
+## func WritePublicGitHub
+
+```go
+func WritePublicGitHub(w io.Writer, v ReportView) error
+```
+
+WritePublicGitHub emits path\-free annotations and an explicit omission summary. It does not make CI decisions or treat unknown risk as a passing verdict.
+
+<a name="WritePublicJSON"></a>
+## func WritePublicJSON
+
+```go
+func WritePublicJSON(w io.Writer, v ReportView) error
+```
+
+WritePublicJSON writes only a ReportView. Source reports require PublicView first.
+
+<a name="WritePublicPretty"></a>
+## func WritePublicPretty
+
+```go
+func WritePublicPretty(w io.Writer, v ReportView) error
+```
+
+WritePublicPretty labels omitted and truncated detail instead of "No findings".
+
 <a name="Config"></a>
 ## type Config
 
@@ -7816,6 +8041,51 @@ type Finding struct {
 }
 ```
 
+<a name="FindingView"></a>
+## type FindingView
+
+FindingView omits paths, reasons, evidence and nested plans completely.
+
+```go
+type FindingView struct {
+    Ordinal    int    `json:"ordinal"`
+    Code       string `json:"code"`
+    Level      string `json:"level"`
+    Precision  string `json:"precision"`
+    Message    string `json:"message"`
+    Line       int    `json:"line"`
+    Column     int    `json:"column"`
+    Suppressed bool   `json:"suppressed"`
+}
+```
+
+<a name="FindingView.Format"></a>
+### func \(FindingView\) Format
+
+```go
+func (v FindingView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="FindingView.MarshalJSON"></a>
+### func \(FindingView\) MarshalJSON
+
+```go
+func (v FindingView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="FindingView.String"></a>
+### func \(FindingView\) String
+
+```go
+func (v FindingView) String() string
+```
+
+
+
 <a name="ManifestStatus"></a>
 ## type ManifestStatus
 
@@ -7849,6 +8119,78 @@ type Options struct {
 }
 ```
 
+<a name="ReportView"></a>
+## type ReportView
+
+ReportView is display\-only. Counts refer to each entire source list, which can overlap when ShowSuppressed is enabled. Summary maps are not copied.
+
+```go
+type ReportView struct {
+    Kind                   string        `json:"kind"`
+    Version                int           `json:"version"`
+    FindingCount           int           `json:"finding_count"`
+    SuppressedFindingCount int           `json:"suppressed_finding_count"`
+    Findings               []FindingView `json:"findings"`
+    SuppressedFindings     []FindingView `json:"suppressed_findings"`
+    Truncated              bool          `json:"truncated"`
+    DetailsOmitted         bool          `json:"details_omitted"`
+}
+```
+
+<a name="DecodeReportView"></a>
+### func DecodeReportView
+
+```go
+func DecodeReportView(b []byte) (ReportView, error)
+```
+
+DecodeReportView accepts one strict bounded v1 document, never an execution input.
+
+<a name="ReportView.Format"></a>
+### func \(ReportView\) Format
+
+```go
+func (v ReportView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="ReportView.MarshalJSON"></a>
+### func \(ReportView\) MarshalJSON
+
+```go
+func (v ReportView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="ReportView.String"></a>
+### func \(ReportView\) String
+
+```go
+func (v ReportView) String() string
+```
+
+
+
+<a name="ReportView.ToJSON"></a>
+### func \(ReportView\) ToJSON
+
+```go
+func (v ReportView) ToJSON() ([]byte, error)
+```
+
+ToJSON returns policy\-filtered JSON and only fixed safe errors.
+
+<a name="ReportView.UnmarshalJSON"></a>
+### func \(\*ReportView\) UnmarshalJSON
+
+```go
+func (v *ReportView) UnmarshalJSON(b []byte) error
+```
+
+
+
 <a name="ReviewReport"></a>
 ## type ReviewReport
 
@@ -7881,6 +8223,15 @@ func (p ReviewReport) MarshalJSON() ([]byte, error)
 ```
 
 
+
+<a name="ReviewReport.PublicView"></a>
+### func \(ReviewReport\) PublicView
+
+```go
+func (r ReviewReport) PublicView() (ReportView, error)
+```
+
+PublicView projects bounded outer structure without visiting opaque contents.
 
 <a name="ReviewReport.UnmarshalJSON"></a>
 ### func \(\*ReviewReport\) UnmarshalJSON
