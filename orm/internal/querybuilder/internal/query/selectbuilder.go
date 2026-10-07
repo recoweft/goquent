@@ -245,7 +245,12 @@ func (b *SelectBuilder) OrHavingRaw(raw string) *SelectBuilder {
 }
 
 func (b *SelectBuilder) Limit(limit int64) *SelectBuilder {
-	b.selectQuery.Limit.Limit = limit
+	b.selectQuery.Limit = structs.Limit{Limit: limit}
+	return b
+}
+
+func (b *SelectBuilder) LimitExact(limit int64) *SelectBuilder {
+	b.selectQuery.Limit = structs.Limit{Limit: limit, Exact: true}
 	return b
 }
 

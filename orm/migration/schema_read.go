@@ -176,6 +176,7 @@ func scanSchemaColumns(rows *sql.Rows, allowed map[string]struct{}) (map[string]
 			Name:              columnName,
 			Type:              columnType,
 			Nullable:          strings.EqualFold(nullableText, "yes"),
+			NullableKnown:     strings.EqualFold(nullableText, "yes") || strings.EqualFold(nullableText, "no"),
 			HasDefault:        defaultRaw != nil,
 			DefaultExpression: defaultExpr,
 		})

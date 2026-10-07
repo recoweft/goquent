@@ -30,6 +30,9 @@ func Validate(m *Manifest) error {
 			return fmt.Errorf("goquent: manifest table name is required")
 		}
 		for _, column := range table.Columns {
+			if column.TypeSource != "" && column.TypeSource != "sql" && column.TypeSource != "go" {
+				return fmt.Errorf("goquent: invalid manifest type source")
+			}
 			if strings.TrimSpace(column.Name) == "" {
 				return fmt.Errorf("goquent: manifest column name is required for table %s", table.Name)
 			}

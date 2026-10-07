@@ -19,16 +19,19 @@ func TestOperationCompileCommand(t *testing.T) {
 	specPath := filepath.Join(dir, "operation.json")
 	valuesPath := filepath.Join(dir, "values.json")
 
-	writeJSON(t, manifestPath, operationTestManifest(false))
+	m := operationTestManifest(false)
+	m.Tables[0].Columns[3].TenantScope = false
+	m.Tables[0].Policies[0].Type = "required_filter"
+	writeJSON(t, manifestPath, m)
 	limit := int64(10)
 	writeJSON(t, specPath, operation.OperationSpec{
 		Operation: operation.OperationSelect,
 		Model:     "User",
 		Select:    []string{"id", "name"},
-		Filters:   []operation.FilterSpec{{Field: "tenant_id", Op: "=", ValueRef: "current_tenant"}},
+		Filters:   []operation.FilterSpec{{Field: "tenant_id", Op: "=", ValueRef: "ordinary_value"}},
 		Limit:     &limit,
 	})
-	writeJSON(t, valuesPath, map[string]any{"current_tenant": "tenant-1"})
+	writeJSON(t, valuesPath, map[string]any{"ordinary_value": "tenant-1"})
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"operation", "compile", "--manifest", manifestPath, "--spec", specPath, "--values", valuesPath, "--format", "json"}, &stdout, &stderr)

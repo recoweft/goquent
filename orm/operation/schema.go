@@ -18,7 +18,7 @@ func JSONSchema() ([]byte, error) {
 			"select":        map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string"}},
 			"filters":       filterArraySchema(),
 			"order_by":      orderArraySchema(),
-			"limit":         map[string]any{"type": "integer", "minimum": 0},
+			"limit":         map[string]any{"type": "integer", "minimum": 0, "maximum": 10000},
 			"access_reason": map[string]any{"type": "string"},
 		},
 	}
@@ -32,11 +32,15 @@ func filterArraySchema() map[string]any {
 			"type":                 "object",
 			"additionalProperties": false,
 			"required":             []string{"field", "op"},
+			"allOf": []any{
+				map[string]any{"if": map[string]any{"properties": map[string]any{"op": map[string]any{"enum": []string{"is_null", "is_not_null"}}}}, "then": map[string]any{"not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"value"}}, map[string]any{"required": []string{"value_ref"}}}}}, "else": map[string]any{"oneOf": []any{map[string]any{"required": []string{"value"}, "not": map[string]any{"required": []string{"value_ref"}}}, map[string]any{"required": []string{"value_ref"}, "not": map[string]any{"required": []string{"value"}}}}}},
+				map[string]any{"if": map[string]any{"properties": map[string]any{"op": map[string]any{"const": "in"}}, "required": []string{"value"}}, "then": map[string]any{"properties": map[string]any{"value": map[string]any{"type": "array", "minItems": 1, "maxItems": 1000, "items": map[string]any{"not": map[string]any{"type": "null"}}}}}},
+			},
 			"properties": map[string]any{
 				"field":     map[string]any{"type": "string", "minLength": 1},
 				"op":        map[string]any{"enum": []string{"=", "!=", "<>", ">", ">=", "<", "<=", "like", "in", "is_null", "is_not_null", "eq", "ne", "gt", "gte", "lt", "lte"}},
 				"value":     map[string]any{},
-				"value_ref": map[string]any{"type": "string"},
+				"value_ref": map[string]any{"type": "string", "minLength": 1},
 			},
 		},
 	}

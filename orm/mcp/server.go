@@ -367,6 +367,25 @@ func (s *Server) compileOperationSpec(args map[string]any) (ToolResult, error) {
 			return ToolResult{}, err
 		}
 	}
+	// Preserve direct primitive Go arguments after the closed structural decode.
+	// JSON-RPC already supplies json.Number; native callers must not gain a
+	// numeric coercion by passing through JSON encoding.
+	if raw, ok := rawSpec.(map[string]any); ok {
+		if filters, ok := raw["filters"].([]any); ok {
+			for i, entry := range filters {
+				if i < len(spec.Filters) {
+					if f, ok := entry.(map[string]any); ok {
+						if v, present := f["value"]; present {
+							spec.Filters[i].Value = v
+						}
+					}
+				}
+			}
+		}
+	}
+	if raw, ok := args["values"].(map[string]any); ok {
+		values = raw
+	}
 	requireFresh, _ := optionalBool(args, "require_fresh_manifest")
 	plan, err := operation.Compile(context.Background(), spec, operation.Options{
 		Manifest:             s.manifest,

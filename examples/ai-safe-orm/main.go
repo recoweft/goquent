@@ -16,7 +16,7 @@ import (
 
 type User struct {
 	ID        int64      `db:"id,pk"`
-	TenantID  string     `db:"tenant_id"`
+	TenantID  int64      `db:"tenant_id"`
 	Name      string     `db:"name"`
 	Email     string     `db:"email"`
 	DeletedAt *time.Time `db:"deleted_at,omitempty"`
@@ -41,7 +41,7 @@ func main() {
 
 	simpleInsert, err := db.Table("users").
 		PlanInsert(ctx, map[string]any{
-			"tenant_id": "tenant_123",
+			"tenant_id": int64(123),
 			"name":      "Alice",
 			"email":     "alice@example.test",
 		})
@@ -49,7 +49,7 @@ func main() {
 
 	tenantRead, err := db.Table("users").
 		Select("id", "name").
-		Where("tenant_id", "tenant_123").
+		Where("tenant_id", int64(123)).
 		OrderBy("id", "asc").
 		Limit(100).
 		Plan(ctx)
@@ -57,7 +57,7 @@ func main() {
 
 	piiRead, err := db.Table("users").
 		Select("id", "email").
-		Where("tenant_id", "tenant_123").
+		Where("tenant_id", int64(123)).
 		AccessReason("support ticket TICKET-123").
 		Limit(1).
 		Plan(ctx)
@@ -65,7 +65,7 @@ func main() {
 
 	suppressedExport, err := db.Table("users").
 		Select("id", "name").
-		Where("tenant_id", "tenant_123").
+		Where("tenant_id", int64(123)).
 		SuppressWarning(
 			orm.WarningLimitMissing,
 			"tenant export streams through an application-level cursor",
@@ -90,11 +90,11 @@ func main() {
 		Schema: &migration.Schema{Tables: []migration.TableSchema{{
 			Name: "users",
 			Columns: []migration.ColumnSchema{
-				{Name: "id", Type: "bigint", Nullable: false},
-				{Name: "tenant_id", Type: "varchar(64)", Nullable: false},
-				{Name: "name", Type: "varchar(255)", Nullable: false},
-				{Name: "email", Type: "varchar(255)", Nullable: false},
-				{Name: "deleted_at", Type: "timestamp", Nullable: true},
+				{Name: "id", Type: "bigint", Nullable: false, NullableKnown: true},
+				{Name: "tenant_id", Type: "bigint", Nullable: false, NullableKnown: true},
+				{Name: "name", Type: "varchar(255)", Nullable: false, NullableKnown: true},
+				{Name: "email", Type: "varchar(255)", Nullable: false, NullableKnown: true},
+				{Name: "deleted_at", Type: "datetime", Nullable: true, NullableKnown: true},
 			},
 			Indexes: []migration.IndexSchema{{Name: "idx_users_tenant_id", Columns: []string{"tenant_id"}}},
 		}}},
@@ -102,10 +102,21 @@ func main() {
 	})
 	must("manifest", err)
 
+	// These assertions are supplied by the trusted application, never by JSON.
+	policies, err := query.NewPolicySet(orm.RegisteredTablePolicies()...)
+	must("policy snapshot", err)
+	schema, err := query.NewApplicationSchema(query.ApplicationSchemaInput{Database: "example", Dialect: "mysql", Tables: []query.ApplicationTable{{Table: "users", PlainTable: true, CompleteUniqueConstraints: true, Columns: []query.WriteKeyColumn{
+		{Name: "id", DBType: "BIGINT", Bits: 64}, {Name: "tenant_id", DBType: "BIGINT", Bits: 64}, {Name: "name", DBType: "varchar(255)"}, {Name: "email", DBType: "varchar(255)"}, {Name: "deleted_at", DBType: "datetime", Nullable: true},
+	}}}})
+	must("application schema", err)
+	execution, err := query.NewApplicationTenantContext(query.ExecutionContextInput{TenantPresent: true, CurrentTenant: int64(123)})
+	must("application tenant", err)
+	settings := query.NewSettings(policies, query.RiskConfig{}, execution).WithTenantPolicy("example", schema, false)
+	db = db.WithOptions(orm.WithSettings(settings))
 	orm.ResetModelPolicies()
 
 	limit := int64(25)
-	operationPlan, err := operation.Compile(ctx, operation.OperationSpec{
+	operationPlan, err := db.CompileOperation(ctx, operation.OperationSpec{
 		Operation: "select",
 		Model:     "users",
 		Select:    []string{"id", "name"},
@@ -118,7 +129,6 @@ func main() {
 		Limit:   &limit,
 	}, operation.Options{
 		Manifest: m,
-		Values:   map[string]any{"current_tenant": "tenant_123"},
 	})
 	must("operation spec compile", err)
 

@@ -60,10 +60,14 @@ type Table struct {
 
 // Column describes a table column.
 type Column struct {
-	Name           string   `json:"name"`
-	Type           string   `json:"type,omitempty"`
-	Primary        bool     `json:"primary,omitempty"`
-	Nullable       bool     `json:"nullable"`
+	Name string `json:"name"`
+	Type string `json:"type,omitempty"`
+	// TypeSource declares the type namespace (sql or go), not verification.
+	TypeSource string `json:"type_source,omitempty"`
+	Primary    bool   `json:"primary,omitempty"`
+	Nullable   bool   `json:"nullable"`
+	// NullableKnown distinguishes an explicit declaration from missing data.
+	NullableKnown  bool     `json:"-"`
 	Default        string   `json:"default,omitempty"`
 	Generated      bool     `json:"generated,omitempty"`
 	EnumValues     []string `json:"enum_values,omitempty"`
@@ -153,6 +157,22 @@ func Generate(opts Options) (*Manifest, error) {
 
 	tables := map[string]Table{}
 	if opts.Schema != nil {
+		seen := map[string]bool{}
+		for _, table := range opts.Schema.Tables {
+			key := normalizeName(table.Name)
+			if seen[key] {
+				return nil, fmt.Errorf("goquent: ambiguous schema declaration")
+			}
+			seen[key] = true
+			cols := map[string]bool{}
+			for _, c := range table.Columns {
+				key := normalizeName(c.Name)
+				if cols[key] {
+					return nil, fmt.Errorf("goquent: ambiguous schema declaration")
+				}
+				cols[key] = true
+			}
+		}
 		for _, table := range opts.Schema.Tables {
 			tables[table.Name] = tableFromSchema(table)
 		}
@@ -266,10 +286,12 @@ func tableFromSchema(table migration.TableSchema) Table {
 	out := Table{Name: table.Name}
 	for _, column := range table.Columns {
 		out.Columns = append(out.Columns, Column{
-			Name:     column.Name,
-			Type:     column.Type,
-			Nullable: column.Nullable,
-			Default:  column.DefaultExpression,
+			Name:          column.Name,
+			Type:          column.Type,
+			TypeSource:    "sql",
+			NullableKnown: column.NullableKnown,
+			Nullable:      column.Nullable,
+			Default:       column.DefaultExpression,
 		})
 	}
 	for _, index := range table.Indexes {
@@ -322,9 +344,10 @@ func columnFromField(field reflect.StructField) (Column, bool) {
 		name = stringutil.ToSnake(field.Name)
 	}
 	column := Column{
-		Name:     name,
-		Type:     goTypeString(field.Type),
-		Nullable: isNullableType(field.Type),
+		Name:       name,
+		Type:       goTypeString(field.Type),
+		TypeSource: "go",
+		Nullable:   isNullableType(field.Type),
 	}
 	for _, opt := range opts {
 		switch strings.TrimSpace(opt) {
@@ -437,14 +460,24 @@ func mergeColumns(a, b []Column) []Column {
 			byName[key] = column
 			continue
 		}
-		if column.Type != "" {
-			existing.Type = column.Type
+		// SQL declarations retain their constraints independently of model tags.
+		if existing.TypeSource != "sql" {
+			if column.Type != "" {
+				existing.Type = column.Type
+				existing.TypeSource = column.TypeSource
+			}
+			existing.Primary = existing.Primary || column.Primary
+			existing.Nullable = column.Nullable
+			existing.NullableKnown = column.NullableKnown
+			if column.Default != "" {
+				existing.Default = column.Default
+			}
 		}
-		existing.Primary = existing.Primary || column.Primary
-		existing.Nullable = existing.Nullable || column.Nullable
-		if column.Default != "" {
-			existing.Default = column.Default
-		}
+		existing.PII = existing.PII || column.PII
+		existing.Forbidden = existing.Forbidden || column.Forbidden
+		existing.TenantScope = existing.TenantScope || column.TenantScope
+		existing.SoftDelete = existing.SoftDelete || column.SoftDelete
+		existing.RequiredFilter = existing.RequiredFilter || column.RequiredFilter
 		byName[key] = existing
 	}
 	out := make([]Column, 0, len(byName))

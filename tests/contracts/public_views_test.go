@@ -19,6 +19,15 @@ func TestPublicViewsOperationValuesAndLegacyBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This canary checks an ordinary value ref; tenant claims now refuse.
+	for i := range m.Tables[0].Columns {
+		m.Tables[0].Columns[i].TenantScope = false
+	}
+	for i := range m.Tables[0].Policies {
+		if m.Tables[0].Policies[i].Type == "tenant_scope" {
+			m.Tables[0].Policies[i].Type = "required_filter"
+		}
+	}
 	spec := operation.OperationSpec{Model: "users", Select: []string{"id"}, Filters: []operation.FilterSpec{{Field: "tenant_id", Op: "=", ValueRef: secret}}, AccessReason: secret}
 	p, err := operation.Compile(context.Background(), spec, operation.Options{Manifest: m, Values: map[string]any{secret: secret}})
 	if err != nil {

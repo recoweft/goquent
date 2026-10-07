@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"strings"
 	"time"
 
@@ -39,22 +40,23 @@ type ownedExecutor struct{ executor }
 
 // Query wraps goquent QueryBuilder and the executor.
 type Query struct {
-	settings           Settings
-	writeKeys          *WriteKeyContext
-	builder            *qbapi.SelectQueryBuilder
-	exec               executor
-	ctx                context.Context
-	err                error
-	dialect            driver.Dialect
-	paramSeq           int
-	primaryKey         string
-	approval           *Approval
-	suppressions       []Suppression
-	requiredPredicates []RequiredPredicate
-	policy             *TablePolicy
-	accessReason       string
-	withDeleted        bool
-	onlyDeleted        bool
+	operationValidation *querybridge.OperationValidation
+	settings            Settings
+	writeKeys           *WriteKeyContext
+	builder             *qbapi.SelectQueryBuilder
+	exec                executor
+	ctx                 context.Context
+	err                 error
+	dialect             driver.Dialect
+	paramSeq            int
+	primaryKey          string
+	approval            *Approval
+	suppressions        []Suppression
+	requiredPredicates  []RequiredPredicate
+	policy              *TablePolicy
+	accessReason        string
+	withDeleted         bool
+	onlyDeleted         bool
 }
 
 // CursorColumn describes an ordered column used by keyset cursor predicates.
@@ -251,6 +253,7 @@ func (q *Query) finalizePlan(plan *QueryPlan) {
 	q.sealWriteEvidence(plan)
 	finalizePlanWithSettings(plan, q.approval, q.suppressions, q.policy, q.settings)
 	q.finalizeTenantPolicy(plan)
+	q.finalizeOperation(plan)
 	q.sealExecution(plan)
 }
 
@@ -1476,6 +1479,9 @@ func (q *Query) Insert(data any) (sql.Result, error) {
 
 // PlanInsert builds an INSERT plan for data without executing it.
 func (q *Query) PlanInsert(ctx context.Context, data any) (*QueryPlan, error) {
+	if err := q.checkExactWrite(); err != nil {
+		return nil, err
+	}
 	if q.err != nil {
 		return nil, q.err
 	}
@@ -1570,6 +1576,9 @@ func (q *Query) UpdateOrInsert(cond map[string]any, values map[string]any) (sql.
 }
 
 func (q *Query) planUpdateOrInsert(ctx context.Context, cond map[string]any, values map[string]any) (*QueryPlan, error) {
+	if err := q.checkExactWrite(); err != nil {
+		return nil, err
+	}
 	_ = ctx
 	if q.err != nil {
 		return nil, q.err
@@ -1608,6 +1617,9 @@ func (q *Query) InsertUsing(columns []string, sub *Query) (sql.Result, error) {
 }
 
 func (q *Query) planInsertUsing(ctx context.Context, columns []string, sub *Query) (*QueryPlan, error) {
+	if err := q.checkExactWrite(); err != nil {
+		return nil, err
+	}
 	_ = ctx
 	if q.err != nil {
 		return nil, q.err
@@ -1640,6 +1652,9 @@ func (q *Query) Update(data any) (sql.Result, error) {
 
 // PlanUpdate builds an UPDATE plan for data without executing it.
 func (q *Query) PlanUpdate(ctx context.Context, data any) (*QueryPlan, error) {
+	if err := q.checkExactWrite(); err != nil {
+		return nil, err
+	}
 	if q.err != nil {
 		return nil, q.err
 	}
@@ -1661,6 +1676,9 @@ func (q *Query) Delete() (sql.Result, error) {
 
 // PlanDelete builds a DELETE plan without executing it.
 func (q *Query) PlanDelete(ctx context.Context) (*QueryPlan, error) {
+	if err := q.checkExactWrite(); err != nil {
+		return nil, err
+	}
 	_ = ctx
 	if q.err != nil {
 		return nil, q.err

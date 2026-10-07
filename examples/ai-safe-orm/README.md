@@ -57,3 +57,11 @@ execution, or migration apply.
 The executable prints redacted PlanView/MigrationPlanView output and fixed error
 messages. Checked-in fictional source JSON is internal fixture data, not a public
 display API. MCP returns structural summaries without real schema discovery.
+
+
+GQ-AI-07 migration: the executable now supplies an explicit signed application
+tenant through DB Settings. The preserved JSON fixtures intentionally remain
+legacy: manifest verification reports a stale schema fingerprint after regeneration,
+and the CLI Operation command rejects the tenant value claim. These are expected
+refusals, not runnable trusted tenant input. See the [typed validation guide](../../docs/typed-operation-validation.md)
+for regeneration and application migration; CLI/MCP cannot deserialize trust.

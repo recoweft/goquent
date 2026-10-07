@@ -57,6 +57,7 @@ func columnArraySchema() map[string]any {
 			"properties": map[string]any{
 				"name":            map[string]any{"type": "string"},
 				"type":            map[string]any{"type": "string"},
+				"type_source":     map[string]any{"type": "string", "enum": []string{"sql", "go"}},
 				"primary":         map[string]any{"type": "boolean"},
 				"nullable":        map[string]any{"type": "boolean"},
 				"default":         map[string]any{"type": "string"},

@@ -93,6 +93,9 @@ func prepareGeneric(r querybridge.Request) (querybridge.Planned, error) {
 }
 
 func (q *Query) planInsertRows(ctx context.Context, rows []map[string]any, o writeinput.Options, mode string, batch bool) (*QueryPlan, error) {
+	if err := q.checkExactWrite(); err != nil {
+		return nil, err
+	}
 	if q.err != nil {
 		return nil, q.err
 	}
@@ -190,6 +193,9 @@ func cloneInsertRows(rows []map[string]any) []map[string]any {
 }
 
 func (q *Query) planUpdateValues(ctx context.Context, m map[string]any, o writeinput.Options) (*QueryPlan, error) {
+	if err := q.checkExactWrite(); err != nil {
+		return nil, err
+	}
 	if q.err != nil {
 		return nil, q.err
 	}

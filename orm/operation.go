@@ -45,3 +45,20 @@ func ValidateOperationSpec(spec OperationSpec, opts OperationOptions) ([]Warning
 func OperationSpecJSONSchema() ([]byte, error) {
 	return operation.JSONSchema()
 }
+
+// CompileOperation plans a read-only operation using this DB's current immutable
+// settings and dialect. Caller options cannot replace them. No SQL is executed.
+func (db *DB) CompileOperation(ctx context.Context, spec operation.OperationSpec, opts operation.Options) (*QueryPlan, error) {
+	s := db.Settings()
+	opts.Settings = &s
+	opts.Dialect = db.Dialect()
+	return operation.Compile(ctx, spec, opts)
+}
+
+// ValidateOperation uses the same DB-scoped validation and DB-free planner.
+func (db *DB) ValidateOperation(spec operation.OperationSpec, opts operation.Options) ([]Warning, error) {
+	s := db.Settings()
+	opts.Settings = &s
+	opts.Dialect = db.Dialect()
+	return operation.Validate(spec, opts)
+}
