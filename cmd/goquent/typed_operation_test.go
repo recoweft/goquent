@@ -15,7 +15,7 @@ func TestTypedCLIRefusalsAreFixed(t *testing.T) {
 	mf := filepath.Join(dir, "manifest.json")
 	sf := filepath.Join(dir, "spec.json")
 	vf := filepath.Join(dir, "values.json")
-	writeJSON(t, mf, &manifest.Manifest{Dialect: "postgres", Tables: []manifest.Table{{Name: secret, Columns: []manifest.Column{{Name: "v", Type: "bigint", TypeSource: "sql", NullableKnown: true}}}}})
+	writeJSON(t, mf, &manifest.Manifest{Version: manifest.Version, Dialect: "postgres", Tables: []manifest.Table{{Name: secret, Columns: []manifest.Column{{Name: "v", Type: "bigint", TypeSource: "sql", NullableKnown: true}}}}})
 	for _, value := range []string{`1.0`, `"` + secret + `"`, `9223372036854775808`, `null`} {
 		raw := `{"operation":"select","model":"` + secret + `","select":["v"],"filters":[{"field":"v","op":"=","value":` + value + `}]}`
 		if e := os.WriteFile(sf, []byte(raw), 0600); e != nil {

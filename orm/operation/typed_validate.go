@@ -42,6 +42,9 @@ func knownDialect(opts Options) string {
 	return actual
 }
 func checkManifestDeclarations(m *manifest.Manifest) error {
+	if m.Version != manifest.Version {
+		return ErrInvalidManifest
+	}
 	seen := map[string]bool{}
 	for _, t := range m.Tables {
 		k := normalizeName(t.Name)

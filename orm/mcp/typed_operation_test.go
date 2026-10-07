@@ -10,7 +10,7 @@ import (
 
 func TestTypedOperationDirectAndRPCNoCoercionOrDisclosure(t *testing.T) {
 	const secret = "gq07_type_secret_canary"
-	m := &manifest.Manifest{Dialect: "postgres", Tables: []manifest.Table{{Name: secret, Columns: []manifest.Column{{Name: "v", Type: "bigint", TypeSource: "sql", NullableKnown: true}}}}}
+	m := &manifest.Manifest{Version: manifest.Version, Dialect: "postgres", Tables: []manifest.Table{{Name: secret, Columns: []manifest.Column{{Name: "v", Type: "bigint", TypeSource: "sql", NullableKnown: true}}}}}
 	s := NewServer(Options{Manifest: m})
 	for _, v := range []any{float64(1), "1", json.Number("9223372036854775808"), nil} {
 		args := map[string]any{"spec": map[string]any{"operation": "select", "model": secret, "select": []any{"v"}, "filters": []any{map[string]any{"field": "v", "op": "=", "value": v}}}}

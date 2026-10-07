@@ -24,7 +24,7 @@ func TestDBOperationCannotReplaceCurrentSettings(t *testing.T) {
 	current := query.Settings{}.WithTenantPolicy("fixture", schema, false)
 	db := NewDB(sqlDB, driver.PostgresDialect{}, WithSettings(current))
 	spec := operation.OperationSpec{Operation: "select", Model: "items", Select: []string{"id"}, Filters: []operation.FilterSpec{{Field: "id", Value: 1}}}
-	unknown := &manifest.Manifest{Dialect: "postgres", Tables: []manifest.Table{{Name: "items", Columns: []manifest.Column{{Name: "id", Type: "bigint"}}}}}
+	unknown := &manifest.Manifest{Version: manifest.Version, Dialect: "postgres", Tables: []manifest.Table{{Name: "items", Columns: []manifest.Column{{Name: "id", Type: "bigint"}}}}}
 	replacement := query.Settings{}
 	opts := operation.Options{Manifest: unknown, Settings: &replacement, Dialect: driver.MySQLDialect{}}
 	if _, e := db.CompileOperation(t.Context(), spec, opts); !errors.Is(e, operation.ErrTypeUnverified) {

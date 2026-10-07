@@ -228,3 +228,35 @@ func TestTypedNullEnumAndOperator(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestOperationManifestVersionAndSchemaValueContract(t *testing.T) {
+	for _, version := range []string{"", "0", "2"} {
+		spec, opts := typedFixture("bigint", "postgres")
+		opts.Manifest.Version = version
+		if _, e := Compile(t.Context(), spec, opts); !errors.Is(e, ErrInvalidManifest) {
+			t.Fatal("unknown manifest version accepted", e)
+		}
+		if _, e := Validate(spec, opts); !errors.Is(e, ErrInvalidManifest) {
+			t.Fatal("validator version mismatch", e)
+		}
+	}
+	b, e := JSONSchema()
+	if e != nil {
+		t.Fatal(e)
+	}
+	var schema map[string]any
+	if json.Unmarshal(b, &schema) != nil {
+		t.Fatal("invalid schema JSON")
+	}
+	props := schema["properties"].(map[string]any)
+	filter := props["filters"].(map[string]any)["items"].(map[string]any)
+	rules := filter["allOf"].([]any)
+	scalar := rules[0].(map[string]any)["then"].(map[string]any)["properties"].(map[string]any)["value"].(map[string]any)["type"]
+	if !reflect.DeepEqual(scalar, []any{"string", "number", "boolean"}) {
+		t.Fatal("schema permits nonscalar comparison values")
+	}
+	in := rules[2].(map[string]any)["then"].(map[string]any)["properties"].(map[string]any)["value"].(map[string]any)
+	if in["minItems"] != float64(1) || in["maxItems"] != float64(1000) || !reflect.DeepEqual(in["items"].(map[string]any)["type"], scalar) {
+		t.Fatal("IN shape differs from common contract")
+	}
+}

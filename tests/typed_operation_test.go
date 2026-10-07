@@ -171,7 +171,7 @@ func TestTypedOperationDriverIntegerExtremes(t *testing.T) {
 					t.Fatal(e)
 				}
 			}
-			m := &manifest.Manifest{Dialect: dialect, Tables: []manifest.Table{{Name: "gq07_integer_fixture", Columns: []manifest.Column{{Name: "v", Type: typ, TypeSource: "sql", NullableKnown: true}}}}}
+			m := &manifest.Manifest{Version: manifest.Version, Dialect: dialect, Tables: []manifest.Table{{Name: "gq07_integer_fixture", Columns: []manifest.Column{{Name: "v", Type: typ, TypeSource: "sql", NullableKnown: true}}}}}
 			for _, v := range values {
 				for _, op := range []string{"=", "in"} {
 					arg := v

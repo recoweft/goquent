@@ -157,7 +157,8 @@ ReadSchema marks only observed YES/NO tokens as known; unknown tokens remain
 unknown, while scan/connection errors remain errors. No new introspection occurs.
 Model pointer/nonpointer declarations do not fill missing SQL nullability.
 
-Manifest string version 1 remains. New readers load legacy missing type_source
+Manifest string version 1 remains and the shared compiler checks it, including
+for direct Go manifests. Missing or unsupported manifest versions refuse. New readers load legacy missing type_source
 as unknown, requiring regeneration for relevant Strict operations. New source is
 not guaranteed readable by an old closed JSON Schema. TypeSource and SQL-preserving
 merges naturally change SchemaFingerprint. Nullable omission for unknown migration
