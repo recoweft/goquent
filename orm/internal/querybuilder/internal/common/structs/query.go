@@ -173,6 +173,7 @@ type Joins struct {
 }
 
 type Limit struct {
+	Exact bool
 	Limit int64
 }
 

@@ -20,9 +20,11 @@ type TableSchema struct {
 
 // ColumnSchema describes a column in a schema diff.
 type ColumnSchema struct {
-	Name              string `json:"name"`
-	Type              string `json:"type,omitempty"`
-	Nullable          bool   `json:"nullable"`
+	Name     string `json:"name"`
+	Type     string `json:"type,omitempty"`
+	Nullable bool   `json:"nullable"`
+	// NullableKnown records an explicit declaration, not live evidence.
+	NullableKnown     bool   `json:"-"`
 	HasDefault        bool   `json:"has_default,omitempty"`
 	DefaultExpression string `json:"default_expression,omitempty"`
 }

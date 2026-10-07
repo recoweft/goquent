@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/recoweft/goquent/internal/inputjson"
 	"strings"
 
 	"github.com/recoweft/goquent/orm/driver"
 	"github.com/recoweft/goquent/orm/internal/planversion"
+	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"github.com/recoweft/goquent/orm/manifest"
 	"github.com/recoweft/goquent/orm/query"
 )
@@ -40,6 +42,7 @@ var (
 
 // OperationSpec is the read-only structured interface for AI-generated DB intent.
 type OperationSpec struct {
+	sourceBytes  int
 	Version      int          `json:"version"`
 	Operation    string       `json:"operation"`
 	Model        string       `json:"model"`
@@ -52,8 +55,14 @@ type OperationSpec struct {
 
 // UnmarshalJSON rejects non-MVP fields such as join, aggregate, mutation, or raw SQL hints.
 func (s *OperationSpec) UnmarshalJSON(b []byte) error {
+	if len(b) > inputjson.MaxBytes {
+		return ErrInputLimit
+	}
 	if err := planversion.Read(b); err != nil {
 		return err
+	}
+	if err := inputjson.CheckJSON(b); err != nil {
+		return ErrInputLimit
 	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(b, &raw); err != nil {
@@ -69,6 +78,9 @@ func (s *OperationSpec) UnmarshalJSON(b []byte) error {
 		"limit":         {},
 		"access_reason": {},
 	}
+	if v, ok := raw["limit"]; ok && string(v) == "null" {
+		return ErrInputLimit
+	}
 	for key := range raw {
 		if _, ok := allowed[key]; !ok {
 			return fmt.Errorf("%w: unsupported field %q", ErrUnsupportedOperation, key)
@@ -80,6 +92,7 @@ func (s *OperationSpec) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*s = OperationSpec(decoded)
+	s.sourceBytes = len(b)
 	return nil
 }
 
@@ -89,6 +102,9 @@ type FilterSpec struct {
 	Op       string `json:"op"`
 	Value    any    `json:"value,omitempty"`
 	ValueRef string `json:"value_ref,omitempty"`
+	// ValuePresent permits explicit nil in Go construction and is never a wire verdict.
+	ValuePresent bool `json:"-"`
+	refPresent   bool
 }
 
 // OrderSpec describes a single ordering term.
@@ -99,6 +115,7 @@ type OrderSpec struct {
 
 // Options controls validation and compilation.
 type Options struct {
+	Settings             *query.Settings
 	Manifest             *manifest.Manifest
 	Dialect              driver.Dialect
 	Values               map[string]any
@@ -107,6 +124,9 @@ type Options struct {
 }
 
 type validationResult struct {
+	filters  []FilterSpec
+	tenant   string
+	typed    querybridge.OperationValidation
 	table    manifest.Table
 	columns  map[string]manifest.Column
 	warnings []query.Warning
@@ -114,15 +134,16 @@ type validationResult struct {
 
 // Validate checks an OperationSpec against a manifest and policy metadata.
 func Validate(spec OperationSpec, opts Options) ([]query.Warning, error) {
-	result, err := validate(spec, opts)
+	plan, err := Compile(context.Background(), spec, opts)
 	if err != nil {
 		return nil, err
 	}
-	return result.warnings, nil
+	return plan.Warnings, nil
 }
 
 // Compile validates spec and compiles it to a read-only QueryPlan.
 func Compile(ctx context.Context, spec OperationSpec, opts Options) (*query.QueryPlan, error) {
+	opts = operationSettings(opts)
 	result, err := validate(spec, opts)
 	if err != nil {
 		return nil, err
@@ -132,7 +153,13 @@ func Compile(ctx context.Context, spec OperationSpec, opts Options) (*query.Quer
 		dialect = dialectFromManifest(opts.Manifest)
 	}
 
-	q := query.New(nil, result.table.Name, dialect)
+	q := query.NewWithSettings(nil, result.table.Name, dialect, *opts.Settings)
+	for _, w := range result.warnings {
+		result.typed.WarningCodes = append(result.typed.WarningCodes, w.Code)
+	}
+	if err := querybridge.ConfigureOperation(q, result.typed); err != nil {
+		return nil, err
+	}
 	if reason := accessReason(spec, opts); reason != "" {
 		q.AccessReason(reason)
 	}
@@ -141,8 +168,8 @@ func Compile(ctx context.Context, spec OperationSpec, opts Options) (*query.Quer
 	if softDeleteColumn := tableSoftDeleteColumn(result.table); softDeleteColumn != "" && !specHasFilter(spec, softDeleteColumn) {
 		q.WhereNull(softDeleteColumn)
 	}
-	for _, filter := range spec.Filters {
-		if err := applyFilter(q, filter, opts); err != nil {
+	for _, filter := range result.filters {
+		if err := applyFilter(q, filter); err != nil {
 			return nil, err
 		}
 	}
@@ -153,23 +180,34 @@ func Compile(ctx context.Context, spec OperationSpec, opts Options) (*query.Quer
 		if *spec.Limit < 0 {
 			return nil, fmt.Errorf("%w: limit must be non-negative", ErrInvalidFilter)
 		}
-		q.Limit(int(*spec.Limit))
+		q.LimitExact(int(*spec.Limit))
 	}
 
 	plan, err := q.Plan(ctx)
 	if err != nil {
 		return nil, err
 	}
-	mergeWarningsIntoPlan(plan, result.warnings)
+	if opts.Settings.IsStrict() && plan.Blocked {
+		return nil, query.ErrBlockedOperation
+	}
 	return plan, nil
 }
 
 func validate(spec OperationSpec, opts Options) (validationResult, error) {
+	if err := inputBudget(spec, opts.Values); err != nil {
+		return validationResult{}, err
+	}
 	if err := planversion.Check(spec.Version); err != nil {
 		return validationResult{}, err
 	}
 	if opts.Manifest == nil {
 		return validationResult{}, ErrManifestRequired
+	}
+	if err := checkManifestDeclarations(opts.Manifest); err != nil {
+		return validationResult{}, err
+	}
+	if opts.Settings.Err() != nil {
+		return validationResult{}, opts.Settings.Err()
 	}
 	op := strings.ToLower(strings.TrimSpace(spec.Operation))
 	if op == "" {
@@ -190,6 +228,9 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 		return validationResult{}, fmt.Errorf("%w: %s", ErrUnknownModel, spec.Model)
 	}
 	result := validationResult{table: table, columns: columnMap(table)}
+	if opts.RequireFreshManifest && (opts.Manifest.Verification == nil || !opts.Manifest.Verification.Fresh) {
+		return validationResult{}, ErrStaleManifest
+	}
 	if opts.Manifest.Verification != nil && !opts.Manifest.Verification.Fresh {
 		if opts.RequireFreshManifest {
 			return validationResult{}, ErrStaleManifest
@@ -232,14 +273,7 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 		if !supportedFilterOp(filter.Op) {
 			return validationResult{}, fmt.Errorf("%w: unsupported operator %q", ErrInvalidFilter, filter.Op)
 		}
-		if strings.TrimSpace(filter.ValueRef) != "" {
-			if opts.Values == nil {
-				return validationResult{}, fmt.Errorf("%w: %s", ErrValueRefMissing, filter.ValueRef)
-			}
-			if _, ok := opts.Values[filter.ValueRef]; !ok {
-				return validationResult{}, fmt.Errorf("%w: %s", ErrValueRefMissing, filter.ValueRef)
-			}
-		}
+
 	}
 	for _, order := range spec.OrderBy {
 		if _, err := validateField(result.columns, order.Field); err != nil {
@@ -251,7 +285,13 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 		}
 	}
 
+	if err := typedValidate(spec, opts, &result); err != nil {
+		return validationResult{}, err
+	}
 	for _, required := range requiredFilterColumns(table) {
+		if normalizeName(required.column) == normalizeName(result.tenant) {
+			continue
+		}
 		if specHasFilter(spec, required.column) {
 			continue
 		}
@@ -277,7 +317,7 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 	return result, nil
 }
 
-func applyFilter(q *query.Query, filter FilterSpec, opts Options) error {
+func applyFilter(q *query.Query, filter FilterSpec) error {
 	op := normalizeFilterOp(filter.Op)
 	switch op {
 	case "is_null":
@@ -285,23 +325,11 @@ func applyFilter(q *query.Query, filter FilterSpec, opts Options) error {
 	case "is_not_null":
 		q.WhereNotNull(filter.Field)
 	case "in":
-		q.WhereIn(filter.Field, filterValue(filter, opts))
+		q.WhereIn(filter.Field, filter.Value)
 	default:
-		q.Where(filter.Field, op, filterValue(filter, opts))
+		q.Where(filter.Field, op, filter.Value)
 	}
 	return nil
-}
-
-func filterValue(filter FilterSpec, opts Options) any {
-	if filter.ValueRef != "" {
-		if opts.Values != nil {
-			if value, ok := opts.Values[filter.ValueRef]; ok {
-				return value
-			}
-		}
-		return "$ref:" + filter.ValueRef
-	}
-	return filter.Value
 }
 
 func findTable(m *manifest.Manifest, modelName string) (manifest.Table, bool) {
@@ -453,64 +481,6 @@ func warning(code string, level query.RiskLevel, message, hint string) query.War
 		Message:      message,
 		Hint:         hint,
 		Suppressible: true,
-	}
-}
-
-func mergeWarningsIntoPlan(plan *query.QueryPlan, warnings []query.Warning) {
-	if plan == nil || len(warnings) == 0 {
-		return
-	}
-	existing := map[string]struct{}{}
-	for _, w := range plan.Warnings {
-		existing[w.Code] = struct{}{}
-	}
-	for _, w := range warnings {
-		if _, ok := existing[w.Code]; ok {
-			continue
-		}
-		plan.Warnings = append(plan.Warnings, w)
-		existing[w.Code] = struct{}{}
-	}
-	plan.RiskLevel, plan.Blocked = aggregateWarnings(plan.Warnings)
-	plan.RequiredApproval = requiresApproval(plan.RiskLevel)
-}
-
-func aggregateWarnings(warnings []query.Warning) (query.RiskLevel, bool) {
-	level := query.RiskLow
-	blocked := false
-	for _, w := range warnings {
-		if compareRisk(w.Level, level) > 0 {
-			level = w.Level
-		}
-		if w.Level == query.RiskBlocked {
-			blocked = true
-		}
-	}
-	return level, blocked
-}
-
-func requiresApproval(level query.RiskLevel) bool {
-	return compareRisk(level, query.RiskHigh) >= 0 && level != query.RiskBlocked
-}
-
-func compareRisk(a, b query.RiskLevel) int {
-	return riskRank(a) - riskRank(b)
-}
-
-func riskRank(level query.RiskLevel) int {
-	switch level {
-	case query.RiskLow, "":
-		return 0
-	case query.RiskMedium:
-		return 1
-	case query.RiskHigh:
-		return 2
-	case query.RiskDestructive:
-		return 3
-	case query.RiskBlocked:
-		return 4
-	default:
-		return 0
 	}
 }
 

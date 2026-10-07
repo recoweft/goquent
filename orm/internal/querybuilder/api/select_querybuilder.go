@@ -136,6 +136,11 @@ func (qb *SelectQueryBuilder) Take(limit int64) *SelectQueryBuilder {
 	return qb
 }
 
+func (qb *SelectQueryBuilder) LimitExact(limit int64) *SelectQueryBuilder {
+	qb.builder.LimitExact(limit)
+	return qb
+}
+
 func (qb *SelectQueryBuilder) Offset(offset int64) *SelectQueryBuilder {
 	qb.builder.Offset(offset)
 	return qb
@@ -195,3 +200,6 @@ func (qb *SelectQueryBuilder) GetOrderByBuilder() *query.OrderByBuilder[query.Se
 func (b *SelectQueryBuilder) WhereLiteral(column string, value any) {
 	b.builder.WhereLiteral(column, value)
 }
+
+// HasExactLimit reads library-owned state without inspecting value callbacks.
+func (qb *SelectQueryBuilder) HasExactLimit() bool { return qb.builder.GetQuery().Limit.Exact }

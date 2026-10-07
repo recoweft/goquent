@@ -34,7 +34,10 @@ func TestResourcesExposeManifestAndStaleStatus(t *testing.T) {
 }
 
 func TestToolsAreReadOnlyAndCompileOperationSpec(t *testing.T) {
-	server := NewServer(Options{Manifest: mcpTestManifest(false)})
+	m := mcpTestManifest(false)
+	m.Tables[0].Columns[4].TenantScope = false
+	m.Tables[0].Policies[0].Type = "required_filter"
+	server := NewServer(Options{Manifest: m})
 	tools := server.Tools()
 	if !hasTool(tools, "compile_operation_spec") || !hasTool(tools, "review_migration") {
 		t.Fatalf("expected review/compile tools, got %#v", tools)
@@ -52,11 +55,11 @@ func TestToolsAreReadOnlyAndCompileOperationSpec(t *testing.T) {
 			"filters": []any{map[string]any{
 				"field":     "tenant_id",
 				"op":        "=",
-				"value_ref": "current_tenant",
+				"value_ref": "ordinary_value",
 			}},
 			"limit": limit,
 		},
-		"values": map[string]any{"current_tenant": "tenant-1"},
+		"values": map[string]any{"ordinary_value": "tenant-1"},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -203,7 +204,11 @@ func TestExampleFixtureCompatibility(t *testing.T) {
 	for _, name := range []string{"schema", "policy"} {
 		found := false
 		for _, check := range verification.Checks {
-			if check.Name == name && check.Status == "ok" {
+			want := "ok"
+			if name == "schema" {
+				want = "stale"
+			}
+			if check.Name == name && check.Status == want {
 				found = true
 			}
 		}
@@ -228,13 +233,13 @@ func TestExampleFixtureCompatibility(t *testing.T) {
 	if !reflect.DeepEqual(stored, loaded) {
 		t.Fatal("known manifest fields changed through write/load")
 	}
-	plan, err := operation.Compile(context.Background(), spec, operation.Options{Manifest: loaded, Values: values})
-	if err != nil {
-		t.Fatal(err)
+	// The preserved legacy fixture now requires regeneration and trusted tenant
+	// supply. Input values do not establish application provenance.
+	_, err = operation.Compile(context.Background(), spec, operation.Options{Manifest: loaded, Values: values})
+	if !errors.Is(err, operation.ErrReservedBinding) {
+		t.Fatal("legacy tenant claim accepted", err)
 	}
-	if plan.Operation != query.OperationSelect || plan.Limit == nil || *plan.Limit != 25 || !reflect.DeepEqual(plan.Params, []any{values["current_tenant"]}) || !query.PlanHasPredicateColumn(plan, "users", "deleted_at") {
-		t.Fatalf("example read shape changed: %s", plan)
-	}
+
 	// Negative compatibility check against a changed supplied schema, not a live DB.
 	schema.Tables[0].Columns[0].Type = "fixture_changed_type"
 	changed, err := manifest.Generate(manifest.Options{Schema: &schema, Policies: policies})

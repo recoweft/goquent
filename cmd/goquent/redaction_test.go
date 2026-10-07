@@ -131,12 +131,12 @@ func TestPublicOperationAndMCPCLI(t *testing.T) {
 	for _, format := range []string{"json", "pretty"} {
 		var out, stderr bytes.Buffer
 		code := run([]string{"operation", "compile", "--manifest", mf, "--spec", spec, "--values", values, "--format", format}, &out, &stderr)
-		if code != 0 {
+		if code != 1 {
 			t.Fatalf("compile exit %d", code)
 		}
 		checkCLIOutput(t, &out, &stderr)
-		if !bytes.Contains(out.Bytes(), []byte("goquent.plan_view")) {
-			t.Fatal("missing view")
+		if out.Len() != 0 || !strings.Contains(stderr.String(), "details omitted") {
+			t.Fatal("tenant refusal was not fixed")
 		}
 	}
 	input := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"review_query","arguments":{"sql":"SELECT '` + cliCanary + `'"}}}` + "\n"

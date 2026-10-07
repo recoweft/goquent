@@ -94,7 +94,7 @@ func (m MySQLQueryBuilder) Build(sb *[]byte, q *structs.Query, number int, union
 	}
 
 	// LIMIT
-	if q.Limit.Limit > 0 {
+	if q.Limit.Limit > 0 || q.Limit.Exact {
 		m.Limit(sb, q.Limit)
 	}
 

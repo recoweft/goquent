@@ -20,6 +20,7 @@ type QuerySnapshot struct {
 	Table             string
 	Columns           []ColumnSnapshot
 	Limit             int64
+	LimitExact        bool
 	Offset            int64
 	Joins             []JoinSnapshot
 	Predicates        []PredicateSnapshot
@@ -108,6 +109,7 @@ func snapshotFromQuery(query *structs.Query) QuerySnapshot {
 		HavingTree: valuecopy.Node(query.HavingTree),
 		Table:      query.Table.Name,
 		Limit:      query.Limit.Limit,
+		LimitExact: query.Limit.Exact,
 		Offset:     query.Offset.Offset,
 	}
 	if query.Columns != nil {

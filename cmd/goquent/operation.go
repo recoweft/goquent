@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/recoweft/goquent/internal/inputjson"
 	"io"
 	"os"
 	"strings"
@@ -68,16 +69,23 @@ func runOperationCompile(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
-	spec, err := loadOperationSpec(*specPath)
+	spec, specBytes, err := loadOperationSpecSized(*specPath)
 	if err != nil {
 		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
-	values, err := loadOperationValues(*valuesPath)
+	values, valuesBytes, err := loadOperationValuesSized(*valuesPath)
 	if err != nil {
 		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
+	// Raw files share the same wrapper budget, including whitespace, using the
+	// bytes actually decoded rather than a later filesystem stat.
+	if specBytes+valuesBytes+19 > inputjson.MaxBytes {
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
+		return 1
+	}
+
 	plan, err := operation.Compile(context.Background(), spec, operation.Options{
 		Manifest:             m,
 		Values:               values,
@@ -132,35 +140,42 @@ func runOperationSchema(args []string, stdout, stderr io.Writer) int {
 }
 
 func loadOperationSpec(path string) (operation.OperationSpec, error) {
-	b, err := os.ReadFile(path)
+	v, _, e := loadOperationSpecSized(path)
+	return v, e
+}
+func loadOperationSpecSized(path string) (operation.OperationSpec, int, error) {
+	b, err := readOperationInput(path)
 	if err != nil {
-		return operation.OperationSpec{}, err
+		return operation.OperationSpec{}, 0, err
 	}
 	var spec operation.OperationSpec
 	if err := json.Unmarshal(b, &spec); err != nil {
-		return operation.OperationSpec{}, err
+		return operation.OperationSpec{}, 0, err
 	}
-	return spec, nil
+	return spec, len(b), nil
 }
-
 func loadOperationValues(path string) (map[string]any, error) {
+	v, _, e := loadOperationValuesSized(path)
+	return v, e
+}
+func loadOperationValuesSized(path string) (map[string]any, int, error) {
 	if strings.TrimSpace(path) == "" {
-		return nil, nil
+		return nil, 4, nil
 	}
-	b, err := os.ReadFile(path)
+	b, err := readOperationInput(path)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	if err := inputjson.CheckJSON(b); err != nil {
+		return nil, 0, err
 	}
 	var values map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(b))
 	decoder.UseNumber()
 	if err := decoder.Decode(&values); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	if decoder.Decode(new(any)) != io.EOF {
-		return nil, fmt.Errorf("invalid trailing values JSON")
-	}
-	return values, nil
+	return values, len(b), nil
 }
 
 func printOperationUsage(w io.Writer) {
@@ -169,4 +184,20 @@ func printOperationUsage(w io.Writer) {
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  compile   compile a read-only OperationSpec to QueryPlan")
 	fmt.Fprintln(w, "  schema    print the OperationSpec JSON Schema")
+}
+
+func readOperationInput(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, inputjson.MaxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > inputjson.MaxBytes {
+		return nil, inputjson.ErrInvalid
+	}
+	return b, nil
 }

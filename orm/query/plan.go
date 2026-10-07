@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"encoding/json"
+	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"sort"
 	"strings"
 	"time"
@@ -141,6 +142,7 @@ type PredicateRef struct {
 
 // QueryPlan explains SQL and metadata before the query is executed.
 type QueryPlan struct {
+	operationValidation *querybridge.OperationValidation
 	Version             int `json:"version"`
 	execution           *plannedExecution
 	tenantEvidence      *tenantEvidence
@@ -359,7 +361,7 @@ func appendSelectSnapshotMetadata(plan *QueryPlan, src qbapi.QuerySnapshot) {
 		plan.Columns = append(plan.Columns, ColumnRef{Name: "*"})
 	}
 
-	if src.Limit > 0 {
+	if src.Limit > 0 || src.LimitExact {
 		v := src.Limit
 		plan.Limit = &v
 	}

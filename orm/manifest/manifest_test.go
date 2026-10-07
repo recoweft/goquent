@@ -26,8 +26,8 @@ func TestGenerateFromModelSchemaAndPolicy(t *testing.T) {
 	schema := migration.Schema{Tables: []migration.TableSchema{{
 		Name: "users",
 		Columns: []migration.ColumnSchema{
-			{Name: "id", Type: "bigint", Nullable: false},
-			{Name: "email", Type: "text", Nullable: false},
+			{Name: "id", Type: "bigint", Nullable: false, NullableKnown: true},
+			{Name: "email", Type: "text", Nullable: false, NullableKnown: true},
 		},
 		Indexes: []migration.IndexSchema{{Name: "users_email_idx", Columns: []string{"email"}, Unique: true}},
 	}}}

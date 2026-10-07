@@ -20,7 +20,7 @@ func TestCompileValidSelectSpec(t *testing.T) {
 		Model:     "Order",
 		Select:    []string{"id", "total"},
 		Filters: []FilterSpec{
-			{Field: "tenant_id", Op: "=", ValueRef: "current_tenant"},
+			{Field: "tenant_id", Op: "=", ValueRef: "supplied_tenant"},
 			{Field: "created_at", Op: ">=", ValueRef: "start_date"},
 		},
 		OrderBy: []OrderSpec{{Field: "created_at", Direction: "desc"}},
@@ -30,8 +30,8 @@ func TestCompileValidSelectSpec(t *testing.T) {
 	plan, err := Compile(context.Background(), spec, Options{
 		Manifest: m,
 		Values: map[string]any{
-			"current_tenant": "tenant-1",
-			"start_date":     "2026-04-01",
+			"supplied_tenant": "tenant-1",
+			"start_date":      "2026-04-01",
 		},
 	})
 	if err != nil {
@@ -81,7 +81,7 @@ func TestValidateRejectsUnsafeSpec(t *testing.T) {
 		Operation: OperationSelect,
 		Model:     "Order",
 		Select:    []string{"id"},
-		Filters:   []FilterSpec{{Field: "tenant_id", Op: "=", ValueRef: "current_tenant"}},
+		Filters:   []FilterSpec{{Field: "tenant_id", Op: "=", ValueRef: "supplied_tenant"}},
 	}, Options{Manifest: m})
 	if !errors.Is(err, ErrValueRefMissing) {
 		t.Fatalf("expected missing value_ref rejection, got %v", err)
@@ -149,7 +149,7 @@ func TestWarnModeRequiredFilterAndMissingLimit(t *testing.T) {
 	m := testManifest(false)
 	m.Tables[0].Columns[1].RequiredFilter = false
 	m.Tables[0].Columns[1].TenantScope = false
-	m.Tables[0].Policies = []manifest.Policy{{Type: "tenant_scope", Column: "tenant_id", Mode: query.PolicyModeWarn}}
+	m.Tables[0].Policies = []manifest.Policy{{Type: "required_filter", Column: "tenant_id", Mode: query.PolicyModeWarn}}
 	warnings, err := Validate(OperationSpec{Operation: OperationSelect, Model: "Order", Select: []string{"id"}}, Options{Manifest: m})
 	if err != nil {
 		t.Fatal(err)
@@ -192,16 +192,16 @@ func testManifest(stale bool) *manifest.Manifest {
 			Name:  "orders",
 			Model: "Order",
 			Columns: []manifest.Column{
-				{Name: "created_at", Type: "time.Time"},
-				{Name: "tenant_id", Type: "string", TenantScope: true, RequiredFilter: true},
-				{Name: "deleted_at", Type: "time.Time", Nullable: true, SoftDelete: true},
-				{Name: "email", Type: "string", PII: true},
-				{Name: "id", Type: "int64", Primary: true},
-				{Name: "secret", Type: "string", Forbidden: true},
-				{Name: "total", Type: "int64"},
+				{Name: "created_at", Type: "date", TypeSource: "sql", NullableKnown: true},
+				{Name: "tenant_id", Type: "varchar(255)", TypeSource: "sql", NullableKnown: true, RequiredFilter: true},
+				{Name: "deleted_at", Type: "date", TypeSource: "sql", NullableKnown: true, Nullable: true, SoftDelete: true},
+				{Name: "email", Type: "varchar(255)", TypeSource: "sql", NullableKnown: true, PII: true},
+				{Name: "id", Type: "bigint", TypeSource: "sql", NullableKnown: true, Primary: true},
+				{Name: "secret", Type: "varchar(255)", TypeSource: "sql", NullableKnown: true, Forbidden: true},
+				{Name: "total", Type: "bigint", TypeSource: "sql", NullableKnown: true},
 			},
 			Policies: []manifest.Policy{
-				{Type: "tenant_scope", Column: "tenant_id", Mode: query.PolicyModeEnforce},
+				{Type: "required_filter", Column: "tenant_id", Mode: query.PolicyModeEnforce},
 				{Type: "soft_delete", Column: "deleted_at", Mode: query.PolicyModeEnforce},
 				{Type: "pii", Column: "email", Mode: query.PolicyModeWarn},
 			},
@@ -228,7 +228,9 @@ func TestJSONNumberCompileKeepsPrecisionAndINOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := Compile(t.Context(), spec, Options{Manifest: testManifest(false)})
+	m := testManifest(false)
+	m.Tables[0].Columns[1].Type = "bigint"
+	p, err := Compile(t.Context(), spec, Options{Manifest: m})
 	if err != nil {
 		t.Fatal(err)
 	}

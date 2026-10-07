@@ -14,7 +14,7 @@ func NewLimitBaseBuilder() *LimitBaseBuilder {
 }
 
 func (LimitBaseBuilder) Limit(sb *[]byte, limit structs.Limit) {
-	if limit.Limit == 0 {
+	if limit.Limit == 0 && !limit.Exact {
 		return
 	}
 

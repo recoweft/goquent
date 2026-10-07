@@ -379,7 +379,7 @@ main integration and does not close Issue #52.
 See [version and private identity contracts](../docs/plan-version-identity.md) for the current API
 inventory and migration. QueryPlan, ReviewReport, TablePolicy and OperationSpec
 write integer version 1; missing/0 reads are legacy format, unknown/ambiguous
-versions fail. Manifest retains string version "1" and its fingerprint layout.
+versions fail. Manifest retains string version "1"; GQ-AI-07 documents the limited source and fingerprint migration.
 Decoded any numbers now retain json.Number lexemes. QueryPlan method-level
 decode clears receiver-private evidence; standard-library pre-method syntax
 failures leave the original receiver unchanged. Always use a fresh external JSON
@@ -414,3 +414,16 @@ error or opaque value is retained in public errors. Public output is neither
 execution material nor authorization. Original complete reports/plans decide CI,
 freshness and apply gates; truncation cannot weaken those decisions. Whole-Issue
 acceptance and merge remain separate from implementation and test evidence.
+
+
+## GQ-AI-07 PR1 typed operations
+
+See [typed operation validation and migration](../docs/typed-operation-validation.md) for the current
+shared input/type/constraint validator, DB-scoped CompileOperation/ValidateOperation,
+reserved application tenant reference, FilterSpec.ValuePresent, TypeSource and
+NullableKnown source compatibility, and Query.LimitExact/ErrInvalidLimit.
+Compatibility unknowns produce blocked diagnostic plans; Strict refuses.
+Manifest version 1 remains, with documented schema/database fingerprint changes;
+legacy fingerprints and JSON tenant claims do not create verification or authority.
+GQ-AI-06 output boundaries and existing private binding domains remain intact.
+PR2 owns detailed public diagnostics; this PR does not close the whole Issue.
