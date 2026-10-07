@@ -1,13 +1,18 @@
 package operation
 
-import "github.com/recoweft/goquent/orm/internal/querybridge"
+import (
+	"fmt"
+	"github.com/recoweft/goquent/orm/internal/querybridge"
+)
 
-// Retained internally for the PR2 diagnostic projection. No arbitrary input
-// value is retained or interpolated into Error, and no new public result exists.
+// Private validation history. Public diagnostics never retain this error.
 type validationFailure struct {
-	cause  error
-	checks []querybridge.OperationCheck
+	cause       error
+	diagnostics []querybridge.OperationDiagnostic
+	checks      []querybridge.OperationCheck
 }
 
-func (e *validationFailure) Error() string { return e.cause.Error() }
+func (e *validationFailure) Error() string { return "goquent operation: validation failed" }
 func (e *validationFailure) Unwrap() error { return e.cause }
+
+func (e *validationFailure) Format(s fmt.State, _ rune) { _, _ = s.Write([]byte(e.Error())) }

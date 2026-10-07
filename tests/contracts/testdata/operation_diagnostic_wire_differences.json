@@ -1,0 +1,44 @@
+[
+  {
+    "name": "fractional_version",
+    "raw": "{\"version\":1.0,\"operation\":\"select\",\"model\":\"diagnostic_items\",\"select\":[\"v\"]}",
+    "schema_valid": true,
+    "decoded": false
+  },
+  {
+    "name": "exponent_version",
+    "raw": "{\"version\":1e0,\"operation\":\"select\",\"model\":\"diagnostic_items\",\"select\":[\"v\"]}",
+    "schema_valid": true,
+    "decoded": false
+  },
+  {
+    "name": "duplicate_key",
+    "raw": "{\"operation\":\"select\",\"model\":\"diagnostic_items\",\"select\":[\"v\"],\"limit\":1,\"limit\":2}",
+    "schema_valid": true,
+    "decoded": false
+  },
+  {
+    "name": "unknown_key",
+    "raw": "{\"operation\":\"select\",\"model\":\"diagnostic_items\",\"select\":[\"v\"],\"private\":1}",
+    "schema_valid": false,
+    "decoded": false
+  },
+  {
+    "name": "null_limit",
+    "raw": "{\"operation\":\"select\",\"model\":\"diagnostic_items\",\"select\":[\"v\"],\"limit\":null}",
+    "schema_valid": false,
+    "decoded": false
+  },
+  {
+    "name": "integer_lexeme",
+    "raw": "{\"operation\":\"select\",\"model\":\"diagnostic_items\",\"select\":[\"v\"],\"filters\":[{\"field\":\"v\",\"op\":\"=\",\"value\":1.0}]}",
+    "schema_valid": true,
+    "decoded": true
+  },
+  {
+    "name": "exponent_lexeme",
+    "raw": "{\"operation\":\"select\",\"model\":\"diagnostic_items\",\"select\":[\"v\"],\"filters\":[{\"field\":\"v\",\"op\":\"=\",\"value\":1e0}]}",
+    "schema_valid": true,
+    "decoded": true
+  }
+]

@@ -9,6 +9,7 @@ func init() {
 		if !ok || q == nil {
 			return ErrBlockedOperation
 		}
+		r.Diagnostics = append([]querybridge.OperationDiagnostic(nil), r.Diagnostics...)
 		r.Checks = append([]querybridge.OperationCheck(nil), r.Checks...)
 		r.Unknown = append([]string(nil), r.Unknown...)
 		r.WarningCodes = append([]string(nil), r.WarningCodes...)

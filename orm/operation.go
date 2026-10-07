@@ -62,3 +62,29 @@ func (db *DB) ValidateOperation(spec operation.OperationSpec, opts operation.Opt
 	opts.Dialect = db.Dialect()
 	return operation.Validate(spec, opts)
 }
+
+// CompileOperationSpecWithDiagnostics adds detached public diagnostics.
+func CompileOperationSpecWithDiagnostics(ctx context.Context, spec OperationSpec, opts OperationOptions) (*QueryPlan, operation.DiagnosticView, error) {
+	return operation.CompileWithDiagnostics(ctx, spec, opts)
+}
+
+// ValidateOperationSpecWithDiagnostics uses the shared compiler once.
+func ValidateOperationSpecWithDiagnostics(spec OperationSpec, opts OperationOptions) ([]Warning, operation.DiagnosticView, error) {
+	return operation.ValidateWithDiagnostics(spec, opts)
+}
+
+// CompileOperationWithDiagnostics forces this DB's immutable settings and dialect.
+func (db *DB) CompileOperationWithDiagnostics(ctx context.Context, spec OperationSpec, opts OperationOptions) (*QueryPlan, operation.DiagnosticView, error) {
+	s := db.Settings()
+	opts.Settings = &s
+	opts.Dialect = db.Dialect()
+	return operation.CompileWithDiagnostics(ctx, spec, opts)
+}
+
+// ValidateOperationWithDiagnostics forces this DB's immutable settings and dialect.
+func (db *DB) ValidateOperationWithDiagnostics(spec OperationSpec, opts OperationOptions) ([]Warning, operation.DiagnosticView, error) {
+	s := db.Settings()
+	opts.Settings = &s
+	opts.Dialect = db.Dialect()
+	return operation.ValidateWithDiagnostics(spec, opts)
+}
