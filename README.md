@@ -241,3 +241,14 @@ GQ-AI-05 PR2 adds opt-in [validated plan binding](docs/validated-plan-binding.md
 for Query Select/Count/Insert/InsertBatch/Update/Delete with explicit current
 settings and key context. Generic/scoped/Raw/compound adapters are not included;
 ordinary CRUD keeps its existing behavior.
+
+## GQ-AI-06 PR1 public views
+
+Additive `query.PlanView` and `review.ReportView` now provide detached, bounded,
+non-executable output with fixed classification and strict independent v1 readers.
+SQL, identifiers, values and opaque Evidence/Metadata are omitted without evaluating
+custom value methods. See [public view APIs and output migration](docs/public-plan-views.md).
+Existing ToJSON/String/review writers and CLI/CI/MCP outputs are unchanged and can
+still expose sensitive data. Their migration and whole-Issue leak regression belong
+to PR2. Public views are not execution, approval or CI decision inputs; existing
+private execution, typed binding, Strict and wire compatibility remain in force.
