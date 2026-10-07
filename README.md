@@ -4814,6 +4814,13 @@ import "github.com/recoweft/goquent/orm/query"
 - [type ApplicationSchemaInput](<#ApplicationSchemaInput>)
 - [type ApplicationTable](<#ApplicationTable>)
 - [type Approval](<#Approval>)
+- [type BindingContext](<#BindingContext>)
+  - [func NewBindingContext\(input BindingContextInput\) \(BindingContext, error\)](<#NewBindingContext>)
+  - [func \(BindingContext\) Format\(s fmt.State, \_ rune\)](<#BindingContext.Format>)
+  - [func \(BindingContext\) MarshalJSON\(\) \(\[\]byte, error\)](<#BindingContext.MarshalJSON>)
+  - [func \(c \*BindingContext\) UnmarshalJSON\(\[\]byte\) error](<#BindingContext.UnmarshalJSON>)
+- [type BindingContextInput](<#BindingContextInput>)
+- [type BindingCurrent](<#BindingCurrent>)
 - [type ColumnRef](<#ColumnRef>)
 - [type CursorColumn](<#CursorColumn>)
   - [func CursorAsc\(name string\) CursorColumn](<#CursorAsc>)
@@ -4854,6 +4861,12 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) Delete\(\) \(sql.Result, error\)](<#Query.Delete>)
   - [func \(q \*Query\) Distinct\(cols ...string\) \*Query](<#Query.Distinct>)
   - [func \(q \*Query\) Dump\(\) \(string, \[\]any, error\)](<#Query.Dump>)
+  - [func \(q \*Query\) ExecuteValidatedCount\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan, columns ...string\) \(int64, error\)](<#Query.ExecuteValidatedCount>)
+  - [func \(q \*Query\) ExecuteValidatedDelete\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan\) \(sql.Result, error\)](<#Query.ExecuteValidatedDelete>)
+  - [func \(q \*Query\) ExecuteValidatedInsert\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan, data any\) \(sql.Result, error\)](<#Query.ExecuteValidatedInsert>)
+  - [func \(q \*Query\) ExecuteValidatedInsertBatch\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan, data \[\]map\[string\]any\) \(sql.Result, error\)](<#Query.ExecuteValidatedInsertBatch>)
+  - [func \(q \*Query\) ExecuteValidatedSelect\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan, dest any\) error](<#Query.ExecuteValidatedSelect>)
+  - [func \(q \*Query\) ExecuteValidatedUpdate\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan, data any\) \(sql.Result, error\)](<#Query.ExecuteValidatedUpdate>)
   - [func \(q \*Query\) First\(dest any\) error](<#Query.First>)
   - [func \(q \*Query\) FirstMap\(dest \*map\[string\]any\) error](<#Query.FirstMap>)
   - [func \(q \*Query\) Get\(dest any\) error](<#Query.Get>)
@@ -4938,6 +4951,12 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) Update\(data any\) \(sql.Result, error\)](<#Query.Update>)
   - [func \(q \*Query\) UpdateOrInsert\(cond map\[string\]any, values map\[string\]any\) \(sql.Result, error\)](<#Query.UpdateOrInsert>)
   - [func \(q \*Query\) Upsert\(data \[\]map\[string\]any, unique \[\]string, updateCols \[\]string\) \(sql.Result, error\)](<#Query.Upsert>)
+  - [func \(q \*Query\) ValidateCount\(ctx context.Context, c BindingCurrent, expiresAt time.Time, columns ...string\) \(\*ValidatedPlan, \*QueryPlan, error\)](<#Query.ValidateCount>)
+  - [func \(q \*Query\) ValidateDelete\(ctx context.Context, c BindingCurrent, expiresAt time.Time\) \(\*ValidatedPlan, \*QueryPlan, error\)](<#Query.ValidateDelete>)
+  - [func \(q \*Query\) ValidateInsert\(ctx context.Context, c BindingCurrent, expiresAt time.Time, data any\) \(\*ValidatedPlan, \*QueryPlan, error\)](<#Query.ValidateInsert>)
+  - [func \(q \*Query\) ValidateInsertBatch\(ctx context.Context, c BindingCurrent, expiresAt time.Time, data \[\]map\[string\]any\) \(\*ValidatedPlan, \*QueryPlan, error\)](<#Query.ValidateInsertBatch>)
+  - [func \(q \*Query\) ValidateSelect\(ctx context.Context, c BindingCurrent, expiresAt time.Time\) \(\*ValidatedPlan, \*QueryPlan, error\)](<#Query.ValidateSelect>)
+  - [func \(q \*Query\) ValidateUpdate\(ctx context.Context, c BindingCurrent, expiresAt time.Time, data any\) \(\*ValidatedPlan, \*QueryPlan, error\)](<#Query.ValidateUpdate>)
   - [func \(q \*Query\) Where\(col string, args ...any\) \*Query](<#Query.Where>)
   - [func \(q \*Query\) WhereAll\(cols \[\]string, cond string, val any\) \*Query](<#Query.WhereAll>)
   - [func \(q \*Query\) WhereAny\(cols \[\]string, cond string, val any\) \*Query](<#Query.WhereAny>)
@@ -5017,6 +5036,10 @@ import "github.com/recoweft/goquent/orm/query"
 - [type TableRef](<#TableRef>)
 - [type TableRiskMetadata](<#TableRiskMetadata>)
 - [type TenantPolicyResult](<#TenantPolicyResult>)
+- [type ValidatedPlan](<#ValidatedPlan>)
+  - [func \(ValidatedPlan\) Format\(s fmt.State, \_ rune\)](<#ValidatedPlan.Format>)
+  - [func \(ValidatedPlan\) MarshalJSON\(\) \(\[\]byte, error\)](<#ValidatedPlan.MarshalJSON>)
+  - [func \(h \*ValidatedPlan\) UnmarshalJSON\(\[\]byte\) error](<#ValidatedPlan.UnmarshalJSON>)
 - [type Warning](<#Warning>)
 - [type WriteKeyColumn](<#WriteKeyColumn>)
 - [type WriteKeyConstraint](<#WriteKeyConstraint>)
@@ -5078,6 +5101,19 @@ const MetadataTableRisk = "table_risk_metadata"
 ```
 
 ## Variables
+
+<a name="ErrBindingContext"></a>
+
+```go
+var (
+    ErrBindingContext     = errors.New("goquent: invalid binding context")
+    ErrBindingUnavailable = errors.New("goquent: binding unavailable")
+    ErrBindingMismatch    = errors.New("goquent: binding mismatch")
+    ErrBindingExpired     = errors.New("goquent: binding expired")
+    ErrBindingOwner       = errors.New("goquent: binding owner mismatch")
+    ErrBindingConsumed    = errors.New("goquent: binding already attempted")
+)
+```
 
 <a name="ErrApprovalRequired"></a>
 
@@ -5260,6 +5296,77 @@ type Approval struct {
     CreatedBy string     `json:"created_by,omitempty"`
     CreatedAt time.Time  `json:"created_at,omitempty"`
     ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+```
+
+<a name="BindingContext"></a>
+## type BindingContext
+
+BindingContext is an immutable, process\-local context with no secret getters.
+
+```go
+type BindingContext struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewBindingContext"></a>
+### func NewBindingContext
+
+```go
+func NewBindingContext(input BindingContextInput) (BindingContext, error)
+```
+
+NewBindingContext validates and detaches explicit application key/target input.
+
+<a name="BindingContext.Format"></a>
+### func \(BindingContext\) Format
+
+```go
+func (BindingContext) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="BindingContext.MarshalJSON"></a>
+### func \(BindingContext\) MarshalJSON
+
+```go
+func (BindingContext) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="BindingContext.UnmarshalJSON"></a>
+### func \(\*BindingContext\) UnmarshalJSON
+
+```go
+func (c *BindingContext) UnmarshalJSON([]byte) error
+```
+
+
+
+<a name="BindingContextInput"></a>
+## type BindingContextInput
+
+BindingContextInput supplies application\-managed key and target assertions. Never log Key. These assertions do not attest the physical database.
+
+```go
+type BindingContextInput struct {
+    Key                                []byte
+    Scope, Generation, Target, Dialect string
+}
+```
+
+<a name="BindingCurrent"></a>
+## type BindingCurrent
+
+BindingCurrent must be supplied from current trusted application state on every call. Reusing stale assertions cannot detect external changes.
+
+```go
+type BindingCurrent struct {
+    Settings       Settings
+    BindingContext BindingContext
 }
 ```
 
@@ -5691,6 +5798,60 @@ func (q *Query) Dump() (string, []any, error)
 ```
 
 Dump returns SQL and args for debugging.
+
+<a name="Query.ExecuteValidatedCount"></a>
+### func \(\*Query\) ExecuteValidatedCount
+
+```go
+func (q *Query) ExecuteValidatedCount(ctx context.Context, c BindingCurrent, h *ValidatedPlan, columns ...string) (int64, error)
+```
+
+ExecuteValidatedCount attempts a handle once with current COUNT columns.
+
+<a name="Query.ExecuteValidatedDelete"></a>
+### func \(\*Query\) ExecuteValidatedDelete
+
+```go
+func (q *Query) ExecuteValidatedDelete(ctx context.Context, c BindingCurrent, h *ValidatedPlan) (sql.Result, error)
+```
+
+ExecuteValidatedDelete attempts a handle once with current DELETE conditions.
+
+<a name="Query.ExecuteValidatedInsert"></a>
+### func \(\*Query\) ExecuteValidatedInsert
+
+```go
+func (q *Query) ExecuteValidatedInsert(ctx context.Context, c BindingCurrent, h *ValidatedPlan, data any) (sql.Result, error)
+```
+
+ExecuteValidatedInsert attempts a handle once with current struct/map data.
+
+<a name="Query.ExecuteValidatedInsertBatch"></a>
+### func \(\*Query\) ExecuteValidatedInsertBatch
+
+```go
+func (q *Query) ExecuteValidatedInsertBatch(ctx context.Context, c BindingCurrent, h *ValidatedPlan, data []map[string]any) (sql.Result, error)
+```
+
+ExecuteValidatedInsertBatch attempts a handle once with all current candidates.
+
+<a name="Query.ExecuteValidatedSelect"></a>
+### func \(\*Query\) ExecuteValidatedSelect
+
+```go
+func (q *Query) ExecuteValidatedSelect(ctx context.Context, c BindingCurrent, h *ValidatedPlan, dest any) error
+```
+
+ExecuteValidatedSelect attempts a handle once and scans using Get semantics.
+
+<a name="Query.ExecuteValidatedUpdate"></a>
+### func \(\*Query\) ExecuteValidatedUpdate
+
+```go
+func (q *Query) ExecuteValidatedUpdate(ctx context.Context, c BindingCurrent, h *ValidatedPlan, data any) (sql.Result, error)
+```
+
+ExecuteValidatedUpdate attempts a handle once with current UPDATE data.
 
 <a name="Query.First"></a>
 ### func \(\*Query\) First
@@ -6447,6 +6608,60 @@ func (q *Query) Upsert(data []map[string]any, unique []string, updateCols []stri
 ```
 
 Upsert executes an UPSERT using ON DUPLICATE KEY UPDATE.
+
+<a name="Query.ValidateCount"></a>
+### func \(\*Query\) ValidateCount
+
+```go
+func (q *Query) ValidateCount(ctx context.Context, c BindingCurrent, expiresAt time.Time, columns ...string) (*ValidatedPlan, *QueryPlan, error)
+```
+
+ValidateCount inspects COUNT with explicit current columns without DB access.
+
+<a name="Query.ValidateDelete"></a>
+### func \(\*Query\) ValidateDelete
+
+```go
+func (q *Query) ValidateDelete(ctx context.Context, c BindingCurrent, expiresAt time.Time) (*ValidatedPlan, *QueryPlan, error)
+```
+
+ValidateDelete inspects current DELETE conditions without DB access.
+
+<a name="Query.ValidateInsert"></a>
+### func \(\*Query\) ValidateInsert
+
+```go
+func (q *Query) ValidateInsert(ctx context.Context, c BindingCurrent, expiresAt time.Time, data any) (*ValidatedPlan, *QueryPlan, error)
+```
+
+ValidateInsert inspects a single INSERT from current struct/map input.
+
+<a name="Query.ValidateInsertBatch"></a>
+### func \(\*Query\) ValidateInsertBatch
+
+```go
+func (q *Query) ValidateInsertBatch(ctx context.Context, c BindingCurrent, expiresAt time.Time, data []map[string]any) (*ValidatedPlan, *QueryPlan, error)
+```
+
+ValidateInsertBatch inspects all candidates in one INSERT statement.
+
+<a name="Query.ValidateSelect"></a>
+### func \(\*Query\) ValidateSelect
+
+```go
+func (q *Query) ValidateSelect(ctx context.Context, c BindingCurrent, expiresAt time.Time) (*ValidatedPlan, *QueryPlan, error)
+```
+
+ValidateSelect inspects the current SELECT without accessing the database.
+
+<a name="Query.ValidateUpdate"></a>
+### func \(\*Query\) ValidateUpdate
+
+```go
+func (q *Query) ValidateUpdate(ctx context.Context, c BindingCurrent, expiresAt time.Time, data any) (*ValidatedPlan, *QueryPlan, error)
+```
+
+ValidateUpdate inspects current UPDATE data and effective conditions.
 
 <a name="Query.Where"></a>
 ### func \(\*Query\) Where
@@ -7280,6 +7495,44 @@ type TenantPolicyResult struct {
     ExecutorIdentity string            `json:"executor_identity"`
 }
 ```
+
+<a name="ValidatedPlan"></a>
+## type ValidatedPlan
+
+ValidatedPlan is an opaque single\-attempt handle. Copies share consumption. It is neither a serialized permit nor a replacement for application authority.
+
+```go
+type ValidatedPlan struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="ValidatedPlan.Format"></a>
+### func \(ValidatedPlan\) Format
+
+```go
+func (ValidatedPlan) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="ValidatedPlan.MarshalJSON"></a>
+### func \(ValidatedPlan\) MarshalJSON
+
+```go
+func (ValidatedPlan) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="ValidatedPlan.UnmarshalJSON"></a>
+### func \(\*ValidatedPlan\) UnmarshalJSON
+
+```go
+func (h *ValidatedPlan) UnmarshalJSON([]byte) error
+```
+
+
 
 <a name="Warning"></a>
 ## type Warning

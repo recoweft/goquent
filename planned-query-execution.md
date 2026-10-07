@@ -28,7 +28,9 @@ chain modifiers feed the terminal operation; they do not execute independently.
 | `InsertGetId` (PostgreSQL) | Insert plan, private RETURNING check/reseal, local QueryRow | Extend private original; inspect projection and re-finalize final SQL; common QueryRow and ID scan |
 | `Build`, `Dump`, `RawSQL` | SQL/debug rendering only | Unchanged; no semantic gate and no executable evidence |
 
-There is no public Query `PlanUpsert`, Query `Returning`, or execute-a-plan API.
+There is no public Query `PlanUpsert`, Query `Returning`, or public-QueryPlan execution API. The separate
+[GQ-AI-05 validated binding API](validated-plan-binding.md) consumes only opaque
+handles plus fresh trusted inputs for six Query families.
 The generic diagnostic plan APIs added in PR2 are listed below. Query `InsertBatch`/slice-based Upsert each render one
 statement and are covered here. These Query terminals themselves do not introduce
 a parent/child or multi-statement batch lifecycle. SQL is rendered once per plan, not again during dispatch.
