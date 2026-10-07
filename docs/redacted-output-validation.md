@@ -32,7 +32,12 @@ were healthy. No production DB or real secret was used in canary fixtures.
 ## Exact local source and commands
 
 Tested source: `cfcd2247fa5e816d89ee7168899cacef6e513eb9`.
-The subsequent validation-record commit changes this Markdown file only.
+Subsequent commits add this validation record and fix YAML block-scalar quoting
+for the fixed CI failure message. No Go source/test changes follow this source.
+The first published head CI37586342138 failed before creating any jobs/logs; local
+YAML parsing identified an unquoted colon in the failure-message run value. It
+was converted to a block scalar and both workflow YAML files were parsed. This
+was a workflow startup failure, not a passing or failed Go test run.
 Final full/integration/race were run serially against shared DB services, with
 TEST_MYSQL_DSN, TEST_POSTGRES_DSN and TEST_DB_DSN explicitly set to the local test
 fixtures. Connection failures were not converted to skips. DSN values and raw

@@ -54,4 +54,5 @@ jobs:
 
       - name: Database diagnostics omitted
         if: failure()
-        run: printf '%s\n' 'CI_DATABASE_DIAGNOSTICS_OMITTED: raw server logs may contain sensitive values'
+        run: |
+          printf '%s\n' 'CI_DATABASE_DIAGNOSTICS_OMITTED: raw server logs may contain sensitive values'
