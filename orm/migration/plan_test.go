@@ -209,7 +209,7 @@ ALTER TABLE users ADD COLUMN note text DEFAULT 'a;b';
 	if !strings.Contains(string(b), `"steps"`) {
 		t.Fatalf("expected JSON to contain steps, got %s", string(b))
 	}
-	if !strings.Contains(plan.String(), "migration plan") {
+	if !strings.Contains(plan.String(), "goquent.migration_plan_view") {
 		t.Fatalf("expected String summary, got %s", plan.String())
 	}
 }

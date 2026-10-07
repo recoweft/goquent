@@ -40,32 +40,32 @@ func main() {
 
 	db, err := orm.OpenWithDriver(orm.MySQL, "root:password@tcp(localhost:3306)/testdb?parseTime=true")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 	}
 	defer db.Close()
 
 	// Generic insert from a struct value.
 	if _, err := orm.Insert(ctx, db, User{Name: "sam", Age: 18, Active: false}); err != nil {
-		log.Fatal(err)
+		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 	}
 
 	// Generic read from raw SQL.
 	user, err := orm.SelectOne[User](ctx, db, "SELECT id, name, age, active FROM users WHERE id = ?", 1)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 	}
 
 	// Generic read from a scoped query-builder query.
 	inactiveAdults := orm.ComposeScopes(selectUsers(), adultsOnly(), inactiveOnly())
 	users, err := orm.SelectAllBy[User](ctx, db, db.Model(&User{}), inactiveAdults)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 	}
-	log.Printf("loaded %d inactive adult users; seed user=%+v", len(users), user)
+	log.Printf("loaded %d inactive adult users; row values omitted", len(users))
 
 	// Generic primary-key update for a single row.
 	if _, err := orm.Update(ctx, db, User{ID: user.ID, Active: true}, orm.Columns("active"), orm.WherePK()); err != nil {
-		log.Fatal(err)
+		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 	}
 
 	// Scoped update for more complex predicates.
@@ -73,13 +73,13 @@ func main() {
 		_, err := orm.UpdateBy(ctx, tx.Table("users"), map[string]any{"active": true}, inactiveAdults)
 		return err
 	}); err != nil {
-		log.Fatal(err)
+		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 	}
 
 	// Scoped delete for cases that do not fit generic WherePK writes.
 	if _, err := orm.DeleteBy(ctx, db.Table("users"), func(q *query.Query) *query.Query {
 		return q.Where("age", "<", 13)
 	}); err != nil {
-		log.Fatal(err)
+		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 	}
 }

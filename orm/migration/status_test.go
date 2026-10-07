@@ -245,7 +245,7 @@ func TestWriteSchemaPrettyAndJSON(t *testing.T) {
 	if err := WriteSchemaPretty(&pretty, schema); err != nil {
 		t.Fatalf("pretty schema: %v", err)
 	}
-	if !strings.Contains(pretty.String(), "Schema Export") || !strings.Contains(pretty.String(), "users") {
+	if !strings.Contains(pretty.String(), "goquent.schema_view") || strings.Contains(pretty.String(), "users") {
 		t.Fatalf("unexpected pretty output: %s", pretty.String())
 	}
 	var jsonBuf bytes.Buffer
@@ -274,7 +274,7 @@ func TestWriteStatusPrettyAndJSON(t *testing.T) {
 	if err := WriteStatusPretty(&pretty, status); err != nil {
 		t.Fatalf("pretty status: %v", err)
 	}
-	if !strings.Contains(pretty.String(), "Migration Status") || !strings.Contains(pretty.String(), "pending:") {
+	if !strings.Contains(pretty.String(), "goquent.migration_status_view") || !strings.Contains(pretty.String(), "pending_count") {
 		t.Fatalf("unexpected pretty output: %s", pretty.String())
 	}
 	var jsonBuf bytes.Buffer

@@ -38,7 +38,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		printUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		printUsage(stderr)
 		return 2
 	}
@@ -46,7 +46,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func runReview(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent review", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	failOn := fs.String("fail-on", "high", "risk threshold that returns exit code 1")
 	failOnPrecision := fs.String("fail-on-precision", "", "analysis precision threshold that returns exit code 1: partial or unsupported")
 	format := fs.String("format", "pretty", "output format: pretty, json, github")
@@ -64,6 +64,7 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	explicit := explicitFlagSet(fs)
@@ -71,7 +72,7 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 	if strings.TrimSpace(*configPath) != "" {
 		loaded, err := review.LoadConfig(*configPath)
 		if err != nil {
-			fmt.Fprintln(stderr, err)
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 			return 2
 		}
 		cfg = loaded
@@ -112,7 +113,7 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 	if manifestInputs {
 		current, err := buildManifestFromFlags("", *schemaPath, *policyPath, *databaseSchemaPath, "", codePaths)
 		if err != nil {
-			fmt.Fprintln(stderr, err)
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 			return 2
 		}
 		currentManifestForReview = current
@@ -120,12 +121,12 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 
 	threshold, err := review.ParseRiskLevel(*failOn)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	precisionThreshold, err := review.ParseAnalysisPrecision(*failOnPrecision)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	precisionThresholdSet := strings.TrimSpace(*failOnPrecision) != ""
@@ -133,7 +134,7 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 	switch outputFormat {
 	case "", "pretty", "text", "json", "github":
 	default:
-		fmt.Fprintf(stderr, "unknown review format %q\n", *format)
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		return 2
 	}
 
@@ -149,7 +150,7 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 		ConfigSuppressions:   cfg.Suppressions,
 	})
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 
@@ -157,12 +158,16 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 	case "", "pretty", "text":
 		err = review.WritePretty(stdout, report)
 	case "json":
-		err = review.WriteJSON(stdout, report)
+		var view review.ReportView
+		view, err = report.PublicView()
+		if err == nil {
+			err = review.WritePublicJSON(stdout, view)
+		}
 	case "github":
 		err = review.WriteGitHub(stdout, report)
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 

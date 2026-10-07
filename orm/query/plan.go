@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -263,7 +262,8 @@ var ErrOutputCycle = valueguard.ErrCycle
 var ErrOutputDepth = valueguard.ErrDepth
 var ErrOutputBudget = valueguard.ErrBudget
 
-// MarshalJSON preserves ordinary output while rejecting unsafe built-in expansion.
+// MarshalJSON emits sensitive internal diagnostic data; use PublicView for display.
+// It preserves ordinary output while rejecting unsafe built-in expansion.
 // A value receiver also covers json.Marshal(*plan). Nil pointers remain JSON null.
 func (p QueryPlan) MarshalJSON() ([]byte, error) {
 	type plain QueryPlan
@@ -277,54 +277,19 @@ func (p QueryPlan) MarshalJSON() ([]byte, error) {
 	return json.Marshal(plain(p))
 }
 
-// ToJSON returns stable, indented JSON for the plan.
+// ToJSON returns internal diagnostic JSON containing sensitive execution data.
+// Use PublicView for public output.
 func (p *QueryPlan) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(p, "", "  ")
 }
 
 // String returns a compact pretty format suitable for logs and CLI output.
 func (p *QueryPlan) String() string {
-	if p == nil {
-		return "<nil query plan>"
+	v, err := p.PublicView()
+	if err != nil {
+		return "PUBLIC_VIEW_SOURCE: unsupported diagnostic source"
 	}
-
-	if err := valueguard.Check(*p); err != nil {
-		return "<query plan output omitted; unverified: " + err.Error() + ">"
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s query plan\n", p.Operation)
-	fmt.Fprintf(&b, "risk: %s\n", p.RiskLevel)
-	fmt.Fprintf(&b, "precision: %s\n", p.AnalysisPrecision)
-	if p.RequiredApproval {
-		b.WriteString("requires_approval: true\n")
-	}
-	fmt.Fprintf(&b, "sql: %s\n", p.SQL)
-	if len(p.Params) > 0 {
-		fmt.Fprintf(&b, "params: %v\n", p.Params)
-	}
-	if len(p.Tables) > 0 {
-		fmt.Fprintf(&b, "tables: %s\n", tableRefsString(p.Tables))
-	}
-	if len(p.Columns) > 0 {
-		fmt.Fprintf(&b, "columns: %s\n", columnRefsString(p.Columns))
-	}
-	if len(p.Predicates) > 0 {
-		fmt.Fprintf(&b, "predicates: %s\n", predicateRefsString(p.Predicates))
-	}
-	if p.Limit != nil {
-		fmt.Fprintf(&b, "limit: %d\n", *p.Limit)
-	}
-	if p.Offset != nil {
-		fmt.Fprintf(&b, "offset: %d\n", *p.Offset)
-	}
-	for _, w := range p.Warnings {
-		fmt.Fprintf(&b, "warning[%s]: %s", w.Level, w.Code)
-		if w.Message != "" {
-			fmt.Fprintf(&b, " - %s", w.Message)
-		}
-		b.WriteByte('\n')
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return v.String()
 }
 
 func newQueryPlan(op OperationType, sqlStr string, args []any) *QueryPlan {
@@ -477,49 +442,6 @@ func appendPredicateMetadata(plan *QueryPlan, predicates []qbapi.PredicateSnapsh
 			ValueCount:  predicate.ValueCount,
 		})
 	}
-}
-
-func tableRefsString(refs []TableRef) string {
-	parts := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		if ref.Alias != "" {
-			parts = append(parts, ref.Name+" as "+ref.Alias)
-			continue
-		}
-		parts = append(parts, ref.Name)
-	}
-	return strings.Join(parts, ", ")
-}
-
-func columnRefsString(refs []ColumnRef) string {
-	parts := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		switch {
-		case ref.Expression != "":
-			parts = append(parts, ref.Expression)
-		case ref.Function != "":
-			parts = append(parts, ref.Function+"("+ref.Name+")")
-		default:
-			parts = append(parts, ref.Name)
-		}
-	}
-	return strings.Join(parts, ", ")
-}
-
-func predicateRefsString(refs []PredicateRef) string {
-	parts := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		if ref.Raw != "" {
-			parts = append(parts, ref.Raw)
-			continue
-		}
-		part := strings.TrimSpace(ref.Column + " " + ref.Operator)
-		if ref.ValueCount > 0 {
-			part += fmt.Sprintf(" [%d value(s)]", ref.ValueCount)
-		}
-		parts = append(parts, part)
-	}
-	return strings.Join(parts, ", ")
 }
 
 func appendConditionTrees(plan *QueryPlan, src qbapi.QuerySnapshot) {

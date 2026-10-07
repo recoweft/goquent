@@ -107,7 +107,20 @@ Additive `query.PlanView` and `review.ReportView` now provide detached, bounded,
 non-executable output with fixed classification and strict independent v1 readers.
 SQL, identifiers, values and opaque Evidence/Metadata are omitted without evaluating
 custom value methods. See [public view APIs and output migration](docs/public-plan-views.md).
-Existing ToJSON/String/review writers and CLI/CI/MCP outputs are unchanged and can
-still expose sensitive data. Their migration and whole-Issue leak regression belong
-to PR2. Public views are not execution, approval or CI decision inputs; existing
+At the PR1 boundary, legacy outputs remained sensitive. PR2 now changes display
+consumers; source JSON data APIs remain sensitive as documented below. Public views are not execution, approval or CI decision inputs; existing
 private execution, typed binding, Strict and wire compatibility remain in force.
+
+## GQ-AI-06 PR2 output migration
+
+Default CLI/CI/MCP output and display-only String/Pretty/GitHub APIs now use
+bounded public views and fixed error adapters. See [public output inventory and migration](docs/redacted-output.md).
+Legacy source JSON, Query Build/Dump/RawSQL and internal artifact APIs retain
+sensitive execution data and wire compatibility; they are not publication APIs.
+Default manifest/schema JSON is a non-reusable summary; MCP schema-name discovery
+is intentionally removed. Explicit new local artifact files and validated
+JSON-RPC top-level correlation ID echoes are documented AC exceptions. No source
+error or opaque value is retained in public errors. Public output is neither
+execution material nor authorization. Original complete reports/plans decide CI,
+freshness and apply gates; truncation cannot weaken those decisions. Whole-Issue
+acceptance and merge remain separate from implementation and test evidence.

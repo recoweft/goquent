@@ -12,6 +12,7 @@ import (
 
 	"github.com/recoweft/goquent/orm/internal/planversion"
 	"github.com/recoweft/goquent/orm/operation"
+	"github.com/recoweft/goquent/orm/publicoutput"
 )
 
 const maxMessageBytes = 1 << 20
@@ -37,18 +38,46 @@ type rpcError struct {
 
 // HandleJSONRPC handles one JSON-RPC request payload.
 func (s *Server) HandleJSONRPC(ctx context.Context, payload []byte) ([]byte, bool) {
-	var req rpcRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		return marshalRPC(rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: -32700, Message: err.Error()}}), true
+	null := json.RawMessage("null")
+	reject := func(code int, message string) ([]byte, bool) {
+		return marshalRPC(rpcResponse{JSONRPC: "2.0", ID: &null, Error: &rpcError{Code: code, Message: message}}), true
 	}
-	if req.ID == nil {
+	if len(payload) > maxMessageBytes || !json.Valid(payload) {
+		return reject(-32700, "PUBLIC_INPUT: invalid JSON")
+	}
+	if !validateJSON(payload) {
+		return reject(-32600, "PUBLIC_INPUT: invalid request")
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(payload, &fields) != nil || fields == nil {
+		return reject(-32600, "PUBLIC_INPUT: invalid request")
+	}
+	for key := range fields {
+		switch key {
+		case "jsonrpc", "id", "method", "params":
+		default:
+			return reject(-32600, "PUBLIC_INPUT: invalid request")
+		}
+	}
+	var req rpcRequest
+	if json.Unmarshal(payload, &req) != nil || req.JSONRPC != "2.0" || req.Method == "" {
+		return reject(-32600, "PUBLIC_INPUT: invalid request")
+	}
+	id, hasID := fields["id"]
+	if hasID && !validID(id) {
+		return reject(-32600, "PUBLIC_INPUT: invalid request")
+	}
+	if params, ok := fields["params"]; ok && (len(params) == 0 || params[0] != '{') {
+		return reject(-32600, "PUBLIC_INPUT: invalid request")
+	}
+	if !hasID {
 		_, _ = s.dispatch(ctx, req)
 		return nil, false
 	}
 	result, err := s.dispatch(ctx, req)
-	resp := rpcResponse{JSONRPC: "2.0", ID: req.ID}
+	resp := rpcResponse{JSONRPC: "2.0", ID: &id}
 	if err != nil {
-		resp.Error = &rpcError{Code: -32603, Message: err.Error()}
+		resp.Error = &rpcError{Code: -32603, Message: "PUBLIC_OUTPUT: operation failed; details omitted"}
 	} else {
 		resp.Result = result
 	}
@@ -98,7 +127,7 @@ func (s *Server) dispatch(ctx context.Context, req rpcRequest) (any, error) {
 		}
 		result, err := s.CallTool(ctx, params.Name, args)
 		if err != nil {
-			return ToolResult{IsError: true, Content: []Content{{Type: "text", Text: err.Error()}}}, nil
+			return ToolResult{IsError: true, Content: []Content{{Type: "text", Text: "PUBLIC_OUTPUT: operation failed; details omitted"}}}, nil
 		}
 		return result, nil
 	case "prompts/list":
@@ -132,19 +161,22 @@ func (s *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
 			if err == io.EOF {
 				return nil
 			}
-			return err
+			return publicoutput.ErrOutput
 		}
 		resp, ok := s.HandleJSONRPC(ctx, payload)
 		if !ok {
 			continue
 		}
 		if err := writeFramedMessage(w, resp); err != nil {
-			return err
+			return publicoutput.ErrOutput
 		}
 	}
 }
 
 func decodeParams(params json.RawMessage, out any) error {
+	if len(params) > 0 && !validateJSON(params) {
+		return publicoutput.ErrOutput
+	}
 	if len(params) == 0 {
 		params = []byte(`{}`)
 	}
@@ -175,49 +207,70 @@ func marshalRPC(resp rpcResponse) []byte {
 }
 
 func readMessage(r *bufio.Reader) ([]byte, error) {
+	budget := maxMessageBytes
+	readLine := func() (string, error) {
+		var b []byte
+		for {
+			part, err := r.ReadSlice('\n')
+			budget -= len(part)
+			if budget < 0 {
+				return "", publicoutput.ErrOutput
+			}
+			b = append(b, part...)
+			if err == bufio.ErrBufferFull {
+				continue
+			}
+			if err != nil {
+				if len(b) > 0 {
+					return "", publicoutput.ErrOutput
+				}
+				return "", err
+			}
+			return strings.TrimRight(string(b), "\r\n"), nil
+		}
+	}
 	var line string
 	for {
-		next, err := r.ReadString('\n')
+		next, err := readLine()
 		if err != nil {
 			return nil, err
 		}
-		line = strings.TrimRight(next, "\r\n")
-		if strings.TrimSpace(line) != "" {
+		if strings.TrimSpace(next) != "" {
+			line = next
 			break
 		}
 	}
 	if !strings.HasPrefix(strings.ToLower(line), "content-length:") {
 		return []byte(line), nil
 	}
-	_, lengthText, ok := strings.Cut(line, ":")
-	if !ok {
-		return nil, fmt.Errorf("invalid Content-Length header")
-	}
+	_, lengthText, _ := strings.Cut(line, ":")
 	length, err := strconv.Atoi(strings.TrimSpace(lengthText))
-	if err != nil {
-		return nil, err
-	}
-	if length < 0 || length > maxMessageBytes {
-		return nil, fmt.Errorf("invalid Content-Length: %d", length)
+	if err != nil || length < 0 || length > maxMessageBytes {
+		return nil, publicoutput.ErrOutput
 	}
 	for {
-		header, err := r.ReadString('\n')
+		header, err := readLine()
 		if err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(header) == "" {
 			break
 		}
+		if strings.HasPrefix(strings.ToLower(header), "content-length:") {
+			return nil, publicoutput.ErrOutput
+		}
 	}
 	payload := make([]byte, length)
 	_, err = io.ReadFull(r, payload)
-	return payload, err
+	if err != nil {
+		return nil, publicoutput.ErrOutput
+	}
+	return payload, nil
 }
 
 func writeFramedMessage(w io.Writer, payload []byte) error {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "Content-Length: %d\r\n\r\n", len(payload))
 	b.Write(payload)
-	_, err := w.Write(b.Bytes())
-	return err
+	return publicoutput.Write(w, b.Bytes())
 }

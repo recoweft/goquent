@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	// TODO: evaluate using a lightweight pq or pgx driver
 	_ "github.com/lib/pq"
 )
@@ -46,7 +47,23 @@ type Driver struct {
 
 // Open initializes the DB connection with pooling configuration.
 func Open(driverName, dsn string, maxOpen, maxIdle int, lifetime time.Duration) (*Driver, error) {
-	db, err := sql.Open(driverName, dsn)
+	var db *sql.DB
+	var err error
+	if driverName == "mysql" {
+		// Limit automatic driver logs without changing returned error identity.
+		cfg, e := mysql.ParseDSN(dsn)
+		if e != nil {
+			return nil, e
+		}
+		cfg.Logger = publicDriverLogger{}
+		connector, e := mysql.NewConnector(cfg)
+		if e != nil {
+			return nil, e
+		}
+		db = sql.OpenDB(connector)
+	} else {
+		db, err = sql.Open(driverName, dsn)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -127,4 +144,12 @@ func (d *Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error) {
 		return Tx{}, err
 	}
 	return Tx{tx}, nil
+}
+
+// publicDriverLogger ignores payloads without formatting application errors.
+// It is per connection configuration; no process-wide driver logger is replaced.
+type publicDriverLogger struct{}
+
+func (publicDriverLogger) Print(...any) {
+	log.Print("PUBLIC_OUTPUT: database driver diagnostic; details omitted")
 }

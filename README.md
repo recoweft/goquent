@@ -23,7 +23,7 @@ Goquent keeps SQL visible. A database operation can be planned before execution,
 | `MigrationPlan` | Parsed migration steps, destructive-operation warnings, approval requirements, and preflight suggestions | Reviews schema change shape before apply |
 | `Manifest` | AI-readable schema, policy, relation, example, and fingerprint context | Detects stale schema or policy context |
 | `OperationSpec` | A narrow read-only JSON interface for single-model `select` operations with explicit fields, filters, ordering, and limit | Lets AI express supported reads without inventing free-form SQL |
-| MCP server | Read-only schema, policy, manifest, review, and planning context for AI tools | Does not perform DB writes, raw SQL execution, or migration apply |
+| MCP server | Read-only redacted structural summaries, review and planning context for AI tools | Does not perform DB writes, raw SQL execution, or migration apply |
 
 Compared with a conventional ORM or query builder, Goquent's differentiator is not hiding SQL. It is making SQL and database intent plan-first, reviewable, policy-aware, and suitable for AI-assisted code review.
 
@@ -143,19 +143,21 @@ go run ./cmd/goquent migrate dry-run \
   ./migrations/001_change.sql
 ```
 
-`migrate dry-run` validates the plan without executing SQL. Destructive or high-risk changes require explicit approval before dry-run or apply can pass. The plan output includes suggested preflight checks for destructive steps such as dropped tables or columns.
+`migrate dry-run` validates the plan without executing SQL. Destructive or high-risk changes require explicit approval before dry-run or apply can pass. The public plan omits SQL, names and free-form preflight text; inspect internal migration data locally for deployment review.
 
 Migration application is a human-controlled deployment step. AI agents and MCP tools must not run `goquent migrate apply`. Before a human applies a migration, include `goquent migrate plan`, dry-run output, approval reason, and preflight notes in the PR.
 
 ## Manifest and Stale Detection
 
-The manifest gives AI tools and review commands deterministic schema and policy context.
+The internal manifest gives compilation and review commands schema and policy context.
+Default public output is a redacted summary. To create a sensitive local artifact
+use a new private file explicitly (refused in CI); do not publish that file.
 
 ```bash
 go run ./cmd/goquent manifest --format json \
   --schema schema.json \
   --policy policies.json \
-  > goquent.manifest.json
+  --unsafe-local-output goquent.manifest.json
 
 go run ./cmd/goquent manifest verify \
   --manifest goquent.manifest.json \
@@ -248,7 +250,20 @@ Additive `query.PlanView` and `review.ReportView` now provide detached, bounded,
 non-executable output with fixed classification and strict independent v1 readers.
 SQL, identifiers, values and opaque Evidence/Metadata are omitted without evaluating
 custom value methods. See [public view APIs and output migration](docs/public-plan-views.md).
-Existing ToJSON/String/review writers and CLI/CI/MCP outputs are unchanged and can
-still expose sensitive data. Their migration and whole-Issue leak regression belong
-to PR2. Public views are not execution, approval or CI decision inputs; existing
+At the PR1 boundary, legacy outputs remained sensitive. PR2 now changes display
+consumers; source JSON data APIs remain sensitive as documented below. Public views are not execution, approval or CI decision inputs; existing
 private execution, typed binding, Strict and wire compatibility remain in force.
+
+## GQ-AI-06 PR2 output migration
+
+Default CLI/CI/MCP output and display-only String/Pretty/GitHub APIs now use
+bounded public views and fixed error adapters. See [public output inventory and migration](docs/redacted-output.md).
+Legacy source JSON, Query Build/Dump/RawSQL and internal artifact APIs retain
+sensitive execution data and wire compatibility; they are not publication APIs.
+Default manifest/schema JSON is a non-reusable summary; MCP schema-name discovery
+is intentionally removed. Explicit new local artifact files and validated
+JSON-RPC top-level correlation ID echoes are documented AC exceptions. No source
+error or opaque value is retained in public errors. Public output is neither
+execution material nor authorization. Original complete reports/plans decide CI,
+freshness and apply gates; truncation cannot weaken those decisions. Whole-Issue
+acceptance and merge remain separate from implementation and test evidence.

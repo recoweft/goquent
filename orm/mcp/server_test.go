@@ -28,7 +28,7 @@ func TestResourcesExposeManifestAndStaleStatus(t *testing.T) {
 	if mimeType != "application/json" {
 		t.Fatalf("expected json mime type, got %s", mimeType)
 	}
-	if !strings.Contains(statusText, `"fresh": false`) {
+	if !strings.Contains(statusText, `"fresh":false`) {
 		t.Fatalf("expected stale manifest status, got %s", statusText)
 	}
 }
@@ -61,7 +61,7 @@ func TestToolsAreReadOnlyAndCompileOperationSpec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Content) != 1 || !strings.Contains(result.Content[0].Text, "tenant-1") {
+	if len(result.Content) != 1 || strings.Contains(result.Content[0].Text, "tenant-1") || !strings.Contains(result.Content[0].Text, "goquent.plan_view") {
 		t.Fatalf("expected compiled QueryPlan with resolved value, got %#v", result)
 	}
 }
@@ -107,7 +107,7 @@ func TestJSONRPCHandleAndServe(t *testing.T) {
 	if err := server.Serve(context.Background(), &framed, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(out.Bytes(), []byte("Content-Length:")) || !bytes.Contains(out.Bytes(), []byte("tenant_scope")) {
+	if !bytes.Contains(out.Bytes(), []byte("Content-Length:")) || !bytes.Contains(out.Bytes(), []byte("goquent.policies_view")) {
 		t.Fatalf("expected framed resource response, got %s", out.String())
 	}
 }

@@ -70,3 +70,12 @@ go run ./cmd/goquent mcp \
 The current MCP implementation does not expose DB writes, raw SQL execution, or migration apply.
 Migration SQL and query text can be reviewed, but not executed, through MCP. MCP output is review
 context, not business approval.
+
+## Public output compatibility
+
+Resources now return bounded redacted summaries, so real schema names/defaults/
+examples cannot be discovered through MCP. Plans use PlanView/MigrationPlanView.
+Prompts and generated teaching text ignore caller names. Valid string/integer IDs
+are echoed only in top-level id; clients must not put secrets there. Unknown or
+ambiguous input and errors never echo caller text. See [the inventory and exact
+bounds](redacted-output.md). This remains read-only and does not grant execution.

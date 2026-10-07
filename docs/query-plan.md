@@ -28,7 +28,9 @@ Planning does not call the database. Execution methods such as `Get`, `Update`, 
 generate a plan internally and refuse blocked operations or operations that require approval but
 have no approval reason.
 
-Use `plan.ToJSON()` when passing a plan to CI, logs, PR comments, or AI tools.
+Use `view, err := plan.PublicView()` and `view.ToJSON()` for CI, logs, PR comments,
+or AI tools, checking both errors without printing arbitrary causes.
+`plan.ToJSON()` remains sensitive internal data. See [output migration](redacted-output.md).
 
 Important fields:
 

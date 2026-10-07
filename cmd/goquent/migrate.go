@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"github.com/recoweft/goquent/orm"
 	ormdriver "github.com/recoweft/goquent/orm/driver"
 	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/publicoutput"
 	"github.com/recoweft/goquent/orm/review"
 )
 
@@ -37,7 +39,7 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 		printMigrateUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "unknown migrate command %q\n", args[0])
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		printMigrateUsage(stderr)
 		return 2
 	}
@@ -45,7 +47,7 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 
 func runMigrateStatus(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent migrate status", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	format := fs.String("format", "pretty", "output format: pretty, json")
 	driverName := fs.String("driver", "", "database driver: mysql or postgres")
 	dsn := fs.String("dsn", "", "database DSN")
@@ -62,13 +64,14 @@ func runMigrateStatus(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	outputFormat := strings.ToLower(strings.TrimSpace(*format))
 	switch outputFormat {
 	case "", "pretty", "text", "json":
 	default:
-		fmt.Fprintf(stderr, "unknown migrate status format %q\n", *format)
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		return 2
 	}
 	if strings.TrimSpace(*driverName) == "" || strings.TrimSpace(*dsn) == "" {
@@ -77,17 +80,17 @@ func runMigrateStatus(args []string, stdout, stderr io.Writer) int {
 	}
 	dialect, err := migrationStatusDialect(*driverName)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	versions, err := readDesiredVersions(desired, desiredFiles)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	db, err := orm.OpenWithDriver(*driverName, *dsn)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	defer db.Close()
@@ -103,11 +106,11 @@ func runMigrateStatus(args []string, stdout, stderr io.Writer) int {
 		migration.WithStatusAppliedAtColumn(*appliedAtColumn),
 	)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	if err := writeMigrationStatusOutput(stdout, outputFormat, status); err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	if !status.Exists || status.Dirty || status.Unknown || len(status.Pending) > 0 {
@@ -118,7 +121,8 @@ func runMigrateStatus(args []string, stdout, stderr io.Writer) int {
 
 func runMigrateSchema(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent migrate schema", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
+	localOutput := fs.String("unsafe-local-output", "", "save sensitive internal schema to a new local file; forbidden in CI")
 	format := fs.String("format", "json", "output format: json, pretty")
 	driverName := fs.String("driver", "", "database driver: mysql or postgres")
 	dsn := fs.String("dsn", "", "database DSN")
@@ -130,13 +134,14 @@ func runMigrateSchema(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	outputFormat := strings.ToLower(strings.TrimSpace(*format))
 	switch outputFormat {
 	case "", "pretty", "text", "json":
 	default:
-		fmt.Fprintf(stderr, "unknown migrate schema format %q\n", *format)
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		return 2
 	}
 	if strings.TrimSpace(*driverName) == "" || strings.TrimSpace(*dsn) == "" {
@@ -145,12 +150,12 @@ func runMigrateSchema(args []string, stdout, stderr io.Writer) int {
 	}
 	dialect, err := migrationDialect(*driverName)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	db, err := orm.OpenWithDriver(*driverName, *dsn)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	defer db.Close()
@@ -163,11 +168,21 @@ func runMigrateSchema(args []string, stdout, stderr io.Writer) int {
 		migration.WithSchemaReadTables(tables...),
 	)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
+	if *localOutput != "" {
+		data, err := json.Marshal(schema)
+		if err == nil {
+			err = saveLocalArtifact(*localOutput, data)
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: local export failed")
+			return 2
+		}
+	}
 	if err := writeMigrationSchemaOutput(stdout, outputFormat, schema); err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	return 0
@@ -175,7 +190,7 @@ func runMigrateSchema(args []string, stdout, stderr io.Writer) int {
 
 func runMigrateDrift(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent migrate drift", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	format := fs.String("format", "pretty", "output format: pretty, json")
 	desiredSchemaPath := fs.String("desired-schema", "", "desired schema JSON path")
 	databaseSchemaPath := fs.String("database-schema", "", "current database schema JSON path")
@@ -189,13 +204,14 @@ func runMigrateDrift(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	outputFormat := strings.ToLower(strings.TrimSpace(*format))
 	switch outputFormat {
 	case "", "pretty", "text", "json":
 	default:
-		fmt.Fprintf(stderr, "unknown migrate drift format %q\n", *format)
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		return 2
 	}
 	if strings.TrimSpace(*desiredSchemaPath) == "" {
@@ -204,17 +220,17 @@ func runMigrateDrift(args []string, stdout, stderr io.Writer) int {
 	}
 	desired, err := loadSchema(*desiredSchemaPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	current, err := loadDriftCurrentSchema(*databaseSchemaPath, *driverName, *dsn, *schemaName, tables)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	report := migration.CompareSchemaDrift(*desired, *current)
 	if err := writeMigrationDriftOutput(stdout, outputFormat, report); err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	if report.Drifted {
@@ -254,7 +270,7 @@ func loadDriftCurrentSchema(databaseSchemaPath, driverName, dsn, schemaName stri
 
 func runMigrateCommand(mode string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent migrate "+mode, flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	format := fs.String("format", "pretty", "output format: pretty, json")
 	failOn := fs.String("fail-on", "", "optional risk threshold that returns exit code 1")
 	approve := fs.String("approve", "", "approval reason for applying risky migrations")
@@ -266,6 +282,7 @@ func runMigrateCommand(mode string, args []string, stdout, stderr io.Writer) int
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 
@@ -273,7 +290,7 @@ func runMigrateCommand(mode string, args []string, stdout, stderr io.Writer) int
 	switch outputFormat {
 	case "", "pretty", "text", "json":
 	default:
-		fmt.Fprintf(stderr, "unknown migrate format %q\n", *format)
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		return 2
 	}
 
@@ -282,7 +299,7 @@ func runMigrateCommand(mode string, args []string, stdout, stderr io.Writer) int
 	if strings.TrimSpace(*failOn) != "" {
 		parsed, err := review.ParseRiskLevel(*failOn)
 		if err != nil {
-			fmt.Fprintln(stderr, err)
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 			return 2
 		}
 		threshold = parsed
@@ -291,7 +308,7 @@ func runMigrateCommand(mode string, args []string, stdout, stderr io.Writer) int
 
 	sqlText, err := readMigrationSQL(fs.Args())
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	migrator := migration.New(sqlText)
@@ -305,14 +322,14 @@ func runMigrateCommand(mode string, args []string, stdout, stderr io.Writer) int
 	ctx := context.Background()
 	plan, err := migrator.Plan(ctx)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 
 	if mode == "dry-run" || mode == "apply" {
 		if err := migration.EnsureExecutable(plan); err != nil {
 			_ = writeMigrationOutput(stdout, outputFormat, plan)
-			fmt.Fprintln(stderr, err)
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 			return 1
 		}
 	}
@@ -325,19 +342,19 @@ func runMigrateCommand(mode string, args []string, stdout, stderr io.Writer) int
 		}
 		db, err := orm.OpenWithDriver(*driverName, *dsn)
 		if err != nil {
-			fmt.Fprintln(stderr, err)
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 			return 2
 		}
 		defer db.Close()
 		plan, err = migrator.Apply(ctx, db)
 		if err != nil {
-			fmt.Fprintln(stderr, err)
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 			return 2
 		}
 	}
 
 	if err := writeMigrationOutput(stdout, outputFormat, plan); err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	if thresholdSet && compareMigrationRisk(plan.RiskLevel, threshold) >= 0 {
@@ -409,7 +426,7 @@ func writeMigrationStatusOutput(w io.Writer, format string, status migration.Sta
 	case "", "pretty", "text":
 		return migration.WriteStatusPretty(w, status)
 	case "json":
-		return migration.WriteStatusJSON(w, status)
+		return publicoutput.WriteSummary(w, status.PublicView())
 	default:
 		return fmt.Errorf("unknown migrate status format %q", format)
 	}
@@ -420,7 +437,7 @@ func writeMigrationSchemaOutput(w io.Writer, format string, schema migration.Sch
 	case "", "pretty", "text":
 		return migration.WriteSchemaPretty(w, schema)
 	case "json":
-		return migration.WriteSchemaJSON(w, schema)
+		return publicoutput.WriteSummary(w, schema.PublicView())
 	default:
 		return fmt.Errorf("unknown migrate schema format %q", format)
 	}
@@ -431,7 +448,7 @@ func writeMigrationDriftOutput(w io.Writer, format string, report migration.Drif
 	case "", "pretty", "text":
 		return migration.WriteDriftPretty(w, report)
 	case "json":
-		return migration.WriteDriftJSON(w, report)
+		return publicoutput.WriteSummary(w, report.PublicView())
 	default:
 		return fmt.Errorf("unknown migrate drift format %q", format)
 	}
@@ -442,7 +459,11 @@ func writeMigrationOutput(w io.Writer, format string, plan *migration.MigrationP
 	case "", "pretty", "text":
 		return migration.WritePretty(w, plan)
 	case "json":
-		return migration.WriteJSON(w, plan)
+		v, err := plan.PublicView()
+		if err != nil {
+			return err
+		}
+		return migration.WritePublicJSON(w, v)
 	default:
 		return fmt.Errorf("unknown migrate format %q", format)
 	}

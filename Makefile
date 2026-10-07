@@ -13,7 +13,7 @@ db-logs:
 	docker compose logs mysql postgres
 
 test-integration: db-up
-	TEST_MYSQL_DSN='$(TEST_MYSQL_DSN)' TEST_POSTGRES_DSN='$(TEST_POSTGRES_DSN)' go test ./... -count=1
+	@TEST_MYSQL_DSN='$(TEST_MYSQL_DSN)' TEST_POSTGRES_DSN='$(TEST_POSTGRES_DSN)' go test ./... -count=1
 
 docs:
 	packages="$$(go list ./orm/... | grep -v '/internal/')"; \

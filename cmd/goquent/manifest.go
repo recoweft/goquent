@@ -11,6 +11,7 @@ import (
 
 	"github.com/recoweft/goquent/orm/manifest"
 	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/publicoutput"
 	"github.com/recoweft/goquent/orm/query"
 )
 
@@ -50,7 +51,8 @@ func runManifest(args []string, stdout, stderr io.Writer) int {
 
 func runManifestGenerate(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent manifest", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
+	localOutput := fs.String("unsafe-local-output", "", "save sensitive internal artifact to a new local file; forbidden in CI")
 	format := fs.String("format", "pretty", "output format: pretty, json")
 	dialect := fs.String("dialect", "", "SQL dialect name")
 	schemaPath := fs.String("schema", "", "schema JSON path")
@@ -64,20 +66,31 @@ func runManifestGenerate(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	outputFormat, ok := normalizeManifestFormat(*format)
 	if !ok {
-		fmt.Fprintf(stderr, "unknown manifest format %q\n", *format)
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		return 2
 	}
 	m, err := buildManifestFromFlags(*dialect, *schemaPath, *policyPath, *databaseSchemaPath, *generatorVersion, codePaths)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
+	if *localOutput != "" {
+		data, err := m.ToJSON()
+		if err == nil {
+			err = saveLocalArtifact(*localOutput, data)
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: local export failed")
+			return 2
+		}
+	}
 	if err := writeManifestOutput(stdout, outputFormat, m); err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	return 0
@@ -85,17 +98,18 @@ func runManifestGenerate(args []string, stdout, stderr io.Writer) int {
 
 func runManifestSchema(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent manifest schema", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	b, err := manifest.JSONSchema()
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
-	if _, err := stdout.Write(append(b, '\n')); err != nil {
-		fmt.Fprintln(stderr, err)
+	if err := publicoutput.Write(stdout, append(b, '\n')); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	return 0
@@ -103,7 +117,8 @@ func runManifestSchema(args []string, stdout, stderr io.Writer) int {
 
 func runManifestRepository(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent manifest repository", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
+	localOutput := fs.String("unsafe-local-output", "", "save sensitive internal artifact to a new local file; forbidden in CI")
 	manifestPath := fs.String("manifest", "", "manifest JSON path")
 	tableName := fs.String("table", "", "table name to generate")
 	packageName := fs.String("package", "repository", "Go package name for generated code")
@@ -114,6 +129,7 @@ func runManifestRepository(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	if strings.TrimSpace(*manifestPath) == "" {
@@ -122,7 +138,7 @@ func runManifestRepository(args []string, stdout, stderr io.Writer) int {
 	}
 	m, err := manifest.Load(*manifestPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	src, err := manifest.GenerateRepositorySkeleton(m, manifest.RepositorySkeletonOptions{
@@ -132,11 +148,17 @@ func runManifestRepository(args []string, stdout, stderr io.Writer) int {
 		RepositoryTypeName: *repositoryType,
 	})
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
-	if _, err := stdout.Write(src); err != nil {
-		fmt.Fprintln(stderr, err)
+	if *localOutput != "" {
+		if err := saveLocalArtifact(*localOutput, src); err != nil {
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
+			return 2
+		}
+	}
+	if err := publicoutput.Write(stdout, []byte("PUBLIC_OUTPUT: repository artifact details omitted\n")); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: output failed")
 		return 2
 	}
 	return 0
@@ -144,7 +166,7 @@ func runManifestRepository(args []string, stdout, stderr io.Writer) int {
 
 func runManifestVerify(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent manifest verify", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	format := fs.String("format", "pretty", "output format: pretty, json")
 	manifestPath := fs.String("manifest", "", "stored manifest JSON path")
 	dialect := fs.String("dialect", "", "SQL dialect name")
@@ -160,11 +182,12 @@ func runManifestVerify(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	outputFormat, ok := normalizeManifestFormat(*format)
 	if !ok {
-		fmt.Fprintf(stderr, "unknown manifest format %q\n", *format)
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		return 2
 	}
 	if strings.TrimSpace(*manifestPath) == "" {
@@ -181,12 +204,12 @@ func runManifestVerify(args []string, stdout, stderr io.Writer) int {
 	}
 	stored, err := manifest.Load(*manifestPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	current, err := buildManifestFromFlags(*dialect, *schemaPath, *policyPath, databaseSchemaForVerify, *generatorVersion, codePaths)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	storedForVerify := *stored
@@ -195,12 +218,12 @@ func runManifestVerify(args []string, stdout, stderr io.Writer) int {
 	}
 	verification := manifest.Verify(&storedForVerify, current, time.Time{})
 	if outputFormat == "json" {
-		err = manifest.WriteVerificationJSON(stdout, verification)
+		err = publicoutput.WriteSummary(stdout, verification.PublicView())
 	} else {
 		err = manifest.WriteVerificationPretty(stdout, verification)
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	if !verification.Fresh {
@@ -211,7 +234,7 @@ func runManifestVerify(args []string, stdout, stderr io.Writer) int {
 
 func runDoctor(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent doctor", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	manifestPath := fs.String("manifest", "", "stored manifest JSON path")
 	schemaPath := fs.String("schema", "", "current schema JSON path")
 	policyPath := fs.String("policy", "", "current table policy JSON path")
@@ -219,6 +242,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	var codePaths stringListFlag
 	fs.Var(&codePaths, "code", "current generated code file or directory path; may be repeated")
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	if strings.TrimSpace(*manifestPath) == "" {
@@ -227,25 +251,25 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	}
 	stored, err := manifest.Load(*manifestPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	current, err := buildManifestFromFlags("", *schemaPath, *policyPath, *databaseSchemaPath, "", codePaths)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	verification := manifest.Verify(stored, current, time.Time{})
 	if _, err := fmt.Fprintln(stdout, "Doctor"); err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	if _, err := fmt.Fprintln(stdout); err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	if err := manifest.WriteVerificationPretty(stdout, verification); err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	if !verification.Fresh {
@@ -324,7 +348,7 @@ func writeManifestOutput(w io.Writer, format string, m *manifest.Manifest) error
 	case "", "pretty", "text":
 		return manifest.WritePretty(w, m)
 	case "json":
-		return manifest.WriteJSON(w, m)
+		return publicoutput.WriteSummary(w, m.PublicView())
 	default:
 		return fmt.Errorf("unknown manifest format %q", format)
 	}

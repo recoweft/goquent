@@ -1434,7 +1434,7 @@ func (q *Query) LockForUpdate() *Query {
 	return q
 }
 
-// Build returns the SQL and args.
+// Build returns sensitive execution SQL and typed args, not public display data.
 func (q *Query) Build() (string, []any, error) {
 	if q.err != nil {
 		return "", nil, q.err
@@ -1442,7 +1442,7 @@ func (q *Query) Build() (string, []any, error) {
 	return q.builder.Build()
 }
 
-// Dump returns SQL and args for debugging.
+// Dump returns sensitive SQL and args for local diagnostics, not publication.
 func (q *Query) Dump() (string, []any, error) {
 	if q.err != nil {
 		return "", nil, q.err
@@ -1450,7 +1450,7 @@ func (q *Query) Dump() (string, []any, error) {
 	return q.builder.Dump()
 }
 
-// RawSQL returns interpolated SQL for debugging.
+// RawSQL returns sensitive interpolated SQL for local diagnostics, not publication.
 func (q *Query) RawSQL() (string, error) {
 	if q.err != nil {
 		return "", q.err

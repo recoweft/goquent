@@ -47,7 +47,7 @@ func TestWriteDriftPrettyAndJSON(t *testing.T) {
 	if err := WriteDriftPretty(&pretty, report); err != nil {
 		t.Fatalf("write pretty: %v", err)
 	}
-	if !strings.Contains(pretty.String(), "Schema Drift") || !strings.Contains(pretty.String(), "alter_column_type") {
+	if !strings.Contains(pretty.String(), "goquent.drift_view") || !strings.Contains(pretty.String(), `"count":1`) {
 		t.Fatalf("unexpected pretty drift output: %s", pretty.String())
 	}
 

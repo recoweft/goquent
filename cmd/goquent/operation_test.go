@@ -35,10 +35,10 @@ func TestOperationCompileCommand(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected operation compile success, got %d stderr=%s", code, stderr.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"operation": "select"`)) {
+	if !bytes.Contains(stdout.Bytes(), []byte(`"operation":"select"`)) {
 		t.Fatalf("expected QueryPlan JSON, got %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`tenant-1`)) {
+	if bytes.Contains(stdout.Bytes(), []byte(`tenant-1`)) {
 		t.Fatalf("expected resolved value_ref param, got %s", stdout.String())
 	}
 }

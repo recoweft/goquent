@@ -153,7 +153,7 @@ go run ./cmd/goquent migrate schema \
   --dsn "$POSTGRES_DSN" \
   --schema public \
   --table users \
-  --format json > database-schema.json
+  --unsafe-local-output database-schema.json
 ```
 
 Programmatic use:
@@ -229,3 +229,7 @@ it is not business approval by itself.
 
 AI agents may prepare or review migration artifacts, but must not run migration apply. The MCP
 server intentionally exposes migration review only, not migration apply.
+
+Default migration output is a redacted view, not source schema/SQL. The explicit
+local export above is sensitive, requires a new file and is refused in CI. See
+[output migration](redacted-output.md).

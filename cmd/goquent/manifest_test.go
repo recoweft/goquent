@@ -12,6 +12,7 @@ import (
 
 	"github.com/recoweft/goquent/orm/manifest"
 	"github.com/recoweft/goquent/orm/migration"
+	"github.com/recoweft/goquent/orm/publicoutput"
 )
 
 func TestManifestCommandGeneratesJSONAndSchema(t *testing.T) {
@@ -30,11 +31,11 @@ func TestManifestCommandGeneratesJSONAndSchema(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected manifest generation success, got %d stderr=%s", code, stderr.String())
 	}
-	var m manifest.Manifest
+	var m publicoutput.SummaryView
 	if err := json.Unmarshal(stdout.Bytes(), &m); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Tables) != 1 || m.Tables[0].Name != "users" {
+	if m.Count != 1 || m.Kind != "goquent.manifest_view" || bytes.Contains(stdout.Bytes(), []byte("users")) {
 		t.Fatalf("unexpected manifest output: %s", stdout.String())
 	}
 
@@ -77,7 +78,7 @@ func TestManifestVerifyDetectsStaleAndDoctor(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("expected stale verify exit code 1, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"fresh": false`)) {
+	if !bytes.Contains(stdout.Bytes(), []byte(`"fresh":false`)) {
 		t.Fatalf("expected stale JSON verification, got %s", stdout.String())
 	}
 
@@ -87,7 +88,7 @@ func TestManifestVerifyDetectsStaleAndDoctor(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("expected doctor stale exit code 1, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte("Manifest Verification")) {
+	if !bytes.Contains(stdout.Bytes(), []byte("goquent.verification_view")) {
 		t.Fatalf("expected doctor verification output, got %s", stdout.String())
 	}
 }
@@ -126,7 +127,7 @@ func TestManifestVerifyAgainstDBFlagControlsDatabaseFingerprint(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected database fingerprint to be ignored without --against-db, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
-	var verification manifest.Verification
+	var verification publicoutput.SummaryView
 	if err := json.Unmarshal(stdout.Bytes(), &verification); err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +157,9 @@ func TestManifestVerifyAgainstDBFlagControlsDatabaseFingerprint(t *testing.T) {
 }
 
 func TestManifestRepositoryCommandGeneratesSkeleton(t *testing.T) {
+	for _, key := range []string{"CI", "GITHUB_ACTIONS", "GITLAB_CI", "TF_BUILD", "BUILDKITE", "CIRCLECI", "TRAVIS", "JENKINS_URL", "TEAMCITY_VERSION"} {
+		t.Setenv(key, "")
+	}
 	dir := t.TempDir()
 	manifestPath := filepath.Join(dir, "manifest.json")
 	writeJSON(t, manifestPath, manifest.Manifest{
@@ -173,11 +177,18 @@ func TestManifestRepositoryCommandGeneratesSkeleton(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"manifest", "repository", "--manifest", manifestPath, "--table", "users", "--package", "infra"}, &stdout, &stderr)
+	code := run([]string{"manifest", "repository", "--manifest", manifestPath, "--table", "users", "--package", "infra", "--unsafe-local-output", filepath.Join(dir, "local.go")}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected repository skeleton success, got %d stderr=%s", code, stderr.String())
 	}
-	if _, err := parser.ParseFile(token.NewFileSet(), "users_repository.go", stdout.Bytes(), parser.AllErrors); err != nil {
+	src, readErr := os.ReadFile(filepath.Join(dir, "local.go"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if bytes.Contains(stdout.Bytes(), []byte("package infra")) {
+		t.Fatal("public artifact leak")
+	}
+	if _, err := parser.ParseFile(token.NewFileSet(), "users_repository.go", src, parser.AllErrors); err != nil {
 		t.Fatalf("generated code should parse: %v\n%s", err, stdout.String())
 	}
 	for _, want := range [][]byte{
@@ -186,7 +197,7 @@ func TestManifestRepositoryCommandGeneratesSkeleton(t *testing.T) {
 		[]byte("orm.RequirePredicate(\"users\", \"tenant_id\")"),
 		[]byte("func UserTenantIDScope(value any) orm.Scope"),
 	} {
-		if !bytes.Contains(stdout.Bytes(), want) {
+		if !bytes.Contains(src, want) {
 			t.Fatalf("expected skeleton to contain %s:\n%s", want, stdout.String())
 		}
 	}
@@ -236,9 +247,9 @@ func writeJSON(t *testing.T, path string, v any) {
 	}
 }
 
-func statusForCheck(v manifest.Verification, name string) string {
-	for _, check := range v.Checks {
-		if check.Name == name {
+func statusForCheck(v publicoutput.SummaryView, name string) string {
+	for _, check := range v.Items {
+		if check.Check == name {
 			return check.Status
 		}
 	}

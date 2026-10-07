@@ -476,19 +476,19 @@ func TestWriteJSONAndPretty(t *testing.T) {
 	if err := WritePretty(&pretty, report); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(pretty.Bytes(), []byte("Database Review")) {
+	if !bytes.Contains(pretty.Bytes(), []byte("Public database review")) {
 		t.Fatalf("expected pretty output header, got %s", pretty.String())
 	}
-	if !bytes.Contains(pretty.Bytes(), []byte("evidence: table=users")) {
-		t.Fatalf("expected pretty output evidence, got %s", pretty.String())
+	if bytes.Contains(pretty.Bytes(), []byte("evidence: table=users")) {
+		t.Fatalf("public pretty output leaked evidence, got %s", pretty.String())
 	}
 
 	var github bytes.Buffer
 	if err := WriteGitHub(&github, report); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(github.Bytes(), []byte("evidence: table=users")) {
-		t.Fatalf("expected GitHub output evidence, got %s", github.String())
+	if bytes.Contains(github.Bytes(), []byte("evidence: table=users")) {
+		t.Fatalf("public GitHub output leaked evidence, got %s", github.String())
 	}
 }
 

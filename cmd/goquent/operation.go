@@ -12,6 +12,7 @@ import (
 
 	"github.com/recoweft/goquent/orm/manifest"
 	"github.com/recoweft/goquent/orm/operation"
+	"github.com/recoweft/goquent/orm/publicoutput"
 )
 
 func runOperation(args []string, stdout, stderr io.Writer) int {
@@ -28,7 +29,7 @@ func runOperation(args []string, stdout, stderr io.Writer) int {
 		printOperationUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "unknown operation command %q\n", args[0])
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		printOperationUsage(stderr)
 		return 2
 	}
@@ -36,7 +37,7 @@ func runOperation(args []string, stdout, stderr io.Writer) int {
 
 func runOperationCompile(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent operation compile", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	manifestPath := fs.String("manifest", "", "manifest JSON path")
 	specPath := fs.String("spec", "", "OperationSpec JSON path")
 	valuesPath := fs.String("values", "", "JSON map used to resolve value_ref entries")
@@ -48,13 +49,14 @@ func runOperationCompile(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	outputFormat := strings.ToLower(strings.TrimSpace(*format))
 	switch outputFormat {
 	case "", "pretty", "text", "json":
 	default:
-		fmt.Fprintf(stderr, "unknown operation format %q\n", *format)
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		return 2
 	}
 	if strings.TrimSpace(*manifestPath) == "" || strings.TrimSpace(*specPath) == "" {
@@ -63,17 +65,17 @@ func runOperationCompile(args []string, stdout, stderr io.Writer) int {
 	}
 	m, err := manifest.Load(*manifestPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	spec, err := loadOperationSpec(*specPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	values, err := loadOperationValues(*valuesPath)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	plan, err := operation.Compile(context.Background(), spec, operation.Options{
@@ -83,23 +85,28 @@ func runOperationCompile(args []string, stdout, stderr io.Writer) int {
 		AccessReason:         *accessReason,
 	})
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 1
 	}
 	if outputFormat == "json" {
-		b, err := plan.ToJSON()
+		view, err := plan.PublicView()
 		if err != nil {
-			fmt.Fprintln(stderr, err)
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: projection failed")
 			return 2
 		}
-		if _, err := stdout.Write(append(b, '\n')); err != nil {
-			fmt.Fprintln(stderr, err)
+		b, err := view.ToJSON()
+		if err != nil {
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
+			return 2
+		}
+		if err := publicoutput.Write(stdout, append(b, '\n')); err != nil {
+			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 			return 2
 		}
 		return 0
 	}
-	if _, err := fmt.Fprintln(stdout, plan.String()); err != nil {
-		fmt.Fprintln(stderr, err)
+	if err := publicoutput.Write(stdout, []byte(plan.String()+"\n")); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	return 0
@@ -107,17 +114,18 @@ func runOperationCompile(args []string, stdout, stderr io.Writer) int {
 
 func runOperationSchema(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goquent operation schema", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
 		return 2
 	}
 	b, err := operation.JSONSchema()
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
-	if _, err := stdout.Write(append(b, '\n')); err != nil {
-		fmt.Fprintln(stderr, err)
+	if err := publicoutput.Write(stdout, append(b, '\n')); err != nil {
+		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
 	return 0

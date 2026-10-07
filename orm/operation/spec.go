@@ -523,7 +523,8 @@ func normalizeName(s string) string {
 	return strings.ToLower(s)
 }
 
-// MarshalJSON migrates legacy input format without certifying its provenance.
+// MarshalJSON preserves sensitive internal source data, not public display JSON.
+// It migrates legacy input format without certifying its provenance.
 func (s OperationSpec) MarshalJSON() ([]byte, error) {
 	if err := planversion.Check(s.Version); err != nil {
 		return nil, err

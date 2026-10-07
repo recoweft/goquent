@@ -9,7 +9,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test ./...
+      - run: sh scripts/test-public-output.sh
       - run: |
           go run ./cmd/goquent manifest verify \
             --manifest ./examples/ai-safe-orm/goquent.manifest.json \

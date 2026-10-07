@@ -6,7 +6,8 @@ import (
 	"github.com/recoweft/goquent/orm/internal/valueguard"
 )
 
-// MarshalJSON applies the same built-in output limits to standalone condition
+// MarshalJSON emits sensitive internal data, not a public display view.
+// It applies the same built-in output limits to standalone condition
 // views as to plans. Unverified generated payloads remain omitted by the builder.
 func (n Node) MarshalJSON() ([]byte, error) {
 	type plain Node
