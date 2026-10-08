@@ -44,6 +44,7 @@ import "github.com/recoweft/goquent/orm"
 - [func SelectAllBy\[T any\]\(ctx context.Context, db \*DB, base \*query.Query, scopes ...Scope\) \(\[\]T, error\)](<#SelectAllBy>)
 - [func SelectOne\[T any\]\(ctx context.Context, db \*DB, q string, args ...any\) \(T, error\)](<#SelectOne>)
 - [func SelectOneBy\[T any\]\(ctx context.Context, db \*DB, base \*query.Query, scopes ...Scope\) \(T, error\)](<#SelectOneBy>)
+- [func SelectOperationBy\[T any\]\(ctx context.Context, db \*DB, spec OperationSpec, opts OperationOptions\) \(out \[\]T, err error\)](<#SelectOperationBy>)
 - [func SelectStruct\[T any\]\(ctx context.Context, db \*DB, q string, args ...any\) \(T, error\)](<#SelectStruct>)
 - [func SelectStructs\[T any\]\(ctx context.Context, db \*DB, q string, args ...any\) \(\[\]T, error\)](<#SelectStructs>)
 - [func Update\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(sql.Result, error\)](<#Update>)
@@ -786,6 +787,15 @@ func SelectOneBy[T any](ctx context.Context, db *DB, base *query.Query, scopes .
 ```
 
 SelectOneBy builds a scoped query and scans the first row into T.
+
+<a name="SelectOperationBy"></a>
+## func SelectOperationBy
+
+```go
+func SelectOperationBy[T any](ctx context.Context, db *DB, spec OperationSpec, opts OperationOptions) (out []T, err error)
+```
+
+SelectOperationBy validates and executes a single\-model SELECT using the DB's immutable settings, dialect and executor. It scans through the generic read path, including DB bool policy. CompileOperation remains nonexecuting. This immediate read does not provide a reusable ValidatedPlan/current binding.
 
 <a name="SelectStruct"></a>
 ## func SelectStruct
@@ -3339,6 +3349,7 @@ import "github.com/recoweft/goquent/orm/manifest"
 ## Index
 
 - [Constants](<#constants>)
+- [Variables](<#variables>)
 - [func GenerateRepositorySkeleton\(m \*Manifest, opts RepositorySkeletonOptions\) \(\[\]byte, error\)](<#GenerateRepositorySkeleton>)
 - [func GenerateRepositorySkeletonForTable\(table Table, opts RepositorySkeletonOptions\) \(\[\]byte, error\)](<#GenerateRepositorySkeletonForTable>)
 - [func JSONSchema\(\) \(\[\]byte, error\)](<#JSONSchema>)
@@ -3363,6 +3374,7 @@ import "github.com/recoweft/goquent/orm/manifest"
 - [type Policy](<#Policy>)
 - [type QueryExample](<#QueryExample>)
 - [type Relation](<#Relation>)
+- [type RepositoryProjection](<#RepositoryProjection>)
 - [type RepositorySkeletonOptions](<#RepositorySkeletonOptions>)
 - [type Table](<#Table>)
 - [type Verification](<#Verification>)
@@ -3383,6 +3395,20 @@ const (
     WarningRequired   = "MANIFEST_REQUIRED"
     WarningUnreadable = "MANIFEST_UNREADABLE"
 )
+```
+
+<a name="RepositoryGeneratorVersion"></a>RepositoryGeneratorVersion identifies this implementation, not caller metadata.
+
+```go
+const RepositoryGeneratorVersion = "typed-repository-v1"
+```
+
+## Variables
+
+<a name="ErrRepositoryGeneration"></a>
+
+```go
+var ErrRepositoryGeneration = errors.New("goquent: repository generation refused")
 ```
 
 <a name="GenerateRepositorySkeleton"></a>
@@ -3473,6 +3499,7 @@ type Column struct {
     // NullableKnown distinguishes an explicit declaration from missing data.
     NullableKnown  bool     `json:"-"`
     Default        string   `json:"default,omitempty"`
+    Readonly       bool     `json:"readonly,omitempty"`
     Generated      bool     `json:"generated,omitempty"`
     EnumValues     []string `json:"enum_values,omitempty"`
     PII            bool     `json:"pii,omitempty"`
@@ -3671,6 +3698,18 @@ type Relation struct {
 }
 ```
 
+<a name="RepositoryProjection"></a>
+## type RepositoryProjection
+
+RepositoryProjection declares an ordered, literal\-column result shape. Names and declarations are sensitive source input, not display diagnostics.
+
+```go
+type RepositoryProjection struct {
+    Name    string
+    Columns []string
+}
+```
+
 <a name="RepositorySkeletonOptions"></a>
 ## type RepositorySkeletonOptions
 
@@ -3683,6 +3722,10 @@ type RepositorySkeletonOptions struct {
     RowTypeName        string
     RepositoryTypeName string
     ORMImportPath      string
+    Typed              bool
+    Dialect            string
+    Projections        []RepositoryProjection
+    // contains filtered or unexported fields
 }
 ```
 
@@ -4963,7 +5006,7 @@ var (
     ErrTypeUnverified  = errors.New("goquent operation: required type information is unverified")
     ErrArrayBinding    = errors.New("goquent operation: array column binding is unsupported")
     ErrReservedBinding = errors.New("goquent operation: reserved binding requires application context")
-    ErrInvalidManifest = errors.New("goquent operation: invalid or ambiguous manifest declaration")
+    ErrInvalidManifest = sqltype.ErrInvalidDeclaration
 )
 ```
 
