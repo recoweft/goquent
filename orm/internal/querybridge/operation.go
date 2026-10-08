@@ -1,5 +1,7 @@
 package querybridge
 
+import "context"
+
 // OperationCheck is internal handoff data, never a caller authorization verdict.
 // The operation compiler owns its strings and does not retain arbitrary values.
 type OperationCheck struct {
@@ -32,3 +34,10 @@ type OperationDiagnostic struct {
 }
 
 var OperationInputOrigin func(any, string)
+
+// PrepareOperation is installed by operation. Only the facade supplies the executor.
+var PrepareOperation func(context.Context, any, any, Executor) (Planned, error)
+
+// SealedSelect captures the exact already finalized Query plan without rebuilding.
+// It is internal and refuses any plan lacking that Query's private seal.
+var SealedSelect func(any, any) (Planned, error)
