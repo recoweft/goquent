@@ -960,10 +960,28 @@ func buildUpdateInput(db *DB, v any, o *writeOptions) (querybridge.Request, erro
 	if len(setCols) == 0 && len(o.assignments) == 0 {
 		return querybridge.Request{}, fmt.Errorf("no columns to update")
 	}
+	// Map and metadata-map iteration must not change statement/argument order.
+	sortWriteFields(setCols, setArgs)
+	sortWriteFields(whereCols, whereArgs)
 	r, err := newWriteInput("update", table, setCols, setArgs, 1, nil, o)
 	r.WhereColumns = whereCols
 	r.WhereValues = whereArgs
 	return r, err
+}
+
+func sortWriteFields(columns []string, values []any) {
+	type field struct {
+		name  string
+		value any
+	}
+	fields := make([]field, len(columns))
+	for i, name := range columns {
+		fields[i] = field{name, values[i]}
+	}
+	sort.Slice(fields, func(i, j int) bool { return fields[i].name < fields[j].name })
+	for i, f := range fields {
+		columns[i], values[i] = f.name, f.value
+	}
 }
 
 // Upsert inserts or updates v using primary keys.

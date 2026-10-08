@@ -4,7 +4,9 @@ Issue [#76](https://github.com/recoweft/goquent/issues/76), PR2 of 2.
 PR1 [#77](https://github.com/recoweft/goquent/pull/77) merged at
 471b24a69282668744fe3f035da435ff4399d250. This change keeps single-model,
 read-only SELECT and the existing typed validator, settings, gates and planner.
-It adds no SQL execution, write spec, join, driver adapter or dependency.
+That change added no SQL execution, write spec, join, driver adapter or dependency.
+GQ-AI-08 PR2 also uses these diagnostics for the separate application-only
+UpdateSpec; OperationSpec and the read-only CLI/MCP remain SELECT-only.
 See the [validation record](operation-diagnostics-validation.md) for measured results.
 
 ## API and single-pass behavior
@@ -72,6 +74,20 @@ driver unsigned-domain check. It is not a ValidatedPlan or proof of all driver,
 session or private execution conditions. See [typed validation](typed-operation-validation.md)
 for the precise subset.
 
+For application-only UpdateSpec, CompileUpdateWithDiagnostics (operation and DB
+entries) uses the same single-pass diagnostics. Assignment positions identify the
+source list index and column/state/value member. Returning positions identify the
+RETURNING list index on success and refusal, including private history and the
+current refusal target. Shared declaration validation does not expose a synthetic
+select position for updates; SELECT OperationSpec retains select positions. Later
+filter or assignment refusals retain their own positions and completed RETURNING
+checks retain returning positions. OPERATION_ASSIGNMENT_INVALID covers invalid
+assignment structure/state/presence; OPERATION_PATCH_EMPTY rejects an empty or
+all-Unchanged patch. Both are refused-status codes. See
+[typed update patches](typed-update-patches.md) for source and migration contracts.
+This adds no CLI/MCP write route; DiagnosticView remains display-only and must not
+be used for authorization or CI decisions.
+
 ## Independent public wire
 
 DiagnosticView uses kind goquent.operation_diagnostics and literal integer
@@ -104,8 +120,8 @@ permit warning only; other OPERATION codes permit refused only. A mismatched
 status normalizes to unknown. These display claims still confer no authority.
 
 Location fields: source (spec/values/manifest/settings/planner/unknown),
-section (root/version/operation/model/select/filters/order_by/limit/implicit/unknown),
-member (field/op/value/value_ref/direction/unknown), index_known/index,
+section (root/version/operation/model/select/filters/order_by/limit/implicit/assignments/returning/unknown),
+member (field/op/value/value_ref/direction/column/state/unknown), index_known/index,
 element_known/element, origin (json/go/implicit/unknown).
 Indexes are zero-based logical list and IN-element positions, never byte/line/
 column offsets. Unknown/negative indexes normalize to false/zero. The combined input-budget failure has unknown source because it cannot identify
@@ -217,6 +233,8 @@ the two-PR Issue or establish physical identity or external-effect atomicity.
 
 Operation codes (exact spelling):
 
+- OPERATION_ASSIGNMENT_INVALID
+- OPERATION_PATCH_EMPTY
 - OPERATION_INPUT_INVALID
 - OPERATION_INPUT_LIMIT
 - OPERATION_VERSION_UNSUPPORTED

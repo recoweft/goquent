@@ -1,6 +1,8 @@
-# Typed repository generation (GQ-AI-08 PR1)
+# Typed repository generation (GQ-AI-08)
 
-Issue [#79](https://github.com/recoweft/goquent/issues/79), PR1 of 2.
+Issue [#79](https://github.com/recoweft/goquent/issues/79), PR1 and PR2 of 2.
+[Typed update patches and repository checks](typed-update-patches.md) completes
+the opt-in update and regeneration workflow.
 This extends `manifest.GenerateRepositorySkeleton` and
 `GenerateRepositorySkeletonForTable`. It adds models, nominal key inputs,
 model-specific column predicates and ordering, named result projections, and an
@@ -27,8 +29,8 @@ source compatibility. Existing function signatures and source manifest version
 `"1"` remain; this is not a promise of complete source compatibility. Typed
 regeneration changes generated Go types/methods and requires updating callers.
 The old generator's `any` IDs, scopes, Insert and map update/delete helpers remain
-in legacy mode. Typed mode adds read methods; it does not claim typed write inputs
-or complete update patches.
+in legacy mode. Typed mode adds read methods and the separate explicit patch API documented
+in the update guide. Ordinary dynamic maps keep their existing guarantees.
 
 Generation returns source bytes through the existing sensitive source API. CLI
 stdout remains a fixed omission message. `--unsafe-local-output` saves only a new
@@ -154,7 +156,7 @@ Nullable or nullability-unknown known result types use `sql.Null[T]`; bool uses
 `sql.NullBool` to retain the generic scanner's BoolStrict/Compat/Lenient behavior.
 Unknown nullability is never changed to a supplied nonnullable declaration.
 IsNull/IsNotNull remain independently validated. This is result NULL handling,
-not PR2's unchanged/NULL/value update state.
+separate from the explicit unchanged/NULL/value update state.
 
 MySQL integration supplies parseTime=true. The built-in PostgreSQL driver returns
 TIME as time.Time; MySQL returns clock text. Generated TimeText.Scan accepts
@@ -195,9 +197,9 @@ of ValidateSelect/ExecuteValidatedSelect. Those APIs and their existing canonica
 support limits remain unchanged. Public plan tampering cannot change captured
 SQL/typed args, and a prepared private read cannot be consumed twice.
 
-## Metadata and PR2 boundary
+## Metadata and update workflow
 
-Source headers record fixed `typed-repository-v1`, supplied schema/policy
+Source headers record fixed `typed-repository-v2`, supplied schema/policy
 fingerprints, and snapshot kind `manifest` or `table`. Caller GeneratorVersion
 cannot impersonate the implementation version. A table-only snapshot's locally
 computed fingerprint does not fill a missing whole-manifest fingerprint.
@@ -220,10 +222,8 @@ security boundary against deliberate extraction or methodless casts. Artifacts
 and existing source APIs remain sensitive. No new public fingerprint getter,
 source error disclosure or CI artifact exception is introduced.
 
-PR2 owns three-state update patches, exclusion of readonly/generated update
-candidates, nonnullable SetNull rejection, regeneration CI and the completed
-workflow. Existing dynamic map updates gain none of those guarantees here.
-The version/header/snapshot and readonly metadata provide the extension points.
-Fingerprint comparison and deterministic generator tests are not completed
-regeneration CI. Resolving that CI workflow with local artifact restrictions
-remains PR2 work. This PR does not close Issue #79.
+PR2 adds three-state patches and read-only regeneration comparison through the
+same generator. See the [update guide](typed-update-patches.md) for candidate
+exclusions, runtime limits, the fixed input registry, CI publication boundary and
+non-destructive local regeneration. A supplied snapshot comparison is neither a
+live database check nor authorization. Issue-wide review and merge are separate.

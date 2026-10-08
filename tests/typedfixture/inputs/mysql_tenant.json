@@ -1,0 +1,37 @@
+{
+  "version": "1",
+  "generated_at": "1970-01-01T00:00:01Z",
+  "generator_version": "fixture",
+  "dialect": "mysql",
+  "schema_fingerprint": "sha256:0252aee004c8b7eca19f67c9792ce56c12f5be7f1ed4dcd8558d77cb25ed4b32",
+  "policy_fingerprint": "sha256:e6f00857161b828e6c6e1fd24eaff572c81b53d0cc5ce918d2c01d96158d7a27",
+  "tables": [
+    {
+      "name": "gq08_tenants",
+      "columns": [
+        {
+          "name": "active",
+          "type": "boolean",
+          "type_source": "sql",
+          "nullable": false
+        },
+        {
+          "name": "id",
+          "type": "bigint",
+          "type_source": "sql",
+          "primary": true,
+          "nullable": false
+        },
+        {
+          "name": "tenant_id",
+          "type": "bigint",
+          "type_source": "sql",
+          "primary": true,
+          "nullable": false,
+          "tenant_scope": true,
+          "required_filter": true
+        }
+      ]
+    }
+  ]
+}

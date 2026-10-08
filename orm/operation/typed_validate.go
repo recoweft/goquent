@@ -72,7 +72,6 @@ func typedValidate(spec OperationSpec, opts Options, r *validationResult, d *dia
 
 	d.at("spec", "limit", "", -1, "")
 	d.expect("INPUT_LIMIT")
-	dialect := knownDialect(opts)
 	if spec.Limit != nil && (*spec.Limit < 0 || *spec.Limit > 10000) {
 		return ErrInputLimit
 	}
@@ -122,8 +121,114 @@ func typedValidate(spec OperationSpec, opts Options, r *validationResult, d *dia
 		current = ctx.Input().CurrentTenant
 	}
 	r.tenant = tenant
+	checkColumn := columnChecker(opts, r, d)
+	for i, f := range spec.Select {
+		d.at("spec", "select", "", i, f)
+		if err := checkColumn(f, -1, "", nil, false, false, ""); err != nil {
+			return err
+		}
+	}
+	for i, o := range spec.OrderBy {
+		d.at("spec", "order_by", "field", i, o.Field)
+		if err := checkColumn(o.Field, -1, "", nil, false, false, ""); err != nil {
+			return err
+		}
+	}
+	for i, f := range spec.Filters {
+		d.at("spec", "filters", "value", i, f.Field)
+		d.target(r.table.Name, f.Field)
+		d.expect("ARITY_INVALID")
+		op := normalizeFilterOp(f.Op)
+		vp, rp := f.hasValue(), f.hasRef()
+		d.current.ValuePresent = vp
+		d.current.RefPresent = rp
+		d.current.Missing = "arity"
+		if rp {
+			d.current.Member = "value_ref"
+		}
+		if op == "is_null" || op == "is_not_null" {
+			if vp || rp {
+				r.typed.Checks = append(r.typed.Checks, querybridge.OperationCheck{Position: i, Field: f.Field, Missing: "arity", ValuePresent: vp, RefPresent: rp})
+				return ErrInvalidFilter
+			}
+		} else {
+			if vp == rp || rp && strings.TrimSpace(f.ValueRef) == "" {
+				r.typed.Checks = append(r.typed.Checks, querybridge.OperationCheck{Position: i, Field: f.Field, Missing: "arity", ValuePresent: vp, RefPresent: rp})
+				return ErrInvalidFilter
+			}
+		}
+		d.current.Missing = ""
+		d.expect("RESERVED_BINDING")
+		v := f.Value
+		provenance := "literal"
+		reserved := strings.EqualFold(strings.TrimSpace(f.ValueRef), "current_tenant")
+		if normalizeName(f.Field) == normalizeName(tenant) && tenant != "" {
+			if !rp || f.ValueRef != "current_tenant" || op != "=" {
+				return ErrReservedBinding
+			}
+		}
+		if reserved {
+			if f.ValueRef != "current_tenant" || tenant == "" || normalizeName(f.Field) != normalizeName(tenant) || op != "=" {
+				return ErrReservedBinding
+			}
+			v = current
+			provenance = "application"
+		} else if rp {
+			d.expect("VALUE_REF_MISSING")
+			d.current.Missing = "reference_unresolved"
+			var ok bool
+			v, ok = opts.Values[f.ValueRef]
+			if !ok {
+				return ErrValueRefMissing
+			}
+			provenance = "values"
+			d.current.Missing = ""
+		}
+		if err := checkColumn(f.Field, i, op, v, vp, rp, provenance); err != nil {
+			return err
+		}
+		f.Value = v
+		f.ValueRef = ""
+		f.refPresent = false
+		f.ValuePresent = op != "is_null" && op != "is_not_null"
+		if !(tenant != "" && normalizeName(f.Field) == normalizeName(tenant) && querybridge.AutomaticTenant(*opts.Settings)) {
+			r.filters = append(r.filters, f)
+		}
+	}
+	if tenant != "" && !specHasFilter(spec, tenant) {
+		d.at("spec", "implicit", "field", -1, tenant)
+		d.target(r.table.Name, tenant)
+		d.expect("REQUIRED_FILTER_MISSING")
+		if !querybridge.AutomaticTenant(*opts.Settings) {
+			return ErrRequiredFilterMissing
+		}
+		if err := checkColumn(tenant, -1, "=", current, false, true, "application_automatic"); err != nil {
+			return err
+		}
+	}
+	d.at("manifest", "implicit", "field", -1, "")
+	d.expect("MANIFEST_INVALID")
+	soft := tableSoftDeleteColumn(r.table)
+	if policy.SoftDeleteColumn != "" {
+		if soft != "" && soft != policy.SoftDeleteColumn {
+			return ErrInvalidManifest
+		}
+		soft = policy.SoftDeleteColumn
+	}
+	if soft != "" && !specHasFilter(spec, soft) {
+		d.at("spec", "implicit", "field", -1, soft)
+		if err := checkColumn(soft, -1, "is_null", nil, false, false, "implicit_soft_delete"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// columnChecker is shared by predicates, declarations and update assignments.
+func columnChecker(opts Options, r *validationResult, d *diagnosticRecorder) func(string, int, string, any, bool, bool, string) error {
+	dialect := knownDialect(opts)
 	checked := map[string]bool{}
-	checkColumn := func(field string, pos int, op string, v any, valuePresent, refPresent bool, provenance string) error {
+	return func(field string, pos int, op string, v any, valuePresent, refPresent bool, provenance string) error {
 		d.typedReached = true
 		d.target(r.table.Name, field)
 		c, err := diagnosticField(r.columns, field, d)
@@ -278,104 +383,4 @@ func typedValidate(spec OperationSpec, opts Options, r *validationResult, d *dia
 		}
 		return nil
 	}
-	for i, f := range spec.Select {
-		d.at("spec", "select", "", i, f)
-		if err := checkColumn(f, -1, "", nil, false, false, ""); err != nil {
-			return err
-		}
-	}
-	for i, o := range spec.OrderBy {
-		d.at("spec", "order_by", "field", i, o.Field)
-		if err := checkColumn(o.Field, -1, "", nil, false, false, ""); err != nil {
-			return err
-		}
-	}
-	for i, f := range spec.Filters {
-		d.at("spec", "filters", "value", i, f.Field)
-		d.target(r.table.Name, f.Field)
-		d.expect("ARITY_INVALID")
-		op := normalizeFilterOp(f.Op)
-		vp, rp := f.hasValue(), f.hasRef()
-		d.current.ValuePresent = vp
-		d.current.RefPresent = rp
-		d.current.Missing = "arity"
-		if rp {
-			d.current.Member = "value_ref"
-		}
-		if op == "is_null" || op == "is_not_null" {
-			if vp || rp {
-				r.typed.Checks = append(r.typed.Checks, querybridge.OperationCheck{Position: i, Field: f.Field, Missing: "arity", ValuePresent: vp, RefPresent: rp})
-				return ErrInvalidFilter
-			}
-		} else {
-			if vp == rp || rp && strings.TrimSpace(f.ValueRef) == "" {
-				r.typed.Checks = append(r.typed.Checks, querybridge.OperationCheck{Position: i, Field: f.Field, Missing: "arity", ValuePresent: vp, RefPresent: rp})
-				return ErrInvalidFilter
-			}
-		}
-		d.current.Missing = ""
-		d.expect("RESERVED_BINDING")
-		v := f.Value
-		provenance := "literal"
-		reserved := strings.EqualFold(strings.TrimSpace(f.ValueRef), "current_tenant")
-		if normalizeName(f.Field) == normalizeName(tenant) && tenant != "" {
-			if !rp || f.ValueRef != "current_tenant" || op != "=" {
-				return ErrReservedBinding
-			}
-		}
-		if reserved {
-			if f.ValueRef != "current_tenant" || tenant == "" || normalizeName(f.Field) != normalizeName(tenant) || op != "=" {
-				return ErrReservedBinding
-			}
-			v = current
-			provenance = "application"
-		} else if rp {
-			d.expect("VALUE_REF_MISSING")
-			d.current.Missing = "reference_unresolved"
-			var ok bool
-			v, ok = opts.Values[f.ValueRef]
-			if !ok {
-				return ErrValueRefMissing
-			}
-			provenance = "values"
-			d.current.Missing = ""
-		}
-		if err := checkColumn(f.Field, i, op, v, vp, rp, provenance); err != nil {
-			return err
-		}
-		f.Value = v
-		f.ValueRef = ""
-		f.refPresent = false
-		f.ValuePresent = op != "is_null" && op != "is_not_null"
-		if !(tenant != "" && normalizeName(f.Field) == normalizeName(tenant) && querybridge.AutomaticTenant(*opts.Settings)) {
-			r.filters = append(r.filters, f)
-		}
-	}
-	if tenant != "" && !specHasFilter(spec, tenant) {
-		d.at("spec", "implicit", "field", -1, tenant)
-		d.target(r.table.Name, tenant)
-		d.expect("REQUIRED_FILTER_MISSING")
-		if !querybridge.AutomaticTenant(*opts.Settings) {
-			return ErrRequiredFilterMissing
-		}
-		if err := checkColumn(tenant, -1, "=", current, false, true, "application_automatic"); err != nil {
-			return err
-		}
-	}
-	d.at("manifest", "implicit", "field", -1, "")
-	d.expect("MANIFEST_INVALID")
-	soft := tableSoftDeleteColumn(r.table)
-	if policy.SoftDeleteColumn != "" {
-		if soft != "" && soft != policy.SoftDeleteColumn {
-			return ErrInvalidManifest
-		}
-		soft = policy.SoftDeleteColumn
-	}
-	if soft != "" && !specHasFilter(spec, soft) {
-		d.at("spec", "implicit", "field", -1, soft)
-		if err := checkColumn(soft, -1, "is_null", nil, false, false, "implicit_soft_delete"); err != nil {
-			return err
-		}
-	}
-	return nil
 }
