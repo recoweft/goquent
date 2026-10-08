@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -78,5 +79,43 @@ func TestUpdateRefusedExecutorAndTrustedSettings(t *testing.T) {
 	s := operation.UpdateSpec{Version: 1, Model: "gq08_records", Assignments: []operation.UpdateAssignment{{Column: "note", State: operation.UpdateValue, Value: ""}}}
 	if _, e := orm.UpdateOperationBy(t.Context(), db, s, opts); e == nil || counted.calls != 0 {
 		t.Fatal("unconditional update dispatched")
+	}
+}
+
+// DB-scoped compilation and immediate dispatch retain decoded RETURNING positions.
+func TestUpdateReturningDBDiagnosticPosition(t *testing.T) {
+	std, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatal("mock unavailable")
+	}
+	defer std.Close()
+	counted := &patchCounter{Executor: std}
+	db := orm.NewDBWithExecutor(counted, driver.PostgresDialect{}, orm.WithSettings(query.Settings{}))
+	opts := operation.Options{Manifest: typedfixture.Manifest("postgres")}
+	var s operation.UpdateSpec
+	if json.Unmarshal([]byte(`{"version":1,"model":"gq08_records","filters":[{"field":"id","op":"=","value":1},{"field":"segment","op":"=","value":0}],"assignments":[{"column":"active","state":"value","value":false}],"returning":["active","flag"]}`), &s) != nil {
+		t.Fatal("decode failed")
+	}
+	p, view, err := db.CompileUpdateWithDiagnostics(t.Context(), s, opts)
+	if err != nil || p == nil || view.Outcome != "compiled" || counted.calls != 0 {
+		t.Fatal("plan refused or dispatched")
+	}
+	for _, d := range view.Diagnostics {
+		if d.Location.Section == "select" {
+			t.Fatal("synthetic SELECT location")
+		}
+	}
+	s.Returning[1] = "hidden"
+	p, view, err = db.CompileUpdateWithDiagnostics(t.Context(), s, opts)
+	if p != nil || !errors.Is(err, operation.ErrForbiddenField) || counted.calls != 0 || view.Outcome != "rejected" {
+		t.Fatal("compile refusal changed")
+	}
+	first := view.Diagnostics[0]
+	loc := first.Location
+	if first.Code != "OPERATION_FIELD_FORBIDDEN" || first.Status != "refused" || first.Ordinal != 1 || loc.Source != "spec" || loc.Section != "returning" || !loc.IndexKnown || loc.Index != 1 || loc.Origin != "json" {
+		t.Fatal("DB refusal location changed")
+	}
+	if _, err := orm.UpdateOperationReturningBy[struct{ Active bool }](t.Context(), db, s, opts); !errors.Is(err, operation.ErrForbiddenField) || counted.calls != 0 {
+		t.Fatal("refused returning dispatched")
 	}
 }

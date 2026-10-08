@@ -149,16 +149,10 @@ func prepareUpdate(ctx context.Context, s UpdateSpec, opts Options, d *diagnosti
 	}
 	opts = operationSettings(opts)
 	read := OperationSpec{Version: 1, Operation: OperationSelect, Model: s.Model, Select: s.Returning, Filters: s.Filters, AccessReason: s.AccessReason}
+	d.returning = true
 	r, err := validateOperation(read, opts, d, true)
 	if err != nil {
 		return nil, err
-	}
-	// Validation above shares read declaration checks, not a SELECT plan. Retain
-	// the original RETURNING positions in both internal and public diagnostics.
-	for i := range d.records {
-		if d.records[i].Section == "select" {
-			d.records[i].Section = "returning"
-		}
 	}
 	check := columnChecker(opts, &r, d)
 	values := map[string]any{}
