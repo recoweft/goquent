@@ -427,3 +427,14 @@ Manifest version 1 remains, with documented schema/database fingerprint changes;
 legacy fingerprints and JSON tenant claims do not create verification or authority.
 GQ-AI-06 output boundaries and existing private binding domains remain intact.
 PR2 owns detailed public diagnostics; this PR does not close the whole Issue.
+
+## GQ-AI-08 PR1 typed repositories
+
+[Typed repository generation](../docs/typed-repositories.md) documents opt-in
+extensions of the existing generator, nominal key inputs, literal named result
+projections and the shared SQL declaration parser. The application-only
+SelectOperationBy adapter validates and dispatches the same privately sealed
+SELECT through the generic scanner. OperationSpec Compile/Validate and CLI/MCP
+remain DB-free. Typed success and supplied fingerprints are not authorization,
+live identity or expanded private binding. Readonly/generated metadata is retained
+for PR2; three-state updates and regeneration CI remain outside PR1.

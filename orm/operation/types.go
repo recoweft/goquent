@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/recoweft/goquent/orm/internal/sqltype"
 	"github.com/recoweft/goquent/orm/manifest"
 )
 
@@ -19,7 +20,7 @@ var (
 	ErrTypeUnverified  = errors.New("goquent operation: required type information is unverified")
 	ErrArrayBinding    = errors.New("goquent operation: array column binding is unsupported")
 	ErrReservedBinding = errors.New("goquent operation: reserved binding requires application context")
-	ErrInvalidManifest = errors.New("goquent operation: invalid or ambiguous manifest declaration")
+	ErrInvalidManifest = sqltype.ErrInvalidDeclaration
 )
 
 type columnType struct {
@@ -29,7 +30,6 @@ type columnType struct {
 	missing                                  string
 }
 
-var sizedType = regexp.MustCompile(`^(decimal|numeric|char|varchar|time|timestamp|datetime)\(([0-9]+)(?:,([0-9]+))?\)( unsigned| with time zone| without time zone)?$`)
 var intLexeme = regexp.MustCompile(`^-?(0|[1-9][0-9]*)$`)
 var uuidLexeme = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 var clockLexeme = regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?$`)
@@ -37,156 +37,8 @@ var zoneLexeme = regexp.MustCompile(`^(Z|[+-](0[0-9]|1[0-9]|2[0-3]):[0-5][0-9])$
 var dateLexeme = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 
 func parseColumnType(c manifest.Column, dialect string) (columnType, error) {
-	t := columnType{missing: "type_source_missing"}
-	if c.TypeSource != "" && c.TypeSource != "sql" && c.TypeSource != "go" {
-		return t, ErrInvalidManifest
-	}
-	if c.TypeSource != "sql" {
-		if c.TypeSource == "go" {
-			t.missing = "go_type_not_db_type"
-		}
-		return t, nil
-	}
-	if dialect != "mysql" && dialect != "postgres" {
-		t.missing = "dialect_unknown"
-		return t, nil
-	}
-	s := strings.ToLower(c.Type)
-	if dialect == "postgres" && strings.HasSuffix(s, "[]") {
-		elem := c
-		elem.Type = strings.TrimSuffix(s, "[]")
-		if strings.HasSuffix(elem.Type, "[]") {
-			return columnType{array: true, missing: "array_dimension_unsupported"}, nil
-		}
-		t, err := parseColumnType(elem, dialect)
-		t.array = true
-		if strings.HasSuffix(elem.Type, "[]") {
-			t.missing = "array_dimension_unsupported"
-		}
-		return t, err
-	}
-	t = columnType{missing: "type_or_constraints_unknown"}
-	if dialect == "mysql" && strings.HasSuffix(s, " unsigned") {
-		t.unsigned = true
-		s = strings.TrimSuffix(s, " unsigned")
-	}
-	ints := map[string]int{"smallint": 16, "int": 32, "integer": 32, "bigint": 64}
-	if dialect == "mysql" {
-		ints["tinyint"] = 8
-		ints["mediumint"] = 24
-	} else {
-		ints["int2"] = 16
-		ints["int4"] = 32
-		ints["int8"] = 64
-	}
-	if bits, ok := ints[s]; ok {
-		t.kind = "integer"
-		t.bits = bits
-		t.missing = ""
-		return t, nil
-	}
-	if t.unsigned {
-		return t, nil
-	}
-	switch s {
-	case "bool", "boolean":
-		t.kind = "bool"
-		t.missing = ""
-		return t, nil
-	case "text":
-		t.kind = "string"
-		t.missing = ""
-		return t, nil
-	case "uuid":
-		if dialect == "postgres" {
-			t.kind = "uuid"
-			t.missing = ""
-		}
-		return t, nil
-	case "date":
-		t.kind = "date"
-		t.missing = ""
-		return t, nil
-	}
-	base, suffix := "", ""
-	a, b := -1, -1
-	if m := sizedType.FindStringSubmatch(s); m != nil {
-		base = m[1]
-		var err error
-		a, err = strconv.Atoi(m[2])
-		if err != nil {
-			return t, ErrInvalidManifest
-		}
-		if m[3] != "" {
-			b, err = strconv.Atoi(m[3])
-			if err != nil {
-				return t, ErrInvalidManifest
-			}
-		}
-		suffix = m[4]
-	} else {
-		base = s
-		for _, z := range []string{" with time zone", " without time zone"} {
-			if strings.HasSuffix(base, z) {
-				suffix = z
-				base = strings.TrimSuffix(base, z)
-			}
-		}
-	}
-	switch base {
-	case "decimal", "numeric":
-		if a < 0 || b < 0 || suffix != "" {
-			return t, nil
-		}
-		maxP, maxS := 1000, 1000
-		if dialect == "mysql" {
-			maxP, maxS = 65, 30
-		}
-		if a == 0 || a > maxP || b > a || b > maxS {
-			return t, ErrInvalidManifest
-		}
-		t.kind = "decimal"
-		t.precision = a
-		t.scale = b
-		t.missing = ""
-	case "char", "varchar":
-		if a == 0 {
-			return t, ErrInvalidManifest
-		}
-		if a < 0 || b >= 0 || suffix != "" {
-			return t, nil
-		}
-		t.kind = "string"
-		t.length = a
-		t.missing = ""
-	case "time", "timestamp", "datetime":
-		if b >= 0 || suffix == " unsigned" || a > 6 {
-			return t, ErrInvalidManifest
-		}
-		if base == "datetime" && dialect != "mysql" {
-			return t, nil
-		}
-		if dialect == "mysql" && suffix != "" {
-			return t, nil
-		}
-		if base == "time" && suffix == " with time zone" {
-			return t, nil
-		}
-		t.kind = base
-		t.zone = suffix == " with time zone"
-		t.fraction = a
-		if a < 0 {
-			t.fraction = 0
-			if dialect == "postgres" {
-				t.fraction = 6
-			}
-		}
-		t.missing = ""
-		if dialect == "mysql" && base == "timestamp" {
-			t.missing = "timestamp_session_semantics_unknown"
-		}
-	}
-	return t, nil
+	t, err := sqltype.Parse(sqltype.Declaration{Type: c.Type, TypeSource: c.TypeSource}, dialect)
+	return columnType{kind: t.Kind, bits: t.Bits, precision: t.Precision, scale: t.Scale, length: t.Length, fraction: t.Fraction, unsigned: t.Unsigned, zone: t.Zone, array: t.Array, missing: t.Missing}, err
 }
 
 func exactInteger(v any) (string, bool) {

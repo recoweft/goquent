@@ -149,7 +149,11 @@ func Compile(ctx context.Context, spec OperationSpec, opts Options) (*query.Quer
 	return compileOperation(ctx, spec, opts, r)
 }
 
-func compileOperation(ctx context.Context, spec OperationSpec, opts Options, r *diagnosticRecorder) (plan *query.QueryPlan, failure error) {
+func compileOperation(ctx context.Context, spec OperationSpec, opts Options, r *diagnosticRecorder) (*query.QueryPlan, error) {
+	return prepareOperation(ctx, spec, opts, r, nil, nil)
+}
+
+func prepareOperation(ctx context.Context, spec OperationSpec, opts Options, r *diagnosticRecorder, executor querybridge.Executor, prepared *querybridge.Planned) (plan *query.QueryPlan, failure error) {
 	defer func() {
 		if failure != nil {
 			r.refusal()
@@ -168,7 +172,7 @@ func compileOperation(ctx context.Context, spec OperationSpec, opts Options, r *
 		dialect = dialectFromManifest(opts.Manifest)
 	}
 
-	q := query.NewWithSettings(nil, result.table.Name, dialect, *opts.Settings)
+	q := query.NewWithSettings(executor, result.table.Name, dialect, *opts.Settings).WithContext(ctx)
 	for _, w := range result.warnings {
 		result.typed.WarningCodes = append(result.typed.WarningCodes, w.Code)
 	}
@@ -217,6 +221,12 @@ func compileOperation(ctx context.Context, spec OperationSpec, opts Options, r *
 	for _, w := range plan.Warnings {
 		if !known[w.Code] {
 			r.warning(w.Code)
+		}
+	}
+	if prepared != nil {
+		*prepared, err = querybridge.SealedSelect(q, plan)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return plan, nil
@@ -588,4 +598,17 @@ func (s OperationSpec) MarshalJSON() ([]byte, error) {
 	s.Version = planversion.Current
 	type plain OperationSpec
 	return json.Marshal(plain(s))
+}
+
+func init() {
+	querybridge.PrepareOperation = func(ctx context.Context, input, options any, executor querybridge.Executor) (querybridge.Planned, error) {
+		spec, ok := input.(OperationSpec)
+		opts, valid := options.(Options)
+		if !ok || !valid || executor == nil {
+			return querybridge.Planned{}, ErrInvalidFilter
+		}
+		var prepared querybridge.Planned
+		_, err := prepareOperation(ctx, spec, opts, newRecorder(spec), executor, &prepared)
+		return prepared, err
+	}
 }

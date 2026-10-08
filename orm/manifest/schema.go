@@ -61,6 +61,7 @@ func columnArraySchema() map[string]any {
 				"primary":         map[string]any{"type": "boolean"},
 				"nullable":        map[string]any{"type": "boolean"},
 				"default":         map[string]any{"type": "string"},
+				"readonly":        map[string]any{"type": "boolean"},
 				"generated":       map[string]any{"type": "boolean"},
 				"enum_values":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				"pii":             map[string]any{"type": "boolean"},

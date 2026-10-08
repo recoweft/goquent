@@ -124,6 +124,9 @@ func runManifestRepository(args []string, stdout, stderr io.Writer) int {
 	packageName := fs.String("package", "repository", "Go package name for generated code")
 	rowType := fs.String("row-type", "", "generated row struct name")
 	repositoryType := fs.String("repository-type", "", "generated repository type name")
+	typed := fs.Bool("typed", false, "generate typed repository reads")
+	var projections stringListFlag
+	fs.Var(&projections, "projection", "named projection Name=column1,column2; may be repeated")
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: goquent manifest repository --manifest goquent.manifest.json --table users [flags]")
 		fs.PrintDefaults()
@@ -141,11 +144,25 @@ func runManifestRepository(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
+	var projectionOptions []manifest.RepositoryProjection
+	for _, raw := range projections {
+		name, cols, ok := strings.Cut(raw, "=")
+		if !ok {
+			fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
+			return 2
+		}
+		projectionOptions = append(projectionOptions, manifest.RepositoryProjection{Name: name, Columns: strings.Split(cols, ",")})
+	}
+	if !*typed && len(projectionOptions) > 0 {
+		fmt.Fprintln(stderr, "PUBLIC_INPUT: invalid command arguments")
+		return 2
+	}
 	src, err := manifest.GenerateRepositorySkeleton(m, manifest.RepositorySkeletonOptions{
 		PackageName:        *packageName,
 		TableName:          *tableName,
 		RowTypeName:        *rowType,
 		RepositoryTypeName: *repositoryType,
+		Typed:              *typed, Projections: projectionOptions,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")

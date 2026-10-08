@@ -7,7 +7,7 @@ import (
 
 // UnmarshalJSON preserves nullable presence and refuses ambiguous declarations.
 func (c *Column) UnmarshalJSON(b []byte) error {
-	fields, err := inputjson.Object(b, map[string]bool{"name": true, "type": true, "type_source": true, "primary": true, "nullable": true, "default": true, "generated": true, "enum_values": true, "pii": true, "forbidden": true, "tenant_scope": true, "soft_delete": true, "required_filter": true})
+	fields, err := inputjson.Object(b, map[string]bool{"name": true, "type": true, "type_source": true, "primary": true, "nullable": true, "default": true, "readonly": true, "generated": true, "enum_values": true, "pii": true, "forbidden": true, "tenant_scope": true, "soft_delete": true, "required_filter": true})
 	if err != nil {
 		return err
 	}
@@ -20,6 +20,9 @@ func (c *Column) UnmarshalJSON(b []byte) error {
 		if json.Unmarshal(b, &v) != nil || (v != "sql" && v != "go") {
 			return inputjson.ErrInvalid
 		}
+	}
+	if raw, ok := fields["readonly"]; ok && string(raw) != "true" && string(raw) != "false" {
+		return inputjson.ErrInvalid
 	}
 	type plain Column
 	var next plain
@@ -47,6 +50,7 @@ func (c Column) MarshalJSON() ([]byte, error) {
 		Primary        bool     `json:"primary,omitempty"`
 		Nullable       *bool    `json:"nullable,omitempty"`
 		Default        string   `json:"default,omitempty"`
+		Readonly       bool     `json:"readonly,omitempty"`
 		Generated      bool     `json:"generated,omitempty"`
 		EnumValues     []string `json:"enum_values,omitempty"`
 		PII            bool     `json:"pii,omitempty"`
@@ -54,5 +58,5 @@ func (c Column) MarshalJSON() ([]byte, error) {
 		TenantScope    bool     `json:"tenant_scope,omitempty"`
 		SoftDelete     bool     `json:"soft_delete,omitempty"`
 		RequiredFilter bool     `json:"required_filter,omitempty"`
-	}{c.Name, c.Type, c.TypeSource, c.Primary, n, c.Default, c.Generated, c.EnumValues, c.PII, c.Forbidden, c.TenantScope, c.SoftDelete, c.RequiredFilter})
+	}{c.Name, c.Type, c.TypeSource, c.Primary, n, c.Default, c.Readonly, c.Generated, c.EnumValues, c.PII, c.Forbidden, c.TenantScope, c.SoftDelete, c.RequiredFilter})
 }

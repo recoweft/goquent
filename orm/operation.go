@@ -2,7 +2,9 @@ package orm
 
 import (
 	"context"
+	"database/sql"
 
+	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"github.com/recoweft/goquent/orm/operation"
 )
 
@@ -87,4 +89,23 @@ func (db *DB) ValidateOperationWithDiagnostics(spec OperationSpec, opts Operatio
 	opts.Settings = &s
 	opts.Dialect = db.Dialect()
 	return operation.ValidateWithDiagnostics(spec, opts)
+}
+
+// SelectOperationBy validates and executes a single-model SELECT using the DB's
+// immutable settings, dialect and executor. It scans through the generic read
+// path, including DB bool policy. CompileOperation remains nonexecuting.
+// This immediate read does not provide a reusable ValidatedPlan/current binding.
+func SelectOperationBy[T any](ctx context.Context, db *DB, spec OperationSpec, opts OperationOptions) (out []T, err error) {
+	if db == nil {
+		return nil, operation.ErrInvalidFilter
+	}
+	s := db.Settings()
+	opts.Settings = &s
+	opts.Dialect = db.Dialect()
+	prepared, err := querybridge.PrepareOperation(ctx, spec, opts, db.exec)
+	if err != nil {
+		return nil, err
+	}
+	err = prepared.Scan(func(rows *sql.Rows) error { out, err = scanRowsAll[T](db, rows); return err })
+	return out, err
 }

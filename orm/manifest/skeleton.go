@@ -15,6 +15,11 @@ type RepositorySkeletonOptions struct {
 	RowTypeName        string
 	RepositoryTypeName string
 	ORMImportPath      string
+	Typed              bool
+	Dialect            string
+	Projections        []RepositoryProjection
+	snapshot           *Manifest
+	snapshotKind       string
 }
 
 // GenerateRepositorySkeleton emits a Go repository skeleton for one manifest table.
@@ -24,7 +29,18 @@ func GenerateRepositorySkeleton(m *Manifest, opts RepositorySkeletonOptions) ([]
 	}
 	table, err := selectSkeletonTable(m.Tables, opts.TableName)
 	if err != nil {
+		if opts.Typed {
+			return nil, ErrRepositoryGeneration
+		}
 		return nil, err
+	}
+	if opts.Typed {
+		if m.Version != Version || opts.Dialect != "" && opts.Dialect != m.Dialect {
+			return nil, ErrRepositoryGeneration
+		}
+		opts.Dialect = m.Dialect
+		opts.snapshot = m
+		opts.snapshotKind = "manifest"
 	}
 	return GenerateRepositorySkeletonForTable(table, opts)
 }
@@ -32,6 +48,9 @@ func GenerateRepositorySkeleton(m *Manifest, opts RepositorySkeletonOptions) ([]
 // GenerateRepositorySkeletonForTable emits a Go repository skeleton for table.
 func GenerateRepositorySkeletonForTable(table Table, opts RepositorySkeletonOptions) ([]byte, error) {
 	if strings.TrimSpace(table.Name) == "" {
+		if opts.Typed {
+			return nil, ErrRepositoryGeneration
+		}
 		return nil, fmt.Errorf("goquent: skeleton table name is required")
 	}
 	packageName := sanitizeGoIdentifier(opts.PackageName)
@@ -51,20 +70,37 @@ func GenerateRepositorySkeletonForTable(table Table, opts RepositorySkeletonOpti
 		ormImport = "github.com/recoweft/goquent/orm"
 	}
 
+	var typed *typedSkeleton
+	if opts.Typed {
+		var err error
+		typed, err = prepareTypedSkeleton(table, opts, packageName, rowType, repoType)
+		if err != nil {
+			return nil, err
+		}
+	}
 	imports := map[string]struct{}{
 		"context":            {},
 		ormImport:            {},
 		ormImport + "/query": {},
 	}
 	fields, needsTime := skeletonFields(table.Columns)
+	if typed != nil {
+		fields, needsTime = typed.fields, false
+		imports = typed.imports(ormImport)
+	}
 	if needsTime {
 		imports["time"] = struct{}{}
 	}
 
 	var b strings.Builder
+	if typed != nil {
+		typed.header(&b)
+	}
 	fmt.Fprintf(&b, "package %s\n\n", packageName)
 	writeSkeletonImports(&b, imports)
-	fmt.Fprintf(&b, "// %s maps the %s table.\n", rowType, table.Name)
+	if typed == nil {
+		fmt.Fprintf(&b, "// %s maps the %s table.\n", rowType, table.Name)
+	}
 	fmt.Fprintf(&b, "type %s struct {\n", rowType)
 	for _, field := range fields {
 		fmt.Fprintf(&b, "\t%s %s `db:%q`\n", field.Name, field.Type, field.DBTag)
@@ -72,10 +108,20 @@ func GenerateRepositorySkeletonForTable(table Table, opts RepositorySkeletonOpti
 	fmt.Fprintf(&b, "}\n\n")
 	fmt.Fprintf(&b, "func (%s) TableName() string { return %q }\n\n", rowType, table.Name)
 
-	fmt.Fprintf(&b, "// %s is a manifest-backed repository skeleton for %s.\n", repoType, table.Name)
+	if typed == nil {
+		fmt.Fprintf(&b, "// %s is a manifest-backed repository skeleton for %s.\n", repoType, table.Name)
+	}
 	fmt.Fprintf(&b, "type %s struct {\n\tdb *orm.DB\n}\n\n", repoType)
 	fmt.Fprintf(&b, "func New%s(db *orm.DB) *%s {\n\treturn &%s{db: db}\n}\n\n", repoType, repoType, repoType)
 
+	if typed != nil {
+		typed.emit(&b)
+		src, err := format.Source([]byte(b.String()))
+		if err != nil {
+			return nil, ErrRepositoryGeneration
+		}
+		return src, nil
+	}
 	required := requiredPredicateColumns(table)
 	softDelete := softDeleteColumn(table)
 	fmt.Fprintf(&b, "func (r *%s) BaseQuery(ctx context.Context, scopes ...orm.Scope) *query.Query {\n", repoType)

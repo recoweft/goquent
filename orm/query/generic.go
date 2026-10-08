@@ -12,6 +12,7 @@ import (
 )
 
 func init() {
+	querybridge.SealedSelect = sealedSelect
 	querybridge.Prepare = prepareGeneric
 	querybridge.PrepareRaw = prepareRaw
 	querybridge.Strict = func(v any) bool { s, ok := v.(Settings); return ok && s.strict }
@@ -240,4 +241,13 @@ func (q *Query) planUpdateValues(ctx context.Context, m map[string]any, o writei
 	}
 	q.finalizePlan(p)
 	return p, nil
+}
+
+func sealedSelect(base, diagnostic any) (querybridge.Planned, error) {
+	q, ok := base.(*Query)
+	p, valid := diagnostic.(*QueryPlan)
+	if !ok || q == nil || !valid || p == nil || p.Operation != OperationSelect || p.execution == nil || p.execution.owner != q {
+		return querybridge.Planned{}, ErrBlockedOperation
+	}
+	return querybridge.Planned{Diagnostic: p, Check: func() error { return q.checkExecution(p) }, Scan: func(scan func(*sql.Rows) error) error { return q.executeRows(p, scan) }}, nil
 }

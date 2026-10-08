@@ -69,6 +69,7 @@ type Column struct {
 	// NullableKnown distinguishes an explicit declaration from missing data.
 	NullableKnown  bool     `json:"-"`
 	Default        string   `json:"default,omitempty"`
+	Readonly       bool     `json:"readonly,omitempty"`
 	Generated      bool     `json:"generated,omitempty"`
 	EnumValues     []string `json:"enum_values,omitempty"`
 	PII            bool     `json:"pii,omitempty"`
@@ -354,6 +355,10 @@ func columnFromField(field reflect.StructField) (Column, bool) {
 		case "pk", "primary":
 			column.Primary = true
 			column.Nullable = false
+		case "readonly":
+			column.Readonly = true
+		case "generated":
+			column.Generated = true
 		case "pii":
 			column.PII = true
 		case "forbidden":
@@ -473,6 +478,8 @@ func mergeColumns(a, b []Column) []Column {
 				existing.Default = column.Default
 			}
 		}
+		existing.Readonly = existing.Readonly || column.Readonly
+		existing.Generated = existing.Generated || column.Generated
 		existing.PII = existing.PII || column.PII
 		existing.Forbidden = existing.Forbidden || column.Forbidden
 		existing.TenantScope = existing.TenantScope || column.TenantScope
