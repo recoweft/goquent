@@ -161,3 +161,11 @@ message and preserves the test process exit status. It does not report test skip
 counts. Local validation records count tests separately. No additional runtime or
 production dependency is introduced; the wrapper uses POSIX shell/mktemp already
 available on the CI runner. Raw database failure logs are no longer published.
+
+## GQ-AI-07 PR2 structured diagnostics
+
+See [operation diagnostics](operation-diagnostics.md) for the shared
+single-pass CompileWithDiagnostics/ValidateWithDiagnostics APIs, independent
+closed DiagnosticView, CLI/MCP migration and canonical Schema fixture scope.
+Internal targets/declarations/evidence remain private. Existing execution,
+source-wire and public PlanView contracts stay unchanged.

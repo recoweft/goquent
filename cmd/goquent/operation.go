@@ -86,38 +86,29 @@ func runOperationCompile(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	plan, err := operation.Compile(context.Background(), spec, operation.Options{
+	_, view, err := operation.CompileWithDiagnostics(context.Background(), spec, operation.Options{
 		Manifest:             m,
 		Values:               values,
 		RequireFreshManifest: *requireFresh,
 		AccessReason:         *accessReason,
 	})
+	resultCode := 0
+	sink := stdout
 	if err != nil {
-		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
-		return 1
+		resultCode = 1
+		sink = stderr
 	}
+	var writeErr error
 	if outputFormat == "json" {
-		view, err := plan.PublicView()
-		if err != nil {
-			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: projection failed")
-			return 2
-		}
-		b, err := view.ToJSON()
-		if err != nil {
-			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
-			return 2
-		}
-		if err := publicoutput.Write(stdout, append(b, '\n')); err != nil {
-			fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
-			return 2
-		}
-		return 0
+		writeErr = operation.WriteDiagnosticJSON(sink, view)
+	} else {
+		writeErr = operation.WriteDiagnosticPretty(sink, view)
 	}
-	if err := publicoutput.Write(stdout, []byte(plan.String()+"\n")); err != nil {
+	if writeErr != nil {
 		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
-	return 0
+	return resultCode
 }
 
 func runOperationSchema(args []string, stdout, stderr io.Writer) int {

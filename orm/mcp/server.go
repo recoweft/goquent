@@ -12,6 +12,7 @@ import (
 	"github.com/recoweft/goquent/orm/query"
 
 	"github.com/recoweft/goquent/orm/internal/planversion"
+	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"github.com/recoweft/goquent/orm/operation"
 )
 
@@ -64,8 +65,9 @@ type Tool struct {
 
 // ToolResult is an MCP tool result.
 type ToolResult struct {
-	Content []Content `json:"content"`
-	IsError bool      `json:"isError,omitempty"`
+	operationDiagnostic *operation.DiagnosticView
+	Content             []Content `json:"content"`
+	IsError             bool      `json:"isError,omitempty"`
 }
 
 // Content is text content returned by tools/prompts/resources.
@@ -179,16 +181,23 @@ func (s *Server) Tools() []Tool {
 
 // CallTool executes a read-only MCP tool.
 func (s *Server) CallTool(ctx context.Context, name string, args map[string]any) (ToolResult, error) {
+	return s.callPublicTool(ctx, name, args, "go")
+}
+
+func (s *Server) callPublicTool(ctx context.Context, name string, args map[string]any, origin string) (ToolResult, error) {
 	if _, err := primitiveJSON(args); err != nil {
 		return ToolResult{}, publicoutput.ErrOutput
 	}
-	out, err := s.callTool(ctx, name, args)
+	out, err := s.callTool(ctx, name, args, origin)
 	if err != nil {
+		if safe, ok := operationFailureResult(out); ok {
+			return safe, publicoutput.ErrOutput
+		}
 		return ToolResult{}, publicoutput.ErrOutput
 	}
 	return out, nil
 }
-func (s *Server) callTool(ctx context.Context, name string, args map[string]any) (ToolResult, error) {
+func (s *Server) callTool(ctx context.Context, name string, args map[string]any, origin string) (ToolResult, error) {
 	_ = ctx
 	if !s.toolAllowed(name) {
 		return ToolResult{}, fmt.Errorf("tool %q is not exposed", name)
@@ -246,9 +255,9 @@ func (s *Server) callTool(ctx context.Context, name string, args map[string]any)
 			}
 			return s.textTool(string(b)), nil
 		}
-		return s.compileOperationSpec(args)
+		return s.compileOperationSpec(args, origin)
 	case "compile_operation_spec":
-		return s.compileOperationSpec(args)
+		return s.compileOperationSpec(args, origin)
 	case "propose_repository_method":
 		return s.proposeRepositoryMethod(args)
 	case "generate_test_fixture":
@@ -346,7 +355,7 @@ func allowed(allow map[string]struct{}, name string) bool {
 	return ok
 }
 
-func (s *Server) compileOperationSpec(args map[string]any) (ToolResult, error) {
+func (s *Server) compileOperationSpec(args map[string]any, origin string) (ToolResult, error) {
 	if s.manifest == nil {
 		return ToolResult{}, fmt.Errorf("manifest is required to compile operation specs")
 	}
@@ -386,24 +395,24 @@ func (s *Server) compileOperationSpec(args map[string]any) (ToolResult, error) {
 	if raw, ok := args["values"].(map[string]any); ok {
 		values = raw
 	}
+	querybridge.OperationInputOrigin(&spec, origin)
 	requireFresh, _ := optionalBool(args, "require_fresh_manifest")
-	plan, err := operation.Compile(context.Background(), spec, operation.Options{
+	_, view, err := operation.CompileWithDiagnostics(context.Background(), spec, operation.Options{
 		Manifest:             s.manifest,
 		Values:               values,
 		RequireFreshManifest: requireFresh,
 	})
-	if err != nil {
-		return ToolResult{}, err
+	b, encodeErr := view.ToJSON()
+	if encodeErr != nil {
+		return ToolResult{}, publicoutput.ErrOutput
 	}
-	view, err := plan.PublicView()
+	out := s.textTool(string(b))
 	if err != nil {
-		return ToolResult{}, err
+		out.IsError = true
+		out.operationDiagnostic = &view
+		return out, publicoutput.ErrOutput
 	}
-	b, err := view.ToJSON()
-	if err != nil {
-		return ToolResult{}, err
-	}
-	return s.textTool(string(b)), nil
+	return out, nil
 }
 
 func (s *Server) proposeRepositoryMethod(args map[string]any) (ToolResult, error) {
@@ -563,4 +572,21 @@ func testFixture() string {
     "limit": 100
   }
 }`
+}
+
+// operationFailureResult is the private, closed adapter for operation refusals.
+// It never trusts an error's arbitrary ToolResult content or invokes error methods.
+func operationFailureResult(out ToolResult) (ToolResult, bool) {
+	if out.operationDiagnostic == nil {
+		return ToolResult{}, false
+	}
+	b, err := out.operationDiagnostic.ToJSON()
+	if err != nil {
+		return ToolResult{}, false
+	}
+	v, err := operation.DecodeDiagnosticView(b)
+	if err != nil || v.Outcome != "rejected" {
+		return ToolResult{}, false
+	}
+	return ToolResult{IsError: true, Content: []Content{{Type: "text", Text: string(b)}}, operationDiagnostic: &v}, true
 }

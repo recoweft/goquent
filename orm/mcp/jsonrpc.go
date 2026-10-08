@@ -125,8 +125,11 @@ func (s *Server) dispatch(ctx context.Context, req rpcRequest) (any, error) {
 		if args == nil {
 			args = params.Args
 		}
-		result, err := s.CallTool(ctx, params.Name, args)
+		result, err := s.callPublicTool(ctx, params.Name, args, "json")
 		if err != nil {
+			if safe, ok := operationFailureResult(result); ok {
+				return safe, nil
+			}
 			return ToolResult{IsError: true, Content: []Content{{Type: "text", Text: "PUBLIC_OUTPUT: operation failed; details omitted"}}}, nil
 		}
 		return result, nil

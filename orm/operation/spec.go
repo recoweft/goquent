@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/recoweft/goquent/internal/inputjson"
+	"sort"
 	"strings"
 
 	"github.com/recoweft/goquent/orm/driver"
@@ -43,6 +44,7 @@ var (
 // OperationSpec is the read-only structured interface for AI-generated DB intent.
 type OperationSpec struct {
 	sourceBytes  int
+	inputOrigin  string
 	Version      int          `json:"version"`
 	Operation    string       `json:"operation"`
 	Model        string       `json:"model"`
@@ -143,11 +145,24 @@ func Validate(spec OperationSpec, opts Options) ([]query.Warning, error) {
 
 // Compile validates spec and compiles it to a read-only QueryPlan.
 func Compile(ctx context.Context, spec OperationSpec, opts Options) (*query.QueryPlan, error) {
+	r := newRecorder(spec)
+	return compileOperation(ctx, spec, opts, r)
+}
+
+func compileOperation(ctx context.Context, spec OperationSpec, opts Options, r *diagnosticRecorder) (plan *query.QueryPlan, failure error) {
+	defer func() {
+		if failure != nil {
+			r.refusal()
+			failure = &validationFailure{cause: failure, diagnostics: append([]querybridge.OperationDiagnostic(nil), r.records...)}
+		}
+	}()
 	opts = operationSettings(opts)
-	result, err := validate(spec, opts)
+	result, err := validate(spec, opts, r)
 	if err != nil {
 		return nil, err
 	}
+	r.at("planner", "root", "", -1, "")
+	r.expect("PLANNER_REFUSED")
 	dialect := opts.Dialect
 	if dialect == nil {
 		dialect = dialectFromManifest(opts.Manifest)
@@ -157,6 +172,8 @@ func Compile(ctx context.Context, spec OperationSpec, opts Options) (*query.Quer
 	for _, w := range result.warnings {
 		result.typed.WarningCodes = append(result.typed.WarningCodes, w.Code)
 	}
+	r.add("OPERATION_UNVERIFIED_LIVE", "unverified", "", "live_database_session_collation_physical_identity", "verify_live_conditions_separately")
+	result.typed.Diagnostics = append([]querybridge.OperationDiagnostic(nil), r.records...)
 	if err := querybridge.ConfigureOperation(q, result.typed); err != nil {
 		return nil, err
 	}
@@ -183,32 +200,56 @@ func Compile(ctx context.Context, spec OperationSpec, opts Options) (*query.Quer
 		q.LimitExact(int(*spec.Limit))
 	}
 
-	plan, err := q.Plan(ctx)
+	plan, err = q.Plan(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if opts.Settings.IsStrict() && plan.Blocked {
 		return nil, query.ErrBlockedOperation
 	}
+	// Keep plan-only warnings once per source warning, without reading their text.
+	known := map[string]bool{}
+	for _, d := range r.records {
+		if d.Status == "warning" {
+			known[d.Code] = true
+		}
+	}
+	for _, w := range plan.Warnings {
+		if !known[w.Code] {
+			r.warning(w.Code)
+		}
+	}
 	return plan, nil
 }
 
-func validate(spec OperationSpec, opts Options) (validationResult, error) {
+func validate(spec OperationSpec, opts Options, r *diagnosticRecorder) (validationResult, error) {
+	r.at("unknown", "root", "", -1, "")
+	r.expect("INPUT_LIMIT")
 	if err := inputBudget(spec, opts.Values); err != nil {
 		return validationResult{}, err
 	}
+	r.add("OPERATION_CHECK_INPUT", "checked", "closed_primitive_budget", "", "")
+	r.at("spec", "version", "", -1, "")
+	r.expect("VERSION_UNSUPPORTED")
 	if err := planversion.Check(spec.Version); err != nil {
 		return validationResult{}, err
 	}
+	r.at("manifest", "root", "", -1, "")
+	r.expect("MANIFEST_REQUIRED")
 	if opts.Manifest == nil {
 		return validationResult{}, ErrManifestRequired
 	}
+	r.expect("MANIFEST_INVALID")
 	if err := checkManifestDeclarations(opts.Manifest); err != nil {
 		return validationResult{}, err
 	}
+	r.at("settings", "root", "", -1, "")
+	r.expect("SETTINGS_INVALID")
 	if opts.Settings.Err() != nil {
 		return validationResult{}, opts.Settings.Err()
 	}
+	r.at("spec", "operation", "", -1, "")
+	r.expect("UNSUPPORTED")
 	op := strings.ToLower(strings.TrimSpace(spec.Operation))
 	if op == "" {
 		op = OperationSelect
@@ -216,18 +257,26 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 	if op != OperationSelect {
 		return validationResult{}, fmt.Errorf("%w: %s", ErrUnsupportedOperation, spec.Operation)
 	}
+	r.at("spec", "model", "", -1, "")
+	r.expect("MODEL_REQUIRED")
 	if strings.TrimSpace(spec.Model) == "" {
 		return validationResult{}, ErrModelRequired
 	}
+	r.at("spec", "select", "", -1, "")
+	r.expect("SELECT_REQUIRED")
 	if len(spec.Select) == 0 {
 		return validationResult{}, ErrSelectRequired
 	}
 
+	r.at("spec", "model", "", -1, "")
+	r.expect("MODEL_UNKNOWN")
 	table, ok := findTable(opts.Manifest, spec.Model)
 	if !ok {
 		return validationResult{}, fmt.Errorf("%w: %s", ErrUnknownModel, spec.Model)
 	}
 	result := validationResult{table: table, columns: columnMap(table)}
+	r.at("manifest", "root", "", -1, "")
+	r.expect("MANIFEST_STALE")
 	if opts.RequireFreshManifest && (opts.Manifest.Verification == nil || !opts.Manifest.Verification.Fresh) {
 		return validationResult{}, ErrStaleManifest
 	}
@@ -235,6 +284,7 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 		if opts.RequireFreshManifest {
 			return validationResult{}, ErrStaleManifest
 		}
+		r.warning(manifest.WarningStale)
 		result.warnings = append(result.warnings, warning(
 			manifest.WarningStale,
 			query.RiskHigh,
@@ -243,18 +293,23 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 		))
 	}
 
-	for _, field := range spec.Select {
-		column, err := validateField(result.columns, field)
+	for i, field := range spec.Select {
+		r.at("spec", "select", "", i, field)
+		r.target(table.Name, field)
+		column, err := diagnosticField(result.columns, field, r)
 		if err != nil {
 			return validationResult{}, err
 		}
+		r.expect("FIELD_FORBIDDEN")
 		if column.Forbidden {
 			return validationResult{}, fmt.Errorf("%w: %s", ErrForbiddenField, field)
 		}
 		if column.PII {
+			r.expect("ACCESS_REASON_REQUIRED")
 			if accessReason(spec, opts) == "" {
 				return validationResult{}, fmt.Errorf("%w: %s", ErrPIIAccessReasonRequired, field)
 			}
+			r.warning(WarningOperationPIISelected)
 			result.warnings = append(result.warnings, warning(
 				WarningOperationPIISelected,
 				query.RiskMedium,
@@ -263,32 +318,44 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 			))
 		}
 	}
-	for _, filter := range spec.Filters {
+	for i, filter := range spec.Filters {
+		r.at("spec", "filters", "field", i, filter.Field)
+		r.target(table.Name, filter.Field)
+		r.expect("FILTER_INVALID")
 		if strings.TrimSpace(filter.Field) == "" {
 			return validationResult{}, fmt.Errorf("%w: filter field is required", ErrInvalidFilter)
 		}
-		if _, err := validateField(result.columns, filter.Field); err != nil {
+		if _, err := diagnosticField(result.columns, filter.Field, r); err != nil {
 			return validationResult{}, err
 		}
+		r.current.Member = "op"
+		r.expect("OPERATOR_UNSUPPORTED")
 		if !supportedFilterOp(filter.Op) {
 			return validationResult{}, fmt.Errorf("%w: unsupported operator %q", ErrInvalidFilter, filter.Op)
 		}
-
+		r.add("OPERATION_CHECK_OPERATOR", "checked", "supported_operator", "", "")
 	}
-	for _, order := range spec.OrderBy {
-		if _, err := validateField(result.columns, order.Field); err != nil {
+	for i, order := range spec.OrderBy {
+		r.at("spec", "order_by", "field", i, order.Field)
+		r.target(table.Name, order.Field)
+		if _, err := diagnosticField(result.columns, order.Field, r); err != nil {
 			return validationResult{}, err
 		}
+		r.current.Member = "direction"
+		r.expect("ORDER_INVALID")
 		dir := normalizeDirection(order.Direction)
 		if dir != "asc" && dir != "desc" {
 			return validationResult{}, fmt.Errorf("%w: unsupported direction %q", ErrInvalidOrder, order.Direction)
 		}
 	}
 
-	if err := typedValidate(spec, opts, &result); err != nil {
+	if err := typedValidate(spec, opts, &result, r); err != nil {
 		return validationResult{}, err
 	}
 	for _, required := range requiredFilterColumns(table) {
+		r.at("spec", "implicit", "field", -1, required.column)
+		r.target(table.Name, required.column)
+		r.expect("REQUIRED_FILTER_MISSING")
 		if normalizeName(required.column) == normalizeName(result.tenant) {
 			continue
 		}
@@ -296,6 +363,7 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 			continue
 		}
 		if required.mode == query.PolicyModeWarn {
+			r.warning(WarningOperationRequiredFilter)
 			result.warnings = append(result.warnings, warning(
 				WarningOperationRequiredFilter,
 				query.RiskHigh,
@@ -307,6 +375,8 @@ func validate(spec OperationSpec, opts Options) (validationResult, error) {
 		return validationResult{}, fmt.Errorf("%w: %s.%s", ErrRequiredFilterMissing, table.Name, required.column)
 	}
 	if spec.Limit == nil {
+		r.at("spec", "limit", "", -1, "")
+		r.warning(WarningOperationMissingLimit)
 		result.warnings = append(result.warnings, warning(
 			WarningOperationMissingLimit,
 			query.RiskMedium,
@@ -368,6 +438,21 @@ func validateField(columns map[string]manifest.Column, field string) (manifest.C
 	return column, nil
 }
 
+func diagnosticField(columns map[string]manifest.Column, field string, r *diagnosticRecorder) (manifest.Column, error) {
+	r.expect("FIELD_UNKNOWN")
+	column, err := validateField(columns, field)
+	if err != nil {
+		// This is the exact same lookup as validateField, after its syntax checks.
+		f := strings.TrimSpace(field)
+		if f != "" && !strings.ContainsAny(f, "()* ") {
+			if c, ok := columns[normalizeName(f)]; ok && c.Forbidden {
+				r.expect("FIELD_FORBIDDEN")
+			}
+		}
+	}
+	return column, err
+}
+
 type requiredFilter struct {
 	column string
 	mode   query.PolicyMode
@@ -394,6 +479,7 @@ func requiredFilterColumns(table manifest.Table) []requiredFilter {
 	for _, required := range seen {
 		out = append(out, required)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].column < out[j].column })
 	return out
 }
 

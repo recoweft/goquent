@@ -137,3 +137,11 @@ Manifest version 1 remains, with documented schema/database fingerprint changes;
 legacy fingerprints and JSON tenant claims do not create verification or authority.
 GQ-AI-06 output boundaries and existing private binding domains remain intact.
 PR2 owns detailed public diagnostics; this PR does not close the whole Issue.
+
+## GQ-AI-07 PR2 structured diagnostics
+
+See [operation diagnostics](docs/operation-diagnostics.md) for the shared
+single-pass CompileWithDiagnostics/ValidateWithDiagnostics APIs, independent
+closed DiagnosticView, CLI/MCP migration and canonical Schema fixture scope.
+Internal targets/declarations/evidence remain private. Existing execution,
+source-wire and public PlanView contracts stay unchanged.
