@@ -41,3 +41,8 @@ var PrepareOperation func(context.Context, any, any, Executor) (Planned, error)
 // SealedSelect captures the exact already finalized Query plan without rebuilding.
 // It is internal and refuses any plan lacking that Query's private seal.
 var SealedSelect func(any, any) (Planned, error)
+
+// Application updates hand off structural input to the same Query exactly once.
+var PrepareUpdate func(context.Context, any, any, Executor) (Planned, error)
+var PlanOperationUpdate func(context.Context, any, map[string]any, []string) (Planned, error)
+var OperationEquality func(any, string, any) error

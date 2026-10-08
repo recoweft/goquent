@@ -33,6 +33,8 @@ func (s *stringListFlag) Set(value string) error {
 func runManifest(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
 		switch args[0] {
+		case "check-repositories":
+			return runRepositoryCheck(args[1:], stdout, stderr)
 		case "schema":
 			return runManifestSchema(args[1:], stdout, stderr)
 		case "verify":
@@ -124,7 +126,7 @@ func runManifestRepository(args []string, stdout, stderr io.Writer) int {
 	packageName := fs.String("package", "repository", "Go package name for generated code")
 	rowType := fs.String("row-type", "", "generated row struct name")
 	repositoryType := fs.String("repository-type", "", "generated repository type name")
-	typed := fs.Bool("typed", false, "generate typed repository reads")
+	typed := fs.Bool("typed", false, "generate typed repository reads and update patches")
 	var projections stringListFlag
 	fs.Var(&projections, "projection", "named projection Name=column1,column2; may be repeated")
 	fs.Usage = func() {

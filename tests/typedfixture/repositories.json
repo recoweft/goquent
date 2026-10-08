@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "managed_roots": [
+    "."
+  ],
+  "entries": [
+    {
+      "snapshot_kind": "manifest",
+      "input": "inputs/mysql.json",
+      "target": "mysql_generated.go",
+      "generator_version": "typed-repository-v2",
+      "code_paths": [],
+      "options": {
+        "package_name": "typedfixture",
+        "table_name": "gq08_records",
+        "row_type_name": "MySQLRecordRow",
+        "repository_type_name": "MySQLRecordRepository",
+        "orm_import_path": "github.com/recoweft/goquent/orm",
+        "typed": true,
+        "dialect": "mysql",
+        "projections": [
+          {
+            "name": "Summary",
+            "columns": [
+              "id",
+              "segment",
+              "status",
+              "active",
+              "flag",
+              "note",
+              "balance",
+              "happened",
+              "clock",
+              "stamp"
+            ]
+          },
+          {
+            "name": "Identity",
+            "columns": [
+              "segment",
+              "id"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "snapshot_kind": "manifest",
+      "input": "inputs/postgres.json",
+      "target": "postgres_generated.go",
+      "generator_version": "typed-repository-v2",
+      "code_paths": [],
+      "options": {
+        "package_name": "typedfixture",
+        "table_name": "gq08_records",
+        "row_type_name": "PostgresRecordRow",
+        "repository_type_name": "PostgresRecordRepository",
+        "orm_import_path": "github.com/recoweft/goquent/orm",
+        "typed": true,
+        "dialect": "postgres",
+        "projections": [
+          {
+            "name": "Summary",
+            "columns": [
+              "id",
+              "segment",
+              "status",
+              "active",
+              "flag",
+              "note",
+              "balance",
+              "happened",
+              "clock",
+              "stamp"
+            ]
+          },
+          {
+            "name": "Identity",
+            "columns": [
+              "segment",
+              "id"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "snapshot_kind": "manifest",
+      "input": "inputs/tenant.json",
+      "target": "tenant_generated.go",
+      "generator_version": "typed-repository-v2",
+      "code_paths": [],
+      "options": {
+        "package_name": "typedfixture",
+        "table_name": "gq08_tenants",
+        "row_type_name": "TenantRecordRow",
+        "repository_type_name": "TenantRecordRepository",
+        "orm_import_path": "github.com/recoweft/goquent/orm",
+        "typed": true,
+        "dialect": "postgres",
+        "projections": [
+          {
+            "name": "Identity",
+            "columns": [
+              "id",
+              "tenant_id",
+              "active"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "snapshot_kind": "manifest",
+      "input": "inputs/mysql_tenant.json",
+      "target": "mysql_tenant_generated.go",
+      "generator_version": "typed-repository-v2",
+      "code_paths": [],
+      "options": {
+        "package_name": "typedfixture",
+        "table_name": "gq08_tenants",
+        "row_type_name": "MySQLTenantRecordRow",
+        "repository_type_name": "MySQLTenantRecordRepository",
+        "orm_import_path": "github.com/recoweft/goquent/orm",
+        "typed": true,
+        "dialect": "mysql",
+        "projections": [
+          {
+            "name": "Identity",
+            "columns": [
+              "id",
+              "tenant_id",
+              "active"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

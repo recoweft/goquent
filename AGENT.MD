@@ -145,3 +145,14 @@ single-pass CompileWithDiagnostics/ValidateWithDiagnostics APIs, independent
 closed DiagnosticView, CLI/MCP migration and canonical Schema fixture scope.
 Internal targets/declarations/evidence remain private. Existing execution,
 source-wire and public PlanView contracts stay unchanged.
+
+## GQ-AI-08 PR2 update patches and regeneration
+
+See [typed update patches](docs/typed-update-patches.md) for the separate
+application-only UpdateSpec, generated nominal column states and shared private
+write dispatch. Read-only OperationSpec/CLI/MCP contracts remain unchanged.
+The bounded check-repositories command compares actual regeneration against fixed
+registry inputs without writing files or publishing source. Keep the CI capture
+wrapper and existing local-artifact restrictions. Typed v2/current fixtures and
+preserved v1 compatibility fixtures serve different tests. Compile success and
+supplied snapshot agreement are not write authorization or live DB evidence.

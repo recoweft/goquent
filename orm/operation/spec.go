@@ -233,6 +233,12 @@ func prepareOperation(ctx context.Context, spec OperationSpec, opts Options, r *
 }
 
 func validate(spec OperationSpec, opts Options, r *diagnosticRecorder) (validationResult, error) {
+	return validateOperation(spec, opts, r, false)
+}
+
+// validateOperation shares declarations, predicates and policy checks. Only the
+// separate application update compiler may omit the SELECT-only requirements.
+func validateOperation(spec OperationSpec, opts Options, r *diagnosticRecorder, update bool) (validationResult, error) {
 	r.at("unknown", "root", "", -1, "")
 	r.expect("INPUT_LIMIT")
 	if err := inputBudget(spec, opts.Values); err != nil {
@@ -274,7 +280,7 @@ func validate(spec OperationSpec, opts Options, r *diagnosticRecorder) (validati
 	}
 	r.at("spec", "select", "", -1, "")
 	r.expect("SELECT_REQUIRED")
-	if len(spec.Select) == 0 {
+	if !update && len(spec.Select) == 0 {
 		return validationResult{}, ErrSelectRequired
 	}
 
@@ -384,7 +390,7 @@ func validate(spec OperationSpec, opts Options, r *diagnosticRecorder) (validati
 		}
 		return validationResult{}, fmt.Errorf("%w: %s.%s", ErrRequiredFilterMissing, table.Name, required.column)
 	}
-	if spec.Limit == nil {
+	if !update && spec.Limit == nil {
 		r.at("spec", "limit", "", -1, "")
 		r.warning(WarningOperationMissingLimit)
 		result.warnings = append(result.warnings, warning(
