@@ -2,8 +2,8 @@
 
 OperationSpec remains a single-model SELECT language. It does not accept joins,
 raw SQL, writes, or an execution permission. `operation.Validate` and `Compile`
-share the same DB-free validator and planner. Detailed public diagnostic locations,
-evidence and repair suggestions belong to PR2.
+share the same DB-free validator and planner. [Structured diagnostics](operation-diagnostics.md) adds logical public locations,
+closed categories and private evidence/repair records in PR2.
 
 ## Application entry points
 
@@ -196,6 +196,6 @@ limit. Count/First/Get keep ordinary scanner behavior, including no-row errors;
 there is no synthetic zero count. Validated binding detects 0-to-positive and
 0-to-omitted changes. Public Limit mutation never changes private execution.
 
-PR2 retains detailed structured diagnostic projection and cross-surface diagnostic
-formatting. Array binding, new driver adapters, canonical expansion and unsupported
+PR2 provides the separate DiagnosticView projection and cross-surface formatting;
+see [its API and migration guide](operation-diagnostics.md). Array binding, new driver adapters, canonical expansion and unsupported
 DB types are continuing limits, not an implicit PR2 commitment.

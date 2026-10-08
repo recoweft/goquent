@@ -86,6 +86,7 @@ import "github.com/recoweft/goquent/orm"
   - [func \(db \*DB\) Clone\(\) \*DB](<#DB.Clone>)
   - [func \(db \*DB\) Close\(\) error](<#DB.Close>)
   - [func \(db \*DB\) CompileOperation\(ctx context.Context, spec operation.OperationSpec, opts operation.Options\) \(\*QueryPlan, error\)](<#DB.CompileOperation>)
+  - [func \(db \*DB\) CompileOperationWithDiagnostics\(ctx context.Context, spec OperationSpec, opts OperationOptions\) \(\*QueryPlan, operation.DiagnosticView, error\)](<#DB.CompileOperationWithDiagnostics>)
   - [func \(db \*DB\) Dialect\(\) driver.Dialect](<#DB.Dialect>)
   - [func \(db \*DB\) Exec\(q string, args ...any\) \(sql.Result, error\)](<#DB.Exec>)
   - [func \(db \*DB\) ExecContext\(ctx context.Context, q string, args ...any\) \(sql.Result, error\)](<#DB.ExecContext>)
@@ -107,6 +108,7 @@ import "github.com/recoweft/goquent/orm"
   - [func \(db \*DB\) Transaction\(fn func\(tx Tx\) error\) error](<#DB.Transaction>)
   - [func \(db \*DB\) TransactionContext\(ctx context.Context, fn func\(tx Tx\) error\) error](<#DB.TransactionContext>)
   - [func \(db \*DB\) ValidateOperation\(spec operation.OperationSpec, opts operation.Options\) \(\[\]Warning, error\)](<#DB.ValidateOperation>)
+  - [func \(db \*DB\) ValidateOperationWithDiagnostics\(spec OperationSpec, opts OperationOptions\) \(\[\]Warning, operation.DiagnosticView, error\)](<#DB.ValidateOperationWithDiagnostics>)
   - [func \(db \*DB\) WithOptions\(opts ...Option\) \*DB](<#DB.WithOptions>)
   - [func \(db \*DB\) WrapExecutor\(exec Executor, opts ...Option\) \*DB](<#DB.WrapExecutor>)
   - [func \(db \*DB\) WrapTx\(tx \*sql.Tx, opts ...Option\) \*DB](<#DB.WrapTx>)
@@ -200,6 +202,7 @@ import "github.com/recoweft/goquent/orm"
   - [func ProjectionSQL\(sql string, args ...any\) ProjectionExpression](<#ProjectionSQL>)
 - [type QueryPlan](<#QueryPlan>)
   - [func CompileOperationSpec\(ctx context.Context, spec OperationSpec, opts OperationOptions\) \(\*QueryPlan, error\)](<#CompileOperationSpec>)
+  - [func CompileOperationSpecWithDiagnostics\(ctx context.Context, spec OperationSpec, opts OperationOptions\) \(\*QueryPlan, operation.DiagnosticView, error\)](<#CompileOperationSpecWithDiagnostics>)
   - [func PlanDeleteBy\(ctx context.Context, base \*query.Query, scopes ...Scope\) \(\*QueryPlan, error\)](<#PlanDeleteBy>)
   - [func PlanInsert\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(\*QueryPlan, error\)](<#PlanInsert>)
   - [func PlanInsertMany\[T any\]\(ctx context.Context, db \*DB, v \[\]T, opts ...WriteOpt\) \(\*QueryPlan, error\)](<#PlanInsertMany>)
@@ -259,6 +262,7 @@ import "github.com/recoweft/goquent/orm"
 - [type Tx](<#Tx>)
 - [type Warning](<#Warning>)
   - [func ValidateOperationSpec\(spec OperationSpec, opts OperationOptions\) \(\[\]Warning, error\)](<#ValidateOperationSpec>)
+  - [func ValidateOperationSpecWithDiagnostics\(spec OperationSpec, opts OperationOptions\) \(\[\]Warning, operation.DiagnosticView, error\)](<#ValidateOperationSpecWithDiagnostics>)
 - [type WriteOpt](<#WriteOpt>)
   - [func Columns\(cols ...string\) WriteOpt](<#Columns>)
   - [func ConflictColumns\(cols ...string\) WriteOpt](<#ConflictColumns>)
@@ -1182,6 +1186,15 @@ func (db *DB) CompileOperation(ctx context.Context, spec operation.OperationSpec
 
 CompileOperation plans a read\-only operation using this DB's current immutable settings and dialect. Caller options cannot replace them. No SQL is executed.
 
+<a name="DB.CompileOperationWithDiagnostics"></a>
+### func \(\*DB\) CompileOperationWithDiagnostics
+
+```go
+func (db *DB) CompileOperationWithDiagnostics(ctx context.Context, spec OperationSpec, opts OperationOptions) (*QueryPlan, operation.DiagnosticView, error)
+```
+
+CompileOperationWithDiagnostics forces this DB's immutable settings and dialect.
+
 <a name="DB.Dialect"></a>
 ### func \(\*DB\) Dialect
 
@@ -1370,6 +1383,15 @@ func (db *DB) ValidateOperation(spec operation.OperationSpec, opts operation.Opt
 ```
 
 ValidateOperation uses the same DB\-scoped validation and DB\-free planner.
+
+<a name="DB.ValidateOperationWithDiagnostics"></a>
+### func \(\*DB\) ValidateOperationWithDiagnostics
+
+```go
+func (db *DB) ValidateOperationWithDiagnostics(spec OperationSpec, opts OperationOptions) ([]Warning, operation.DiagnosticView, error)
+```
+
+ValidateOperationWithDiagnostics forces this DB's immutable settings and dialect.
 
 <a name="DB.WithOptions"></a>
 ### func \(\*DB\) WithOptions
@@ -2309,6 +2331,15 @@ func CompileOperationSpec(ctx context.Context, spec OperationSpec, opts Operatio
 
 
 
+<a name="CompileOperationSpecWithDiagnostics"></a>
+### func CompileOperationSpecWithDiagnostics
+
+```go
+func CompileOperationSpecWithDiagnostics(ctx context.Context, spec OperationSpec, opts OperationOptions) (*QueryPlan, operation.DiagnosticView, error)
+```
+
+CompileOperationSpecWithDiagnostics adds detached public diagnostics.
+
 <a name="PlanDeleteBy"></a>
 ### func PlanDeleteBy
 
@@ -2864,6 +2895,15 @@ func ValidateOperationSpec(spec OperationSpec, opts OperationOptions) ([]Warning
 ```
 
 
+
+<a name="ValidateOperationSpecWithDiagnostics"></a>
+### func ValidateOperationSpecWithDiagnostics
+
+```go
+func ValidateOperationSpecWithDiagnostics(spec OperationSpec, opts OperationOptions) ([]Warning, operation.DiagnosticView, error)
+```
+
+ValidateOperationSpecWithDiagnostics uses the shared compiler once.
 
 <a name="WriteOpt"></a>
 ## type WriteOpt
@@ -3927,6 +3967,7 @@ ToolResult is an MCP tool result.
 type ToolResult struct {
     Content []Content `json:"content"`
     IsError bool      `json:"isError,omitempty"`
+    // contains filtered or unexported fields
 }
 ```
 
@@ -4816,6 +4857,25 @@ import "github.com/recoweft/goquent/orm/operation"
 - [func Compile\(ctx context.Context, spec OperationSpec, opts Options\) \(\*query.QueryPlan, error\)](<#Compile>)
 - [func JSONSchema\(\) \(\[\]byte, error\)](<#JSONSchema>)
 - [func Validate\(spec OperationSpec, opts Options\) \(\[\]query.Warning, error\)](<#Validate>)
+- [func WriteDiagnosticJSON\(w io.Writer, v DiagnosticView\) error](<#WriteDiagnosticJSON>)
+- [func WriteDiagnosticPretty\(w io.Writer, v DiagnosticView\) error](<#WriteDiagnosticPretty>)
+- [type DiagnosticEntry](<#DiagnosticEntry>)
+  - [func \(v DiagnosticEntry\) Format\(s fmt.State, \_ rune\)](<#DiagnosticEntry.Format>)
+  - [func \(v DiagnosticEntry\) MarshalJSON\(\) \(\[\]byte, error\)](<#DiagnosticEntry.MarshalJSON>)
+  - [func \(v DiagnosticEntry\) String\(\) string](<#DiagnosticEntry.String>)
+- [type DiagnosticLocation](<#DiagnosticLocation>)
+  - [func \(v DiagnosticLocation\) Format\(s fmt.State, \_ rune\)](<#DiagnosticLocation.Format>)
+  - [func \(v DiagnosticLocation\) MarshalJSON\(\) \(\[\]byte, error\)](<#DiagnosticLocation.MarshalJSON>)
+  - [func \(v DiagnosticLocation\) String\(\) string](<#DiagnosticLocation.String>)
+- [type DiagnosticView](<#DiagnosticView>)
+  - [func CompileWithDiagnostics\(ctx context.Context, spec OperationSpec, opts Options\) \(\*query.QueryPlan, DiagnosticView, error\)](<#CompileWithDiagnostics>)
+  - [func DecodeDiagnosticView\(b \[\]byte\) \(DiagnosticView, error\)](<#DecodeDiagnosticView>)
+  - [func ValidateWithDiagnostics\(spec OperationSpec, opts Options\) \(\[\]query.Warning, DiagnosticView, error\)](<#ValidateWithDiagnostics>)
+  - [func \(v DiagnosticView\) Format\(s fmt.State, \_ rune\)](<#DiagnosticView.Format>)
+  - [func \(v DiagnosticView\) MarshalJSON\(\) \(\[\]byte, error\)](<#DiagnosticView.MarshalJSON>)
+  - [func \(v DiagnosticView\) String\(\) string](<#DiagnosticView.String>)
+  - [func \(v DiagnosticView\) ToJSON\(\) \(\[\]byte, error\)](<#DiagnosticView.ToJSON>)
+  - [func \(v \*DiagnosticView\) UnmarshalJSON\(b \[\]byte\) error](<#DiagnosticView.UnmarshalJSON>)
 - [type FilterSpec](<#FilterSpec>)
   - [func \(f FilterSpec\) MarshalJSON\(\) \(\[\]byte, error\)](<#FilterSpec.MarshalJSON>)
   - [func \(f \*FilterSpec\) UnmarshalJSON\(b \[\]byte\) error](<#FilterSpec.UnmarshalJSON>)
@@ -4842,10 +4902,34 @@ const (
 )
 ```
 
+<a name="DiagnosticViewKind"></a>
+
+```go
+const DiagnosticViewKind = "goquent.operation_diagnostics"
+```
+
+<a name="DiagnosticViewVersion"></a>
+
+```go
+const DiagnosticViewVersion = 1
+```
+
 <a name="JSONVersion"></a>JSONVersion is the current diagnostic/input envelope version, not authorization.
 
 ```go
 const JSONVersion = planversion.Current
+```
+
+<a name="MaxDiagnosticElements"></a>
+
+```go
+const MaxDiagnosticElements = 1024
+```
+
+<a name="MaxDiagnostics"></a>
+
+```go
+const MaxDiagnostics = 128
 ```
 
 ## Variables
@@ -4915,6 +4999,202 @@ func Validate(spec OperationSpec, opts Options) ([]query.Warning, error)
 ```
 
 Validate checks an OperationSpec against a manifest and policy metadata.
+
+<a name="WriteDiagnosticJSON"></a>
+## func WriteDiagnosticJSON
+
+```go
+func WriteDiagnosticJSON(w io.Writer, v DiagnosticView) error
+```
+
+
+
+<a name="WriteDiagnosticPretty"></a>
+## func WriteDiagnosticPretty
+
+```go
+func WriteDiagnosticPretty(w io.Writer, v DiagnosticView) error
+```
+
+
+
+<a name="DiagnosticEntry"></a>
+## type DiagnosticEntry
+
+DiagnosticEntry contains only a fixed classification and logical location.
+
+```go
+type DiagnosticEntry struct {
+    Ordinal  int                `json:"ordinal"`
+    Code     string             `json:"code"`
+    Status   string             `json:"status"`
+    Message  string             `json:"message"`
+    Location DiagnosticLocation `json:"location"`
+}
+```
+
+<a name="DiagnosticEntry.Format"></a>
+### func \(DiagnosticEntry\) Format
+
+```go
+func (v DiagnosticEntry) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="DiagnosticEntry.MarshalJSON"></a>
+### func \(DiagnosticEntry\) MarshalJSON
+
+```go
+func (v DiagnosticEntry) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="DiagnosticEntry.String"></a>
+### func \(DiagnosticEntry\) String
+
+```go
+func (v DiagnosticEntry) String() string
+```
+
+
+
+<a name="DiagnosticLocation"></a>
+## type DiagnosticLocation
+
+DiagnosticLocation is a logical position, not a source path or byte offset. Unknown indexes are zero with their corresponding Known flag false.
+
+```go
+type DiagnosticLocation struct {
+    Source       string `json:"source"`
+    Section      string `json:"section"`
+    Member       string `json:"member"`
+    IndexKnown   bool   `json:"index_known"`
+    Index        int    `json:"index"`
+    ElementKnown bool   `json:"element_known"`
+    Element      int    `json:"element"`
+    Origin       string `json:"origin"`
+}
+```
+
+<a name="DiagnosticLocation.Format"></a>
+### func \(DiagnosticLocation\) Format
+
+```go
+func (v DiagnosticLocation) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="DiagnosticLocation.MarshalJSON"></a>
+### func \(DiagnosticLocation\) MarshalJSON
+
+```go
+func (v DiagnosticLocation) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="DiagnosticLocation.String"></a>
+### func \(DiagnosticLocation\) String
+
+```go
+func (v DiagnosticLocation) String() string
+```
+
+
+
+<a name="DiagnosticView"></a>
+## type DiagnosticView
+
+DiagnosticView is detached display data, never execution or authorization input. Compiled includes blocked plans. Coverage describes only the declared subset.
+
+```go
+type DiagnosticView struct {
+    Kind            string            `json:"kind"`
+    Version         int               `json:"version"`
+    Outcome         string            `json:"outcome"`
+    Coverage        string            `json:"coverage"`
+    DiagnosticCount int               `json:"diagnostic_count"`
+    Diagnostics     []DiagnosticEntry `json:"diagnostics"`
+    Truncated       bool              `json:"truncated"`
+    DetailsOmitted  bool              `json:"details_omitted"`
+    Plan            *query.PlanView   `json:"plan,omitempty"`
+}
+```
+
+<a name="CompileWithDiagnostics"></a>
+### func CompileWithDiagnostics
+
+```go
+func CompileWithDiagnostics(ctx context.Context, spec OperationSpec, opts Options) (*query.QueryPlan, DiagnosticView, error)
+```
+
+CompileWithDiagnostics uses the same single validation/planning pass as Compile. The returned view is detached; the error and original plan retain their meaning.
+
+<a name="DecodeDiagnosticView"></a>
+### func DecodeDiagnosticView
+
+```go
+func DecodeDiagnosticView(b []byte) (DiagnosticView, error)
+```
+
+DecodeDiagnosticView rejects ambiguous, unknown and oversized wire input. It returns a fresh zero view on error; no private evidence can be restored.
+
+<a name="ValidateWithDiagnostics"></a>
+### func ValidateWithDiagnostics
+
+```go
+func ValidateWithDiagnostics(spec OperationSpec, opts Options) ([]query.Warning, DiagnosticView, error)
+```
+
+ValidateWithDiagnostics shares CompileWithDiagnostics, including planning gates.
+
+<a name="DiagnosticView.Format"></a>
+### func \(DiagnosticView\) Format
+
+```go
+func (v DiagnosticView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="DiagnosticView.MarshalJSON"></a>
+### func \(DiagnosticView\) MarshalJSON
+
+```go
+func (v DiagnosticView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="DiagnosticView.String"></a>
+### func \(DiagnosticView\) String
+
+```go
+func (v DiagnosticView) String() string
+```
+
+
+
+<a name="DiagnosticView.ToJSON"></a>
+### func \(DiagnosticView\) ToJSON
+
+```go
+func (v DiagnosticView) ToJSON() ([]byte, error)
+```
+
+
+
+<a name="DiagnosticView.UnmarshalJSON"></a>
+### func \(\*DiagnosticView\) UnmarshalJSON
+
+```go
+func (v *DiagnosticView) UnmarshalJSON(b []byte) error
+```
+
+
 
 <a name="FilterSpec"></a>
 ## type FilterSpec
