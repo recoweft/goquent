@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go/token"
+	"go/types"
 	"regexp"
 	"sort"
 	"strconv"
@@ -35,6 +36,7 @@ type typedColumn struct {
 	field                              skeletonField
 	decl                               sqltype.Type
 	input, scalar, columnType, keyType string
+	choices                            []string
 	tenant                             bool
 }
 type typedProjection struct {
@@ -76,7 +78,14 @@ func prepareTypedSkeleton(table Table, opts RepositorySkeletonOptions, pkg, row,
 	if t.prefix == "" {
 		t.prefix = row
 	}
-	for _, n := range []string{"context", "sql", "json", "fmt", "time", "orm", "operation", "manifest", "string", "bool", "any", "int64", "uint64"} {
+	// Reserve the standard library's complete predeclared universe rather than
+	// a partial type list. Package declarations must not shadow generated uses.
+	for _, n := range types.Universe.Names() {
+		t.names[n] = true
+	}
+	// Imports, init, and locals at generated type-use sites also cannot be
+	// caller-selected type names. Keep the legacy naming path unchanged.
+	for _, n := range []string{"context", "sql", "json", "fmt", "time", "orm", "operation", "manifest", "init", "db", "ctx", "input", "key", "r", "rows", "err"} {
 		t.names[n] = true
 	}
 	for _, n := range []string{row, repo, "New" + repo, t.prefix + "Predicate", t.prefix + "Order", t.prefix + "Read", t.prefix + "Key", t.prefix + "Columns", t.prefix + "ColumnSet", privatePrefix(t.prefix) + "Snapshot", privatePrefix(t.prefix) + "KeyInput"} {
@@ -174,6 +183,21 @@ func prepareTypedSkeleton(table Table, opts RepositorySkeletonOptions, pkg, row,
 		} else if len(c.EnumValues) > 0 && scalar == "string" {
 			col.input = t.name(t.prefix + name + "Value")
 		}
+		if col.input != "" && col.input != col.scalar {
+			if col.tenant && col.keyType != "" {
+				// This public helper has a fixed spelling. Refuse collisions,
+				// including more than one supplied tenant-key component.
+				helper := t.prefix + "CurrentTenantKey"
+				if t.names[helper] {
+					return nil, ErrRepositoryGeneration
+				}
+				t.names[helper] = true
+			} else if !col.tenant && col.scalar == "string" {
+				for i := range c.EnumValues {
+					col.choices = append(col.choices, t.name(col.input+"Choice"+strconv.Itoa(i+1)))
+				}
+			}
+		}
 		tag := c.Name
 		if c.Primary {
 			tag += ",pk"
@@ -235,7 +259,10 @@ func prepareTypedSkeleton(table Table, opts RepositorySkeletonOptions, pkg, row,
 	return t, nil
 }
 func (t *typedSkeleton) imports(path string) map[string]struct{} {
-	out := map[string]struct{}{"context": {}, "encoding/json": {}, "fmt": {}, path: {}, path + "/manifest": {}, path + "/operation": {}}
+	out := map[string]struct{}{"encoding/json": {}, "fmt": {}, path: {}, path + "/manifest": {}, path + "/operation": {}}
+	if len(t.keys) != 0 || len(t.projections) != 0 {
+		out["context"] = struct{}{}
+	}
 	if t.clockType != "" {
 		out["time"] = struct{}{}
 	}
@@ -334,7 +361,7 @@ type %sRead struct { Filters []%sPredicate; OrderBy []%sOrder; Limit *int64; Acc
 			opaqueType(b, c.input)
 			if !c.tenant && c.scalar == "string" {
 				for i, v := range c.column.EnumValues {
-					fmt.Fprintf(b, "const %sChoice%d %s = %q\n", c.input, i+1, c.input, v)
+					fmt.Fprintf(b, "const %s %s = %q\n", c.choices[i], c.input, v)
 				}
 			}
 		}

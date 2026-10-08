@@ -41,8 +41,32 @@ Typed SQL targets currently use single ASCII identifiers (letters/underscore,
 then letters/digits/underscore). SQL paths, punctuation, expressions, and other
 identifier spellings refuse with `ErrRepositoryGeneration`. Go identifiers are
 sanitized using the existing naming helpers; reserved field names and collisions
-receive deterministic numeric suffixes. Conflicting top-level names refuse.
-Generated fixtures exercise Go keyword, field, import and nominal-type collisions.
+receive deterministic numeric suffixes. The same package-level reservation set
+covers types, constructors, column accessors, private snapshot/key functions,
+tenant-key helpers and enum constants. Caller-selected top-level names conflicting
+with fixed declarations, import names, `init`, generated locals at type-use sites,
+or any predeclared identifier from the toolchain's `go/types.Universe` refuse with
+the fixed `ErrRepositoryGeneration`. This includes all integer widths, `error`,
+builtin functions and constants, even when a particular fixture does not use them.
+More than one supplied tenant-key component would duplicate the fixed helper and
+also refuses. SQL column names and enum values are never changed to resolve Go
+name conflicts. Duplicate SQL columns and projection methods still refuse.
+
+Allocatable generated names (column/enum types, enum Choice constants, clock types,
+and projection result types) receive deterministic numeric suffixes when occupied.
+Existing noncolliding names and checked-in normal fixtures remain unchanged.
+Callers with newly refused custom names must choose nonreserved names and regenerate
+to a new artifact. Callers of a colliding enum constant must use its newly allocated
+name; the underlying value and its runtime membership checks stay unchanged.
+Reservations cover this generated artifact, not unrelated declarations in the
+application package; compile the combined package when integrating it.
+
+Imports follow emitted declarations: `context` is needed only for a generated
+key read or an explicit projection. Empty models and models with no supplied PK,
+an unknown PK, or a forbidden PK can generate without projections and compile;
+this adds no default key or executable read guarantee. Unknown declarations remain
+unknown. Real external-module fixtures cover both dialects and entry points,
+including accepted collisions and fixed refusals.
 This limited identifier subset does not change dynamic Query naming support.
 
 ## Generated surface
