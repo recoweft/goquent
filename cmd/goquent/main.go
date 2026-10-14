@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/recoweft/goquent/orm/manifest"
+	"github.com/recoweft/goquent/orm/query"
 	"github.com/recoweft/goquent/orm/review"
 )
 
@@ -45,11 +46,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func runReview(args []string, stdout, stderr io.Writer) int {
+	return runReviewEvidence(args, stdout, stderr, nil, "", query.Settings{})
+}
+
+func runReviewEvidence(args []string, stdout, stderr io.Writer, evidence func(*review.Session), dialect string, settings query.Settings) int {
 	fs := flag.NewFlagSet("goquent review", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	failOn := fs.String("fail-on", "high", "risk threshold that returns exit code 1")
 	failOnPrecision := fs.String("fail-on-precision", "", "analysis precision threshold that returns exit code 1: partial or unsupported")
-	format := fs.String("format", "pretty", "output format: pretty, json, github")
+	format := fs.String("format", "pretty", "output format: pretty, json, json-v2, github")
 	showSuppressed := fs.Bool("show-suppressed", false, "include suppressed findings in the primary output")
 	configPath := fs.String("config", "", "path to a JSON goquent review config file")
 	manifestPath := fs.String("manifest", "", "manifest JSON path for freshness warnings")
@@ -132,13 +137,14 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 	precisionThresholdSet := strings.TrimSpace(*failOnPrecision) != ""
 	outputFormat := strings.ToLower(strings.TrimSpace(*format))
 	switch outputFormat {
-	case "", "pretty", "text", "json", "github":
+	case "", "pretty", "text", "json", "json-v2", "github":
 	default:
 		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		return 2
 	}
 
 	report, err := review.Run(review.Options{
+		Evidence: evidence, EvidenceDialect: dialect, EvidenceSettings: settings,
 		Paths:                fs.Args(),
 		ShowSuppressed:       *showSuppressed,
 		ConfigPath:           *configPath,
@@ -162,6 +168,16 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 		view, err = report.PublicView()
 		if err == nil {
 			err = review.WritePublicJSON(stdout, view)
+		}
+	case "json-v2":
+		var view review.ReportViewV2
+		view, err = report.PublicViewV2()
+		if err == nil {
+			var b []byte
+			b, err = view.ToJSON()
+			if err == nil {
+				_, err = stdout.Write(append(b, '\n'))
+			}
 		}
 	case "github":
 		err = review.WriteGitHub(stdout, report)

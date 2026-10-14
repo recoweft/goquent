@@ -283,8 +283,8 @@ func run(db any) {
 	if !ok {
 		t.Fatalf("expected %s finding, got %#v", query.WarningUpdateWithoutWhere, report.Findings)
 	}
-	if update.AnalysisPrecision != query.AnalysisPrecise {
-		t.Fatalf("expected precise update finding, got %s", update.AnalysisPrecision)
+	if update.AnalysisPrecision != query.AnalysisPartial {
+		t.Fatalf("expected partial update finding with unverified policy, got %s", update.AnalysisPrecision)
 	}
 	if update.Location == nil || update.Location.Line != 5 {
 		t.Fatalf("expected update location line 5, got %#v", update.Location)

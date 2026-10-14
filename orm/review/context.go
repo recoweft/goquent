@@ -8,6 +8,7 @@ import (
 )
 
 type reviewContext struct {
+	session            *Session
 	types              map[string]*typedFile
 	manifest           *manifest.Manifest
 	riskMetadata       []query.TableRiskMetadata

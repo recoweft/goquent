@@ -456,3 +456,14 @@ independent unverified-correspondence marker, including warning-free C01 input.
 Original wire bytes/examples remain unchanged. Supplied JSON cannot suppress
 recomputed risk or prove runtime correspondence. MigrationPlan evidence audit,
 PR2 runtime matching/multi-axis precision and PR3 SARIF/baselines remain pending.
+
+## GQ-AI-09 PR2 review coverage and planner samples
+
+See [static precision and planner samples](../docs/static-review-precision.md).
+Review retains independent SQL/column/binding/policy unknowns, and a conservative
+precision gate over complete private operation results. The explicit synchronous
+application-test path compares opaque common-planner SELECT receipts within a
+bounded source session. It is not execution authorization or proof that source
+ran. Standalone CLI/MCP JSON remains unverified. Existing public v1 is unchanged
+by default; opt-in v2 contains only bounded closed classifications. PR3 SARIF,
+changed-line review and expiring baselines remain separate work.

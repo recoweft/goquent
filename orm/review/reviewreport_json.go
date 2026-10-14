@@ -2,6 +2,7 @@ package review
 
 import (
 	"encoding/json"
+	"github.com/recoweft/goquent/orm/analysis"
 
 	"github.com/recoweft/goquent/orm/internal/planversion"
 )
@@ -25,6 +26,14 @@ func (p *ReviewReport) UnmarshalJSON(b []byte) error {
 	if err := planversion.Decode(b, &v); err != nil {
 		return err
 	}
+	for i := range v.Operations {
+		v.Operations[i].Correspondence = analysis.Correspondence{}.Normalize()
+	}
 	*p = ReviewReport(v)
+	p.privateOperations = cloneOperations(p.Operations)
+	for i := range p.privateOperations {
+		p.privateOperations[i].Detail = analysis.Detail{Reasons: []string{"unverified_input"}}.Normalize()
+		p.privateOperations[i].Suppressed = false
+	}
 	return nil
 }

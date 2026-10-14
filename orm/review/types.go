@@ -1,6 +1,7 @@
 package review
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"go/ast"
@@ -36,6 +37,9 @@ type typedFile struct {
 // loadReviewTypes owns all type identities for one Run. It never publishes
 // loader diagnostics or reuses objects across runs, modules or package variants.
 func loadReviewTypes(parent context.Context, paths []string) map[string]*typedFile {
+	return loadReviewTypesSnapshot(parent, paths, nil)
+}
+func loadReviewTypesSnapshot(parent context.Context, paths []string, overlay map[string][]byte) map[string]*typedFile {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -63,7 +67,11 @@ func loadReviewTypes(parent context.Context, paths []string) map[string]*typedFi
 			continue
 		}
 		total += st.Size()
-		tf.file, _ = parser.ParseFile(tf.fset, abs, nil, parser.ParseComments)
+		var input any
+		if b, ok := overlay[abs]; ok {
+			input = b
+		}
+		tf.file, _ = parser.ParseFile(tf.fset, abs, input, parser.ParseComments)
 		dir := filepath.Dir(abs)
 		root := moduleRoot(dir)
 		if root == "" {
@@ -80,6 +88,7 @@ func loadReviewTypes(parent context.Context, paths []string) map[string]*typedFi
 	}
 	sort.Strings(roots)
 	var parseMu sync.Mutex
+	parsedSources := map[string][]byte{}
 	parsedBytes, parsedFiles := int64(0), 0
 	parseBounded := func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 		parseMu.Lock()
@@ -96,6 +105,22 @@ func loadReviewTypes(parent context.Context, paths []string) map[string]*typedFi
 		if st.Size() > maxTypeFileBytes || parsedBytes > maxTypeInputBytes || parsedFiles > maxTypeFiles {
 			return nil, errors.New("type input budget exceeded")
 		}
+		if b, ok := overlay[filename]; ok {
+			src = b
+		}
+		if src == nil {
+			src, err = os.ReadFile(filename)
+			if err != nil {
+				return nil, errors.New("type input unavailable")
+			}
+		}
+		if len(src) > maxTypeFileBytes {
+			return nil, errors.New("type input budget exceeded")
+		}
+		if previous, seen := parsedSources[filename]; seen && !bytes.Equal(previous, src) {
+			return nil, errors.New("type input changed")
+		}
+		parsedSources[filename] = append([]byte(nil), src...)
 		return parser.ParseFile(fset, filename, src, parser.ParseComments)
 	}
 	dirs := 0
@@ -110,7 +135,7 @@ func loadReviewTypes(parent context.Context, paths []string) map[string]*typedFi
 		if dirs > maxTypeDirectories || ctx.Err() != nil {
 			continue
 		}
-		pkgs, err := packages.Load(&packages.Config{Context: ctx, Dir: root, Mode: packages.LoadSyntax, Tests: true, ParseFile: parseBounded, BuildFlags: []string{"-mod=readonly"}}, patterns...)
+		pkgs, err := packages.Load(&packages.Config{Context: ctx, Overlay: overlay, Dir: root, Mode: packages.LoadSyntax, Tests: true, ParseFile: parseBounded, BuildFlags: []string{"-mod=readonly"}}, patterns...)
 		if err != nil {
 			continue
 		}
@@ -135,6 +160,13 @@ func loadReviewTypes(parent context.Context, paths []string) map[string]*typedFi
 					continue
 				}
 				out[abs] = &typedFile{file: f, fset: pkg.Fset, info: pkg.TypesInfo, pkg: pkg.Types, helpers: helpers, incomplete: pkg.IllTyped || len(pkg.Errors) > 0 || pkg.TypesInfo == nil}
+			}
+		}
+	}
+	if overlay != nil {
+		for path, b := range parsedSources {
+			if _, ok := overlay[path]; !ok {
+				overlay[path] = b
 			}
 		}
 	}

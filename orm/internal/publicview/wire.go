@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -18,7 +19,10 @@ var ErrWrite = errors.New("PUBLIC_VIEW_WRITE: output failed")
 
 // Decode rejects ambiguous keys, nulls, unknown fields and trailing documents.
 // dst must be a library-owned plain wire struct, never application data.
-func Decode(b []byte, kind string, dst any) error {
+func Decode(b []byte, kind string, dst any) error { return DecodeVersion(b, kind, 1, dst) }
+
+// DecodeVersion preserves the strict lexical envelope for explicitly selected versions.
+func DecodeVersion(b []byte, kind string, version int, dst any) error {
 	if len(b) > MaxBytes {
 		return ErrInvalid
 	}
@@ -34,7 +38,7 @@ func Decode(b []byte, kind string, dst any) error {
 		Kind    string          `json:"kind"`
 		Version json.RawMessage `json:"version"`
 	}
-	if json.Unmarshal(b, &envelope) != nil || envelope.Kind != kind || string(envelope.Version) != "1" {
+	if json.Unmarshal(b, &envelope) != nil || envelope.Kind != kind || string(envelope.Version) != strconv.Itoa(version) {
 		return ErrInvalid
 	}
 	d = json.NewDecoder(bytes.NewReader(b))

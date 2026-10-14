@@ -10,6 +10,7 @@ import (
 	"github.com/recoweft/goquent/orm/migration"
 	"github.com/recoweft/goquent/orm/publicoutput"
 	"github.com/recoweft/goquent/orm/query"
+	"github.com/recoweft/goquent/orm/review"
 
 	"github.com/recoweft/goquent/orm/internal/planversion"
 	"github.com/recoweft/goquent/orm/internal/querybridge"
@@ -163,7 +164,7 @@ func (s *Server) Tools() []Tool {
 		{Name: "get_manifest", Description: "Return a redacted manifest summary; not a reusable manifest", InputSchema: objectSchema(nil)},
 		{Name: "get_manifest_status", Description: "Return manifest freshness status", InputSchema: objectSchema(nil)},
 		{Name: "explain_query", Description: "Create a raw SQL QueryPlan without executing SQL", InputSchema: objectSchema(map[string]any{"sql": stringProp})},
-		{Name: "review_query", Description: "Review raw SQL without executing it", InputSchema: objectSchema(map[string]any{"sql": stringProp})},
+		{Name: "review_query", Description: "Review raw SQL without executing it; json-v2 adds bounded coverage", InputSchema: objectSchema(map[string]any{"sql": stringProp, "format": map[string]any{"type": "string", "enum": []string{"json", "json-v2"}}})},
 		{Name: "review_migration", Description: "Review migration SQL without applying it", InputSchema: objectSchema(map[string]any{"sql": stringProp})},
 		{Name: "generate_query_plan", Description: "Generate a QueryPlan from raw SQL or read-only OperationSpec", InputSchema: objectSchema(map[string]any{"sql": stringProp, "operation_spec": objectProp, "values": objectProp})},
 		{Name: "compile_operation_spec", Description: "Compile read-only select OperationSpec to QueryPlan", InputSchema: objectSchema(map[string]any{"spec": objectProp, "values": objectProp, "require_fresh_manifest": map[string]any{"type": "boolean"}})},
@@ -214,7 +215,25 @@ func (s *Server) callTool(ctx context.Context, name string, args map[string]any,
 		if err != nil {
 			return ToolResult{}, err
 		}
+		if value, exists := args["format"]; exists {
+			format, ok := value.(string)
+			if !ok || (format != "json" && format != "json-v2") {
+				return ToolResult{}, fmt.Errorf("PUBLIC_INPUT: invalid review format")
+			}
+		}
+		if format, ok := args["format"].(string); ok && format == "json-v2" {
+			v, e := review.ReviewSQL(sqlText).PublicViewV2()
+			if e != nil {
+				return ToolResult{}, e
+			}
+			b, e := v.ToJSON()
+			if e != nil {
+				return ToolResult{}, e
+			}
+			return s.textTool(string(b)), nil
+		}
 		plan := query.NewRawPlan(sqlText)
+		plan.AnalysisPrecision = query.AnalysisPartial
 		view, err := plan.PublicView()
 		if err != nil {
 			return ToolResult{}, err
