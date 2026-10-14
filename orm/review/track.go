@@ -628,14 +628,26 @@ func isQueryOperation(name string) bool {
 	}
 	return false
 }
+
+// Only declared operation entry points belong here. Option and hook factories
+// such as UpdateColumns and InsertHook do not themselves execute an operation.
 func genericOperation(name string) bool {
-	for _, prefix := range []string{"SelectOne", "SelectAll", "SelectStruct", "Insert", "Update", "Upsert", "DeleteBy", "PlanSelect", "PlanUpdate", "PlanDelete", "PlanInsert", "PlanUpsert", "ReplaceNested", "RunIdempotent", "RunTransaction", "ExecuteUpdate"} {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
+	switch name {
+	case "SelectOne", "SelectAll", "SelectStruct", "SelectStructs",
+		"Insert", "InsertReturning", "InsertMany", "InsertManyReturning",
+		"Upsert", "UpsertReturning", "UpsertMany", "UpsertManyReturning",
+		"Update", "UpdateReturning", "InsertOnceReturning",
+		"PlanInsert", "PlanUpdate", "PlanUpsert", "PlanInsertMany", "PlanUpsertMany",
+		"PlanSelectBy", "PlanUpdateBy", "PlanDeleteBy", "SelectOneBy", "SelectAllBy",
+		"UpdateBy", "UpdateByReturning", "UpdateByReturningWithOptions", "DeleteBy",
+		"SelectOperationBy", "UpdateOperationBy", "UpdateOperationReturningBy",
+		"ReplaceNestedCollection", "ReplaceNestedCollectionTx", "RunIdempotentCommand", "RunTransactionWithHooks":
+		return true
+	default:
+		return false
 	}
-	return false
 }
+
 func (t *goTracker) raw(name string, c *ast.CallExpr, loc *query.SourceLocation) {
 	i := rawSQLArgIndex(name)
 	if name == "QueryRowE" || name == "SelectMap" || name == "SelectMaps" || name == "PrepareContext" {

@@ -51,15 +51,15 @@ or input exclusions were used.
 
 | Measure | Main | PR1 |
 | --- | ---: | ---: |
-| Findings | 499 | 1,121 |
+| Findings | 499 | 1,122 |
 | Suppressed | 0 | 0 |
 | Precise | 253 | 160 |
-| Partial | 157 | 853 |
+| Partial | 157 | 854 |
 | Unsupported | 89 | 108 |
 | Blocked risk | 11 | 4 |
 | Destructive risk | 23 | 24 |
 | High risk | 81 | 109 |
-| Medium risk | 384 | 984 |
+| Medium risk | 384 | 985 |
 
 Matching original code/file/physical-position tuples across unchanged source lines
 retained 425 of the 499 original findings. Of the 74 unmatched original findings,
@@ -74,7 +74,9 @@ The other six were old partial markers on Query variables now reconstructed:
 four supported literal read shapes need no finding; one retains LIMIT_MISSING;
 one retains DELETE_WITHOUT_WHERE. The audit also caught and corrected lost
 Executor calls and missing projection/limit diagnoses on dynamic tables before
-final validation. New generic, method-value, local-variable and incomplete-flow
+final validation. The final API audit uses an explicit generic operation list: option/hook
+factories are excluded, and typed operation execution adapters are included.
+New generic, method-value, local-variable and incomplete-flow
 markers explain much of the increase. New source/test code also contributes to
 the full-tree count; this is not a controlled performance or accuracy benchmark.
 

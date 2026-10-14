@@ -34,6 +34,9 @@ func identity(db *g.DB, raw *sqlalias.DB, executor g.Executor, flag bool, dynami
  var rows []map[string]any
  unrelated{}.Table("users").Update(nil) // negative
  unrelated{}.Get(nil) // negative
+ _ = g.UpdateColumns("name") // negative
+ _ = g.InsertHook("hook",1) // negative
+ g.SelectOperationBy[int](context.Background(),db,g.OperationSpec{},g.OperationOptions{}) // generic
  unrelated{}.Exec("SELECT * FROM secret") // negative
  db.Table("users").Update(nil) // update
  db.Table("users").Get(&rows) // read
