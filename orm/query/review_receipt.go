@@ -51,10 +51,11 @@ func (ReviewToken) Format(s fmt.State, _ rune)    { _, _ = s.Write([]byte("<revi
 // It cannot be serialized or used by any execution API. SELECT is the initial
 // supported family. Source correspondence is declared by the application's test.
 type ReviewReceipt struct {
-	token        *reviewTokenState
-	owner        *Query
-	ownerContext context.Context
-	sample       *reviewSnapshot
+	token         *reviewTokenState
+	owner         *Query
+	ownerContext  context.Context
+	ownerExecutor executor
+	sample        *reviewSnapshot
 }
 type reviewSnapshot struct {
 	operation, target, structure, args, config []byte
@@ -91,7 +92,7 @@ func (q *Query) ReviewReceipt(ctx context.Context, t ReviewToken) (ReviewReceipt
 	if t.state.bytes.Add(int64(size)) > 64<<20 {
 		return ReviewReceipt{}, ErrReviewBudget
 	}
-	return ReviewReceipt{token: t.state, owner: q, ownerContext: q.ctx, sample: s}, nil
+	return ReviewReceipt{token: t.state, owner: q, ownerContext: q.ctx, ownerExecutor: q.exec, sample: s}, nil
 }
 
 func reviewTree(n *predicate.Node, depth int) (any, bool) {
@@ -195,7 +196,7 @@ func (q *Query) reviewSnapshot(e *plannedExecution) *reviewSnapshot {
 	return s
 }
 func (r ReviewReceipt) current(t ReviewToken) bool {
-	if !t.valid() || r.token != t.state || r.owner == nil || r.sample == nil || !bindingSame(r.ownerContext, r.owner.ctx) {
+	if !t.valid() || r.token != t.state || r.owner == nil || r.sample == nil || !bindingSame(r.ownerContext, r.owner.ctx) || r.owner.builder == nil || !bindingSame(r.ownerExecutor, r.owner.exec) {
 		return false
 	}
 	if r.owner.ctx != nil && r.owner.ctx.Err() != nil {

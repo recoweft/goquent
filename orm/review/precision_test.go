@@ -282,3 +282,51 @@ func TestV2BoundsAndIndependentUnknowns(t *testing.T) {
 		}
 	}
 }
+
+func TestMatchedPlannerContextDoesNotFillStaticAxes(t *testing.T) {
+	path := precisionFixture(t)
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, []byte(strings.ReplaceAll(string(source), "PRIVATE_TABLE_CANARY", "context_users")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	columns := []query.WriteKeyColumn{{Name: "tenant_id", DBType: "INT", Bits: 32}, {Name: "id", DBType: "INT", Bits: 32}}
+	schema, e := query.NewApplicationSchema(query.ApplicationSchemaInput{Database: "app-db", Dialect: "mysql", Tables: []query.ApplicationTable{{Table: "context_users", PlainTable: true, Columns: columns, CompleteUniqueConstraints: true, Constraints: []query.WriteKeyConstraint{{Kind: "primary", AllRows: true, Valid: true, NotDeferrable: true, Columns: columns}}}}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	policies, e := query.NewPolicySet(query.TablePolicy{Table: "context_users", TenantColumn: "tenant_id"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	tenant, e := query.NewApplicationTenantContext(query.ExecutionContextInput{TenantPresent: true, CurrentTenant: 1})
+	if e != nil {
+		t.Fatal(e)
+	}
+	settings := query.NewSettings(policies, query.RiskConfig{}, tenant).WithTenantPolicy("app-db", schema, true)
+	report, e := Run(Options{Paths: []string{path}, EvidenceDialect: "mysql", EvidenceSettings: settings, Evidence: func(s *Session) {
+		q := query.NewWithSettings(nil, "context_users", driver.MySQLDialect{}, settings).Select("id").Where("id", 1).Limit(2)
+		receipt, err := q.ReviewReceipt(context.Background(), s.Token())
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.Record(s.References()[0], receipt)
+	}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(report.Operations) != 1 {
+		t.Fatal("operation lost")
+	}
+	op := report.Operations[0]
+	for _, state := range []analysis.Match{op.Correspondence.Operation, op.Correspondence.Target, op.Correspondence.Structure, op.Correspondence.Arguments, op.Correspondence.Source, op.Correspondence.Context} {
+		if state != analysis.Matched {
+			t.Fatalf("declared sample correspondence: %+v", op.Correspondence)
+		}
+	}
+	if op.Detail.Bindings != analysis.Unknown || op.Detail.Policy != analysis.Unknown || op.Detail.SQL != analysis.Partial || !HasFindingsAtOrAbovePrecision(report, query.AnalysisPartial) {
+		t.Fatal("sample context promoted static coverage")
+	}
+}

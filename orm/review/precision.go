@@ -465,6 +465,14 @@ func (t *goTracker) sampleSelect(name string, calls []chainCall, partial bool) (
 		return d, query.ReviewReceipt{}
 	}
 	d.SQL = analysis.Known
+	// Application-test settings are declaration inputs, not static values from source.
+	settings := t.ctx.session.opts.EvidenceSettings
+	if len(settings.PolicySet().Policies()) > 0 || settings.ExecutionContext().Input().TenantPresent {
+		d.SQL = analysis.Partial
+		d.Bindings = analysis.Unknown
+		d.Reasons = append(d.Reasons, "declaration_only")
+		d.Missing = append(d.Missing, "dynamic_value")
+	}
 	if t.ctx.session.opts.EvidenceDialect != "mysql" && t.ctx.session.opts.EvidenceDialect != "postgres" {
 		return d, query.ReviewReceipt{}
 	}

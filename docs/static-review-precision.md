@@ -62,7 +62,8 @@ and cooperate with cancellation. The library does not launch application tests.
 
 Receipts are issued from the final private common SELECT planner snapshot, not
 from a public `QueryPlan`. They own canonical bytes, not caller maps/slices or
-callbacks. Current owner state is replanned and compared before correspondence is
+callbacks. Current owner state, including its executor/context references, is checked and
+replanned before correspondence is
 accepted. Generating and comparing receipts execute no SQL. Serialization,
 decoding and public formatting cannot reveal or restore their private material.
 Neither receipts nor review tokens are accepted by execution APIs.
@@ -77,6 +78,9 @@ Correspondence has independent `operation`, `target`, `structure`, `arguments`,
 `source` and `context` states: `matched`, `unconfirmed`, `mismatched`. Comparison
 preserves dialect, exact generated SQL, condition-tree structure, argument order,
 native type, NULL and presence. It does not implement arbitrary SQL equivalence.
+Application-test policy or tenant settings keep static SQL partial and bindings
+unknown, even when all six sample comparisons match. They are declaration
+inputs, not values learned from the static source.
 An unsupported static reconstruction retains unconfirmed components even if the
 test supplies a real receipt. A known different operation is still a mismatch.
 Context comparisons describe declared snapshots, never authenticated physical

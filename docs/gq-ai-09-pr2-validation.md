@@ -35,7 +35,7 @@ Toolchain actually observed: `go version go1.26.4 linux/amd64`.
 
 | Check | Result |
 | --- | --- |
-| `go test -json ./... -count=1` | 2,745 test pass events, 0 fail, 1 skip; 22 passing test packages and 27 packages with no test files |
+| `go test -json ./... -count=1` | 2,746 test pass events, 0 fail, 1 skip; 22 passing test packages and 27 packages with no test files |
 | Skip | `tests.TestOpenWithRegisteredDriver`: `TEST_DB_DSN` was absent; not counted as a pass |
 | `go test -race ./orm/query ./orm/review ./orm/mcp ./cmd/goquent` | Passed |
 | Focused race reruns after boundary adjustments | Receipt/session, real CLI runner, v2/MCP fixtures passed; final source-consistency fixture rerun recorded separately in the report |
@@ -62,14 +62,14 @@ implementation and again on the PR source. It reported only aggregate counts.
 | Source | Findings | precise | partial | unsupported | suppressed | high gate |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | Latest main c0ce71f | 1,180 | 156 | 916 | 108 | 0 | fail |
-| PR2 source | 1,195 | 0 | 1,086 | 109 | 0 | fail |
+| PR2 source | 1,196 | 0 | 1,087 | 109 | 0 | fail |
 
-Existing codes retain their counts except STATIC_REVIEW_PARTIAL (+14) and
+Existing codes retain their counts except STATIC_REVIEW_PARTIAL (+15) and
 STATIC_REVIEW_UNSUPPORTED (+1). New receipt/planning code and fixtures add bounded
 static discoveries; the raw-SQL review entry retains a dynamic-SQL unsupported
 finding. The old 156 shape-precise findings move to partial because unknown axes
 are preserved. No findings were removed through suppression or threshold changes.
-The source coverage measurement retained 932 operation records, with no global
+The source coverage measurement retained 933 operation records, with no global
 budget-failure diagnostic. These are discovered records, not proof that every
 possible runtime operation was found. Historical PR1 reports (including the old
 499-findings baseline and 2,721-test run) are not current-head evidence.
@@ -92,7 +92,8 @@ possible runtime operation was found. Historical PR1 reports (including the old
   values, paths, digests, loader errors and private receipts are absent from
   public output. Source APIs remain sensitive and display is not a gate input.
 - AC5: real planner API/CLI positives; native argument-type, SQL, target, dialect,
-  context, mutation, changed source, duplicate, old/foreign/zero receipt and
+  context (including all-six-matched without filling static unknowns), missing or
+  replaced owner, mutation, changed source, duplicate, old/foreign/zero receipt and
   altered-reference negatives; strict v1/v2/version tests; privacy canaries;
   Executor-zero spy; opaque Valuer/Stringer/Marshaler refusal; budget/cancel;
   inherited suppression/expiry and PR1 regressions; full/race/vet/regen checks.

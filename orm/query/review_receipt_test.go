@@ -32,6 +32,18 @@ func TestReviewReceiptPrivateLifecycle(t *testing.T) {
 	if c := CompareReviewReceipts(token, a, b); c.Arguments != analysis.Matched {
 		t.Fatalf("%+v", c)
 	}
+	owner := *q
+	*q = Query{}
+	if c := CompareReviewReceipts(token, a, a); c.Source != analysis.Mismatched {
+		t.Fatal("missing owner accepted")
+	}
+	*q = owner
+	savedExecutor := q.exec
+	q.exec = &ownedExecutor{}
+	if c := CompareReviewReceipts(token, a, a); c.Source != analysis.Mismatched {
+		t.Fatal("foreign executor owner accepted")
+	}
+	q.exec = savedExecutor
 	if _, e = json.Marshal(a); e == nil {
 		t.Fatal("serialized receipt")
 	}
