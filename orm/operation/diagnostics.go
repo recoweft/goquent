@@ -14,6 +14,7 @@ type diagnosticRecorder struct {
 	origin       string
 	partial      bool
 	typedReached bool
+	returning    bool
 }
 
 func newRecorder(spec OperationSpec) *diagnosticRecorder {
@@ -27,6 +28,10 @@ func newRecorder(spec OperationSpec) *diagnosticRecorder {
 	return &diagnosticRecorder{origin: origin}
 }
 func (r *diagnosticRecorder) at(source, section, member string, index int, field string) {
+	// Shared SELECT validation retains the logical UpdateSpec source position.
+	if r.returning && source == "spec" && section == "select" {
+		section = "returning"
+	}
 	r.current = querybridge.OperationDiagnostic{Source: source, Section: section, Member: member, Origin: r.origin, IndexKnown: index >= 0, Index: max(index, 0), Field: field}
 	if source != "spec" {
 		r.current.Origin = "unknown"

@@ -1,0 +1,105 @@
+{
+  "version": "1",
+  "generated_at": "1970-01-01T00:00:01Z",
+  "generator_version": "fixture",
+  "dialect": "postgres",
+  "schema_fingerprint": "sha256:c28b4972afbb637c01d2038410eafdd9fd184434f2ef839e26f767e93a05e590",
+  "policy_fingerprint": "sha256:cacaaccbd4d0f3f2f8a270f0f109ced53979aea5b019a07da93eabc561e56b36",
+  "tables": [
+    {
+      "name": "gq08_records",
+      "columns": [
+        {
+          "name": "active",
+          "type": "boolean",
+          "type_source": "sql",
+          "nullable": false
+        },
+        {
+          "name": "balance",
+          "type": "decimal(30,4)",
+          "type_source": "sql",
+          "nullable": false
+        },
+        {
+          "name": "clock",
+          "type": "time(6)",
+          "type_source": "sql",
+          "nullable": false
+        },
+        {
+          "name": "computed",
+          "type": "integer",
+          "type_source": "sql",
+          "nullable": false,
+          "generated": true
+        },
+        {
+          "name": "flag",
+          "type": "boolean",
+          "type_source": "sql",
+          "nullable": true
+        },
+        {
+          "name": "happened",
+          "type": "date",
+          "type_source": "sql",
+          "nullable": false
+        },
+        {
+          "name": "hidden",
+          "type": "text",
+          "type_source": "sql",
+          "nullable": false,
+          "forbidden": true
+        },
+        {
+          "name": "id",
+          "type": "bigint",
+          "type_source": "sql",
+          "primary": true,
+          "nullable": false
+        },
+        {
+          "name": "immutable",
+          "type": "text",
+          "type_source": "sql",
+          "nullable": false,
+          "readonly": true
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "type_source": "sql",
+          "nullable": true
+        },
+        {
+          "name": "segment",
+          "type": "integer",
+          "type_source": "sql",
+          "primary": true,
+          "nullable": false
+        },
+        {
+          "name": "stamp",
+          "type": "timestamp(6) without time zone",
+          "type_source": "sql",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "varchar(12)",
+          "type_source": "sql",
+          "nullable": false,
+          "enum_values": [
+            "ready",
+            "closed",
+            "a-b",
+            "a_b",
+            "type"
+          ]
+        }
+      ]
+    }
+  ]
+}

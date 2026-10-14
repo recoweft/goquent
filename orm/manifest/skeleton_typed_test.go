@@ -45,6 +45,9 @@ func TestTypedRepositoryActualCompile(t *testing.T) {
 	positive := `package typedfixture
 import "context"
 func positive(){
+ _=MySQLRecordPatch{Active:MySQLRecordColumns().Active.Set(false),Note:MySQLRecordColumns().Note.SetNull(),Flag:MySQLRecordColumns().Flag.Set(false)}
+ _=PostgresRecordPatch{Note:PostgresRecordColumns().Note.Set("")}
+
  c:=MySQLRecordColumns()
  _=c.ID.Eq(MySQLRecordIDKey(1))
  _=c.Status.In(MySQLRecordStatusValueChoice1)
@@ -69,6 +72,16 @@ func positive(){
 		t.Fatal("positive generated Go compilation failed; source retained only in local test directory")
 	}
 	negatives := []string{
+		`_ = MySQLRecordPatch{Active:MySQLRecordColumns().Flag.Set(false)}`,
+		`_ = MySQLRecordPatch{Active:PostgresRecordColumns().Active.Set(false)}`,
+		`_ = MySQLRecordColumns().Active.SetNull()`,
+		`_ = MySQLRecordColumns().Immutable.Set("x")`,
+		`_ = MySQLRecordColumns().Computed.Set(int32(0))`,
+		`_ = MySQLRecordColumns().ID.Set(MySQLRecordIDKey(1))`,
+		`_ = MySQLRecordColumns().Status.Set(PostgresRecordStatusValueChoice1)`,
+		`_ = MySQLRecordPatch{Active:false}`,
+		`var r *MySQLRecordRepository;_,_=r.UpdateByKey(nil,MySQLRecordKey{},PostgresRecordPatch{},MySQLRecordUpdate{})`,
+
 		`_ = MySQLRecordColumns().ID.Eq(PostgresRecordIDKey(1))`,
 		`_ = MySQLRecordColumns().ID.Eq(int64(1))`,
 		`_ = MySQLRecordColumns().ID.Eq(MySQLRecordSegmentKey(1))`,
@@ -96,6 +109,9 @@ func positive(){
 	}
 	if !compile(positive) {
 		t.Fatal("collision and keyword fixture did not compile")
+	}
+	if compile("package typedfixture\nfunc negative(){ _ = OddColumns().String2.SetNull() }\n") {
+		t.Fatal("unknown-nullability SetNull compiled")
 	}
 }
 

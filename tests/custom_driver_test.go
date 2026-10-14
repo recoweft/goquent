@@ -27,7 +27,7 @@ func setupCustomDB(t testing.TB, drvName string) *orm.DB {
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}
-	_, err = stdDB.Exec(`CREATE TABLE IF NOT EXISTS users (
+	_, err = stdDB.Exec(`CREATE TABLE IF NOT EXISTS custom_driver_users (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(64),
         age INT,
@@ -36,13 +36,13 @@ func setupCustomDB(t testing.TB, drvName string) *orm.DB {
 	if err != nil {
 		t.Fatalf("create table: %v", err)
 	}
-	_, err = stdDB.Exec("TRUNCATE TABLE users")
+	_, err = stdDB.Exec("TRUNCATE TABLE custom_driver_users")
 	if err != nil {
 		t.Fatalf("truncate table: %v", err)
 	}
-	_, err = stdDB.Exec("INSERT INTO users(name, age) VALUES ('cdrv', 1)")
+	_, err = stdDB.Exec("INSERT INTO custom_driver_users(name, age) VALUES ('cdrv', 1)")
 	if err != nil {
-		t.Fatalf("insert users: %v", err)
+		t.Fatalf("insert custom_driver_users: %v", err)
 	}
 	return db
 }
@@ -53,7 +53,7 @@ func TestOpenWithRegisteredDriver(t *testing.T) {
 	defer db.Close()
 
 	var row map[string]any
-	if err := db.Table("users").Where("name", "cdrv").FirstMap(&row); err != nil {
+	if err := db.Table("custom_driver_users").Where("name", "cdrv").FirstMap(&row); err != nil {
 		t.Fatalf("select: %v", err)
 	}
 	if row["age"] != int64(1) {

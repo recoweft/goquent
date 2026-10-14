@@ -63,8 +63,8 @@ func vocabulary(s string, allowed ...string) string {
 
 func (l DiagnosticLocation) safe() DiagnosticLocation {
 	l.Source = vocabulary(l.Source, "spec", "values", "manifest", "settings", "planner")
-	l.Section = vocabulary(l.Section, "root", "version", "operation", "model", "select", "filters", "order_by", "limit", "implicit")
-	l.Member = vocabulary(l.Member, "field", "op", "value", "value_ref", "direction")
+	l.Section = vocabulary(l.Section, "root", "version", "operation", "model", "select", "filters", "order_by", "limit", "implicit", "assignments", "returning")
+	l.Member = vocabulary(l.Member, "field", "op", "value", "value_ref", "direction", "column", "state")
 	l.Origin = vocabulary(l.Origin, "json", "go", "implicit")
 	if !l.IndexKnown || l.Index < 0 {
 		l.IndexKnown = false
@@ -78,6 +78,8 @@ func (l DiagnosticLocation) safe() DiagnosticLocation {
 }
 func diagnosticCode(code string) string {
 	switch code {
+	case "OPERATION_ASSIGNMENT_INVALID", "OPERATION_PATCH_EMPTY":
+		return code
 	case "OPERATION_INPUT_INVALID":
 		return code
 	case "OPERATION_INPUT_LIMIT":
