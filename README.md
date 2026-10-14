@@ -9261,6 +9261,8 @@ Options controls review discovery and output behavior.
 
 ```go
 type Options struct {
+    // Context cancels best-effort type loading. Nil uses a bounded background context.
+    Context              context.Context
     Paths                []string
     ShowSuppressed       bool
     ConfigPath           string
