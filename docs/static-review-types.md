@@ -8,6 +8,7 @@ instantiations. A spelling such as `db`, `Get` or `Update` is not type evidence.
 Unrelated methods are excluded. `database/sql` DB, Tx, Conn and Stmt methods,
 Goquent DB/Executor raw methods, Query operations and generic CRUD are identified.
 Prepared statement execution remains partial because statement SQL is not tracked.
+Literal raw SQL with dynamic bindings also retains partial evidence.
 Function and method values assigned locally, aliases, and method expressions are
 recognized; an unavailable receiver remains partial. Arbitrary dispatch through
 interfaces declared by applications and function parameters is outside this

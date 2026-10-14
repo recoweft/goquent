@@ -51,15 +51,15 @@ or input exclusions were used.
 
 | Measure | Main | PR1 |
 | --- | ---: | ---: |
-| Findings | 499 | 1,122 |
+| Findings | 499 | 1,126 |
 | Suppressed | 0 | 0 |
-| Precise | 253 | 160 |
-| Partial | 157 | 854 |
+| Precise | 253 | 156 |
+| Partial | 157 | 862 |
 | Unsupported | 89 | 108 |
 | Blocked risk | 11 | 4 |
 | Destructive risk | 23 | 24 |
 | High risk | 81 | 109 |
-| Medium risk | 384 | 985 |
+| Medium risk | 384 | 989 |
 
 Matching original code/file/physical-position tuples across unchanged source lines
 retained 425 of the 499 original findings. Of the 74 unmatched original findings,

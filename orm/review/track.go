@@ -667,15 +667,21 @@ func (t *goTracker) raw(name string, c *ast.CallExpr, loc *query.SourceLocation)
 		t.findings = append(t.findings, f)
 		return
 	}
+	incomplete := t.tf.incomplete || t.uncertain || c.Ellipsis.IsValid()
+	for _, arg := range c.Args[i+1:] {
+		if !literalInput(arg) {
+			incomplete = true
+		}
+	}
 	fs := findingsFromPlan(query.NewRawPlan(sql), query.AnalysisPrecise, loc)
-	if t.tf.incomplete || t.uncertain {
+	if incomplete {
 		for i := range fs {
 			fs[i].AnalysisPrecision = query.AnalysisPartial
 		}
 	}
 	t.findings = append(t.findings, fs...)
-	if t.tf.incomplete || t.uncertain {
-		t.partial(loc, "raw operation has incomplete type or control flow evidence")
+	if incomplete {
+		t.partial(loc, "raw operation has incomplete type, binding or control flow evidence")
 	}
 }
 func (t *goTracker) terminal(name string, q *queryState, c *ast.CallExpr, loc *query.SourceLocation) {

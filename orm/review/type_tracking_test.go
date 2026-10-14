@@ -62,6 +62,7 @@ func identity(db *g.DB, raw *sqlalias.DB, executor g.Executor, flag bool, dynami
  g.SelectAll[int](context.Background(),db,"SELECT id FROM users") // generic
  raw.Exec("DELETE FROM users") // raw
  raw.Exec(dynamic) // dynamic
+ raw.Exec("SELECT id FROM users WHERE id = ?",dynamic) // raw_binding
  executor.ExecContext(context.Background(),"DELETE FROM users") // raw
  db.Table(dynamic).Where("id",1).Delete() // dynamic_table
  db.Table("users").Where("id",dynamic).Get(&rows) // dynamic_binding
