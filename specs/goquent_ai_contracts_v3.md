@@ -438,3 +438,21 @@ SELECT through the generic scanner. OperationSpec Compile/Validate and CLI/MCP
 remain DB-free. Typed success and supplied fingerprints are not authorization,
 live identity or expanded private binding. Readonly/generated metadata is retained
 for PR2; three-state updates and regeneration CI remain outside PR1.
+
+## GQ-AI-09 PR1 typed static review migration
+
+[Typed static review](../docs/static-review-types.md) documents type identity,
+bounded loading, mutable Query aliases, conservative branch joins and one-level
+helpers. The historical name-only review inventory above is superseded for Go
+source. Existing source JSON/version and public redaction boundaries remain.
+
+The section 5 fixture preservation rule has a narrow migration exception:
+original type-invalid Go snippets remain preserved, but their old precise or
+name-inferred expectations are not safety contracts. Buildable typed counterparts
+retain prior diagnostic/location/suppression coverage, and originals now retain
+unsupported type evidence. The migration table records each affected case.
+External QueryPlan JSON additionally retains at least partial precision and an
+independent unverified-correspondence marker, including warning-free C01 input.
+Original wire bytes/examples remain unchanged. Supplied JSON cannot suppress
+recomputed risk or prove runtime correspondence. MigrationPlan evidence audit,
+PR2 runtime matching/multi-axis precision and PR3 SARIF/baselines remain pending.

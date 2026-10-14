@@ -2,8 +2,8 @@ package review
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -17,184 +17,12 @@ type chainCall struct {
 }
 
 func reviewGoFile(ctx reviewContext, path string) ([]Finding, error) {
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-	if err != nil {
-		return nil, err
+	abs, _ := filepath.Abs(path)
+	tf := ctx.types[abs]
+	if tf == nil {
+		tf = loadReviewTypes(nil, []string{path})[abs]
 	}
-	fileCtx := ctx
-	fileCtx.registeredSoftDelete = staticSoftDeleteRegistrations(file)
-
-	var findings []Finding
-	ast.Inspect(file, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-
-		loc := sourceLocation(fset, path, sel.Sel.Pos())
-		if isRawSQLMethod(sel.Sel.Name) {
-			findings = append(findings, reviewRawSQLCall(sel, call, loc)...)
-		}
-		if isGoquentTerminal(sel.Sel.Name) {
-			findings = append(findings, reviewGoquentChain(fileCtx, sel, call, loc)...)
-		}
-		if isRawBuilderMethod(sel.Sel.Name) {
-			findings = append(findings, reviewRawBuilderCall(sel, call, loc)...)
-		}
-		return true
-	})
-
-	return applyFileSuppressions(ctx, path, findings)
-}
-
-func staticSoftDeleteRegistrations(file *ast.File) map[string]string {
-	out := map[string]string{}
-	ast.Inspect(file, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "Register" {
-			return true
-		}
-		calls, _, _ := collectChainCalls(call)
-		table, ok := tableFromChain(calls)
-		if !ok {
-			return true
-		}
-		for _, chainCall := range calls {
-			if chainCall.Method != "SoftDelete" || chainCall.Call == nil || len(chainCall.Call.Args) == 0 {
-				continue
-			}
-			column, ok := stringLiteralValue(chainCall.Call.Args[0])
-			if ok && strings.TrimSpace(column) != "" {
-				out[normalizeReviewName(table)] = column
-			}
-		}
-		return true
-	})
-	return out
-}
-
-func reviewRawSQLCall(sel *ast.SelectorExpr, call *ast.CallExpr, loc *query.SourceLocation) []Finding {
-	argIndex := rawSQLArgIndex(sel.Sel.Name)
-	if argIndex < 0 || argIndex >= len(call.Args) {
-		return nil
-	}
-	sqlText, ok := stringLiteralValue(call.Args[argIndex])
-	if !ok {
-		if sel.Sel.Name == "RawPlan" || receiverLooksDatabase(sel.X) {
-			return []Finding{staticFinding(
-				query.WarningStaticReviewUnsupported,
-				query.RiskMedium,
-				"dynamic raw SQL could not be inspected",
-				"prefer Goquent query builders or emit QueryPlan JSON from tests",
-				loc,
-				query.AnalysisUnsupported,
-			)}
-		}
-		return nil
-	}
-	if !looksLikeSQL(sqlText) {
-		return nil
-	}
-	return findingsFromPlan(query.NewRawPlan(sqlText), query.AnalysisPrecise, loc)
-}
-
-func reviewGoquentChain(ctx reviewContext, sel *ast.SelectorExpr, call *ast.CallExpr, loc *query.SourceLocation) []Finding {
-	calls, root, _ := collectChainCalls(call)
-	if !chainHasRootBuilder(calls) {
-		if receiverLooksQuery(sel.X) || receiverLooksQuery(root) {
-			return []Finding{staticReviewPartial(loc)}
-		}
-		return nil
-	}
-
-	method := sel.Sel.Name
-	if plan, ok := staticPlanFromChain(ctx, method, calls); ok {
-		result := query.DefaultRiskEngine.CheckQuery(plan)
-		findings := warningsToFindings(result.Warnings, query.AnalysisPrecise, loc)
-		findings = append(findings, manifestPolicyFindings(ctx, plan, loc)...)
-		return findings
-	}
-
-	var findings []Finding
-	switch method {
-	case "Update", "PlanUpdate":
-		if !chainHasPredicate(calls) {
-			findings = append(findings, staticFinding(
-				query.WarningUpdateWithoutWhere,
-				query.RiskBlocked,
-				"UPDATE query has no WHERE predicate",
-				"add a specific predicate before executing the update",
-				loc,
-				query.AnalysisPrecise,
-			))
-		} else {
-			findings = append(findings, staticFinding(
-				query.WarningBulkUpdateDetected,
-				query.RiskMedium,
-				"UPDATE scope is unknown without builder and typed key evidence",
-				"confirm the intended row set or add a narrower predicate",
-				loc,
-				query.AnalysisPrecise,
-			))
-		}
-	case "Delete", "PlanDelete":
-		if !chainHasPredicate(calls) {
-			findings = append(findings, staticFinding(
-				query.WarningDeleteWithoutWhere,
-				query.RiskBlocked,
-				"DELETE query has no WHERE predicate",
-				"add a specific predicate before executing the delete",
-				loc,
-				query.AnalysisPrecise,
-			))
-		} else {
-			findings = append(findings, staticFinding(
-				query.WarningBulkDeleteDetected,
-				query.RiskMedium,
-				"DELETE scope is unknown without builder and typed key evidence",
-				"confirm the intended row set or add a narrower predicate",
-				loc,
-				query.AnalysisPrecise,
-			))
-		}
-	case "Get", "GetMaps", "First", "FirstMap", "Plan":
-		if !chainHasSelect(calls) {
-			findings = append(findings, staticFinding(
-				query.WarningSelectStarUsed,
-				query.RiskMedium,
-				"SELECT * makes selected data harder to review",
-				"select explicit columns",
-				loc,
-				query.AnalysisPrecise,
-			))
-		}
-		if !chainHasLimit(calls) && !chainIsAggregate(calls) {
-			findings = append(findings, staticFinding(
-				query.WarningLimitMissing,
-				query.RiskMedium,
-				"SELECT query has no LIMIT",
-				"add Limit(n) for list queries",
-				loc,
-				query.AnalysisPrecise,
-			))
-		}
-	}
-	for i := range findings {
-		if findings[i].Code == query.WarningBulkUpdateDetected || findings[i].Code == query.WarningBulkDeleteDetected {
-			findings[i].AnalysisPrecision = query.AnalysisPartial
-			findings[i].Evidence = append(findings[i].Evidence, query.Evidence{Key: "write_scope", Value: query.AnalyzeWriteScope(nil)})
-		}
-	}
-	return findings
+	return reviewTypedGo(ctx, path, tf)
 }
 
 func staticPlanFromChain(ctx reviewContext, method string, calls []chainCall) (*query.QueryPlan, bool) {
@@ -366,7 +194,15 @@ func limitFromChain(calls []chainCall) (int64, bool) {
 	for _, call := range calls {
 		switch call.Method {
 		case "Limit", "Take":
-			return 1, true
+			if call.Call == nil || len(call.Call.Args) != 1 {
+				return 0, false
+			}
+			lit, ok := call.Call.Args[0].(*ast.BasicLit)
+			if !ok || lit.Kind != token.INT {
+				return 0, false
+			}
+			n, err := strconv.ParseInt(lit.Value, 0, 64)
+			return n, err == nil && n > 0
 		}
 	}
 	return 0, false
@@ -483,7 +319,7 @@ func manifestPolicyFindingsForTable(ctx reviewContext, table manifest.Table, pla
 			query.AnalysisPrecise,
 		))
 	}
-	if softDelete := softDeleteColumnForManifestTable(table); softDelete != "" && !staticPlanWithDeleted(plan) && !ctx.hasRegisteredSoftDelete(table.Name, softDelete) {
+	if softDelete := softDeleteColumnForManifestTable(table); softDelete != "" && !staticPlanWithDeleted(plan) {
 		allowUnqualified := !ambiguous[normalizeReviewName(softDelete)]
 		if !planHasPredicateForTable(plan, table.Name, softDelete, allowUnqualified) {
 			findings = append(findings, staticFinding(
@@ -509,14 +345,6 @@ func manifestPolicyFindingsForTable(ctx reviewContext, table manifest.Table, pla
 		}
 	}
 	return findings
-}
-
-func (ctx reviewContext) hasRegisteredSoftDelete(table, column string) bool {
-	if len(ctx.registeredSoftDelete) == 0 {
-		return false
-	}
-	registered, ok := ctx.registeredSoftDelete[normalizeReviewName(table)]
-	return ok && normalizeReviewName(registered) == normalizeReviewName(column)
 }
 
 type manifestRequiredColumn struct {
@@ -720,96 +548,6 @@ func sourceLocation(fset *token.FileSet, path string, pos token.Pos) *query.Sour
 	return &query.SourceLocation{File: path, Line: p.Line, Column: p.Column}
 }
 
-func collectChainCalls(expr ast.Expr) ([]chainCall, ast.Expr, bool) {
-	var calls []chainCall
-	for expr != nil {
-		switch e := expr.(type) {
-		case *ast.CallExpr:
-			sel, ok := e.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return calls, expr, false
-			}
-			calls = append(calls, chainCall{Method: sel.Sel.Name, Call: e})
-			expr = sel.X
-		case *ast.SelectorExpr:
-			calls = append(calls, chainCall{Method: e.Sel.Name})
-			expr = e.X
-		case *ast.ParenExpr:
-			expr = e.X
-		case *ast.Ident:
-			return calls, e, true
-		default:
-			return calls, expr, false
-		}
-	}
-	return calls, nil, false
-}
-
-func chainHasRootBuilder(calls []chainCall) bool {
-	for _, call := range calls {
-		switch call.Method {
-		case "Table", "Model":
-			return true
-		}
-	}
-	return false
-}
-
-func chainHasPredicate(calls []chainCall) bool {
-	for _, call := range calls {
-		if isPredicateMethod(call.Method) {
-			return true
-		}
-	}
-	return false
-}
-
-func chainHasPrimaryKeyLikePredicate(calls []chainCall) bool {
-	for _, call := range calls {
-		if !isPredicateMethod(call.Method) || call.Call == nil || len(call.Call.Args) == 0 {
-			continue
-		}
-		col, ok := stringLiteralValue(call.Call.Args[0])
-		if !ok {
-			continue
-		}
-		if isPrimaryKeyLikeColumn(col) {
-			return true
-		}
-	}
-	return false
-}
-
-func chainHasSelect(calls []chainCall) bool {
-	for _, call := range calls {
-		switch call.Method {
-		case "Select", "SelectRaw", "Distinct", "Count", "Max", "Min", "Sum", "Avg":
-			return true
-		}
-	}
-	return false
-}
-
-func chainHasLimit(calls []chainCall) bool {
-	for _, call := range calls {
-		switch call.Method {
-		case "Limit", "Take":
-			return true
-		}
-	}
-	return false
-}
-
-func chainIsAggregate(calls []chainCall) bool {
-	for _, call := range calls {
-		switch call.Method {
-		case "Count", "Max", "Min", "Sum", "Avg":
-			return true
-		}
-	}
-	return false
-}
-
 func isPredicateMethod(method string) bool {
 	if strings.Contains(method, "Where") {
 		return true
@@ -899,44 +637,6 @@ func looksLikeSQL(s string) bool {
 		}
 	}
 	return false
-}
-
-func isPrimaryKeyLikeColumn(column string) bool {
-	col := strings.ToLower(strings.TrimSpace(column))
-	col = strings.Trim(col, "`\"")
-	return col == "id" || strings.HasSuffix(col, ".id") || strings.HasSuffix(col, "_id")
-}
-
-func receiverLooksDatabase(expr ast.Expr) bool {
-	name := receiverName(expr)
-	switch name {
-	case "db", "sqlDB", "database", "tx", "conn", "executor":
-		return true
-	default:
-		return strings.HasSuffix(strings.ToLower(name), "db")
-	}
-}
-
-func receiverLooksQuery(expr ast.Expr) bool {
-	name := strings.ToLower(receiverName(expr))
-	if name == "q" || name == "qb" {
-		return true
-	}
-	return strings.Contains(name, "query") || strings.Contains(name, "builder")
-}
-
-func receiverName(expr ast.Expr) string {
-	switch e := expr.(type) {
-	case *ast.Ident:
-		return e.Name
-	case *ast.SelectorExpr:
-		return e.Sel.Name
-	case *ast.CallExpr:
-		if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
-			return sel.Sel.Name
-		}
-	}
-	return ""
 }
 
 func normalizedContainsWeakPredicate(s string) bool {

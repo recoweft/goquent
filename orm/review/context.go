@@ -8,12 +8,12 @@ import (
 )
 
 type reviewContext struct {
-	manifest             *manifest.Manifest
-	riskMetadata         []query.TableRiskMetadata
-	tables               map[string]manifest.Table
-	rules                map[string]query.RiskRuleConfig
-	configSuppressions   []ConfigSuppression
-	registeredSoftDelete map[string]string
+	types              map[string]*typedFile
+	manifest           *manifest.Manifest
+	riskMetadata       []query.TableRiskMetadata
+	tables             map[string]manifest.Table
+	rules              map[string]query.RiskRuleConfig
+	configSuppressions []ConfigSuppression
 }
 
 func newReviewContext(opts Options) reviewContext {

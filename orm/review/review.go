@@ -1,6 +1,8 @@
 package review
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,6 +59,8 @@ type ReviewReport struct {
 
 // Options controls review discovery and output behavior.
 type Options struct {
+	// Context cancels best-effort type loading. Nil uses a bounded background context.
+	Context              context.Context
 	Paths                []string
 	ShowSuppressed       bool
 	ConfigPath           string
@@ -89,18 +93,30 @@ func Run(opts Options) (ReviewReport, error) {
 		}
 		report.Findings = append(report.Findings, findings...)
 	}
+	var allFiles []string
+	seenFiles := map[string]bool{}
 	for _, path := range paths {
 		files, err := discoverFiles(path)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		reviewedFiles = append(reviewedFiles, files...)
+		for _, file := range files {
+			abs, _ := filepath.Abs(file)
+			if !seenFiles[abs] {
+				seenFiles[abs] = true
+				allFiles = append(allFiles, file)
+			}
+		}
+	}
+	ctx.types = loadReviewTypes(opts.Context, allFiles)
+	reviewedFiles = allFiles
+	{
+		files := allFiles
 		for _, file := range files {
 			findings, err := reviewFile(ctx, file)
 			if err != nil {
 				errs = append(errs, err)
-				continue
 			}
 			for _, finding := range findings {
 				if finding.Suppressed {
@@ -314,56 +330,117 @@ func reviewPlanJSONFile(ctx reviewContext, path string) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	envelope := queryPlanEnvelope(b)
 	var plan query.QueryPlan
 	if err := json.Unmarshal(b, &plan); err != nil {
-		// Ignore unrelated JSON files, but do not silently accept an unsupported
-		// diagnostic plan envelope as an empty successful review.
-		if errors.Is(err, query.ErrJSONVersion) {
-			var fields map[string]json.RawMessage
-			if json.Unmarshal(b, &fields) == nil && fields["operation"] != nil && fields["sql"] != nil {
-				return nil, fmt.Errorf("%s: %w", path, err)
+		if envelope {
+			fs, markerErr := unverifiedJSONFindings(ctx, path, nil, query.AnalysisUnsupported)
+			if errors.Is(err, query.ErrJSONVersion) {
+				return fs, errors.Join(markerErr, query.ErrJSONVersion)
 			}
+			return fs, markerErr
 		}
 		return nil, nil
 	}
 	if plan.Operation == "" || plan.SQL == "" {
+		if envelope {
+			return unverifiedJSONFindings(ctx, path, nil, query.AnalysisUnsupported)
+		}
 		migrationFindings, ok, err := reviewMigrationPlanJSON(path, b)
-		if err != nil || ok {
-			if err != nil {
-				return nil, err
-			}
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			return applyFileSuppressions(ctx, path, migrationFindings)
 		}
 		return nil, nil
+	}
+	precision := query.AnalysisPartial
+	switch plan.Operation {
+	case query.OperationSelect, query.OperationInsert, query.OperationUpdate, query.OperationDelete, query.OperationRaw:
+	default:
+		precision = query.AnalysisUnsupported
+	}
+	if plan.AnalysisPrecision != "" && plan.AnalysisPrecision != query.AnalysisPrecise && plan.AnalysisPrecision != query.AnalysisPartial {
+		precision = query.AnalysisUnsupported
+	}
+	if plan.Operation != query.OperationRaw && !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(plan.SQL)), strings.ToUpper(string(plan.Operation))+" ") {
+		precision = query.AnalysisUnsupported
 	}
 	if len(ctx.riskMetadata) > 0 {
 		query.AttachTableRiskMetadata(&plan, ctx.riskMetadata)
 	}
 	result := query.DefaultRiskEngine.CheckQuery(&plan)
-	warnings := plan.Warnings
-	if len(warnings) == 0 {
-		warnings = result.Warnings
+	// Supplied diagnostics cannot replace recomputed diagnostics, even for reads.
+	warnings := append([]query.Warning(nil), plan.Warnings...)
+	warnings = append(warnings, result.Warnings...)
+	findings := findingsFromPlanWarnings(&plan, warnings, precision, &query.SourceLocation{File: path, Line: 1})
+	for _, f := range warningsToFindings(plan.SuppressedWarnings, precision, &query.SourceLocation{File: path, Line: 1}) {
+		f.Suppressed = true
+		findings = append(findings, f)
 	}
-	if plan.Operation == query.OperationUpdate || plan.Operation == query.OperationDelete {
-		// Serialized diagnostics are display data, not cardinality evidence.
-		// Recomputed write diagnostics must survive unrelated input warnings.
-		warnings = append([]query.Warning(nil), warnings...)
-		for _, current := range result.Warnings {
-			filtered := warnings[:0]
-			for _, previous := range warnings {
-				if previous.Code != current.Code {
-					filtered = append(filtered, previous)
-				}
-			}
-			warnings = append(filtered, current)
+	for i := range findings {
+		if precisionRank(findings[i].AnalysisPrecision) < precisionRank(precision) {
+			findings[i].AnalysisPrecision = precision
 		}
 	}
-	findings := findingsFromPlanWarnings(&plan, warnings, query.AnalysisPrecise, &query.SourceLocation{File: path, Line: 1})
-	for _, finding := range warningsToFindings(plan.SuppressedWarnings, query.AnalysisPrecise, &query.SourceLocation{File: path, Line: 1}) {
-		finding.Suppressed = true
-		findings = append(findings, finding)
+	return unverifiedJSONFindings(ctx, path, findings, precision)
+}
+
+// Recognize only top-level plan fields, including a truncated value after a
+// plan key. OperationSpec and ordinary JSON must not be mistaken for plans.
+func queryPlanEnvelope(b []byte) bool {
+	d := json.NewDecoder(bytes.NewReader(b))
+	tok, err := d.Token()
+	if err != nil || tok != json.Delim('{') {
+		return false
 	}
-	return applyFileSuppressions(ctx, path, findings)
+	operation, detail := false, false
+	for d.More() {
+		tok, err = d.Token()
+		if err != nil {
+			break
+		}
+		key, ok := tok.(string)
+		if !ok {
+			break
+		}
+		if key == "operation" {
+			operation = true
+		}
+		switch key {
+		case "sql", "params", "tables", "predicates", "analysis_precision", "warnings", "suppressed_warnings":
+			detail = true
+		}
+		if operation && detail {
+			return true
+		}
+		var raw json.RawMessage
+		if d.Decode(&raw) != nil {
+			break
+		}
+	}
+	return false
+}
+
+// The marker is independent of supplied warnings, locations and suppression
+// strings. Only explicit application configuration can suppress/configure it.
+func unverifiedJSONFindings(ctx reviewContext, path string, findings []Finding, precision query.AnalysisPrecision) ([]Finding, error) {
+	// JSON string contents are data, never inline suppression directives.
+	fs := applyReviewRules(findings, ctx.rules)
+	code := query.WarningStaticReviewPartial
+	if precision == query.AnalysisUnsupported {
+		code = query.WarningStaticReviewUnsupported
+	}
+	marker := staticFinding(code, query.RiskMedium, "external query plan has no verified runtime correspondence", "review with runtime evidence; supplied JSON is not proof", &query.SourceLocation{File: path, Line: 1}, precision)
+	markers := applyReviewRules([]Finding{marker}, ctx.rules)
+	config, err := configSuppressionsForFile(path, ctx.configSuppressions)
+	if err != nil {
+		return nil, err
+	}
+	fs = applyReviewSuppressions(fs, config, time.Now().UTC())
+	markers = applyReviewSuppressions(markers, config, time.Now().UTC())
+	return append(fs, markers...), nil
 }
 
 func reviewMigrationPlanJSON(path string, b []byte) ([]Finding, bool, error) {

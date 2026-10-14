@@ -40,3 +40,9 @@ Static review is strongest when:
 - Query plans are checked into artifacts or generated in tests.
 - Raw SQL is isolated in `.sql` files for review.
 - Suppressions include reasons and expiration dates.
+
+GQ-AI-09 PR1 replaces name-only Go detection with bounded package/type loading and
+local Query tracking. See [typed review and fixture migration](static-review-types.md)
+for build requirements, generic/Scope/helper limits and external QueryPlan JSON
+precision gates. A fresh supplied manifest does not turn incomplete analysis into
+precise analysis; serialized plans now retain an independent unverified marker.

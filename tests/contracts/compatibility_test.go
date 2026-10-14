@@ -99,8 +99,10 @@ func TestSharedPlanSerializationAndReview(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if id == "C01" && len(report.Findings) != 0 {
-						t.Fatalf("unexpected findings: %#v", report.Findings)
+					if id == "C01" {
+						if len(report.Findings) != 1 || report.Findings[0].Code != query.WarningStaticReviewPartial || report.Findings[0].AnalysisPrecision != query.AnalysisPartial || !review.HasFindingsAtOrAbovePrecision(report, query.AnalysisPartial) {
+							t.Fatal("external JSON must retain its unverified correspondence marker")
+						}
 					}
 					if id == "C02" {
 						for _, code := range []string{query.WarningSelectStarUsed, query.WarningLimitMissing} {
