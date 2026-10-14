@@ -51,6 +51,8 @@ import "github.com/recoweft/goquent/orm"
 - [func UpdateBy\(ctx context.Context, base \*query.Query, data any, scopes ...Scope\) \(sql.Result, error\)](<#UpdateBy>)
 - [func UpdateByReturning\[T any\]\(ctx context.Context, db \*DB, base \*query.Query, data any, scopes ...Scope\) \(T, error\)](<#UpdateByReturning>)
 - [func UpdateByReturningWithOptions\[T any\]\(ctx context.Context, db \*DB, base \*query.Query, data any, opts \[\]WriteOpt, scopes ...Scope\) \(T, error\)](<#UpdateByReturningWithOptions>)
+- [func UpdateOperationBy\(ctx context.Context, db \*DB, s operation.UpdateSpec, opts operation.Options\) \(sql.Result, error\)](<#UpdateOperationBy>)
+- [func UpdateOperationReturningBy\[T any\]\(ctx context.Context, db \*DB, s operation.UpdateSpec, opts operation.Options\) \(out T, err error\)](<#UpdateOperationReturningBy>)
 - [func UpdateReturning\[T any, V any\]\(ctx context.Context, db \*DB, v V, opts ...WriteOpt\) \(T, error\)](<#UpdateReturning>)
 - [func Upsert\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(sql.Result, error\)](<#Upsert>)
 - [func UpsertMany\[T any\]\(ctx context.Context, db \*DB, values \[\]T, opts ...WriteOpt\) \(sql.Result, error\)](<#UpsertMany>)
@@ -88,6 +90,7 @@ import "github.com/recoweft/goquent/orm"
   - [func \(db \*DB\) Close\(\) error](<#DB.Close>)
   - [func \(db \*DB\) CompileOperation\(ctx context.Context, spec operation.OperationSpec, opts operation.Options\) \(\*QueryPlan, error\)](<#DB.CompileOperation>)
   - [func \(db \*DB\) CompileOperationWithDiagnostics\(ctx context.Context, spec OperationSpec, opts OperationOptions\) \(\*QueryPlan, operation.DiagnosticView, error\)](<#DB.CompileOperationWithDiagnostics>)
+  - [func \(db \*DB\) CompileUpdateWithDiagnostics\(ctx context.Context, s operation.UpdateSpec, opts operation.Options\) \(\*QueryPlan, operation.DiagnosticView, error\)](<#DB.CompileUpdateWithDiagnostics>)
   - [func \(db \*DB\) Dialect\(\) driver.Dialect](<#DB.Dialect>)
   - [func \(db \*DB\) Exec\(q string, args ...any\) \(sql.Result, error\)](<#DB.Exec>)
   - [func \(db \*DB\) ExecContext\(ctx context.Context, q string, args ...any\) \(sql.Result, error\)](<#DB.ExecContext>)
@@ -851,6 +854,24 @@ func UpdateByReturningWithOptions[T any](ctx context.Context, db *DB, base *quer
 
 UpdateByReturningWithOptions applies scopes, executes an UPDATE with RETURNING, and applies Returning and NoRowsAs. Other WriteOpt fields \(including ExpectAffected, table, column, key, assignment and conflict options\) retain their legacy nonapplication here. Options are still evaluated. The base/scopes and data determine the actual UPDATE, which is inspected on the destination DB.
 
+<a name="UpdateOperationBy"></a>
+## func UpdateOperationBy
+
+```go
+func UpdateOperationBy(ctx context.Context, db *DB, s operation.UpdateSpec, opts operation.Options) (sql.Result, error)
+```
+
+UpdateOperationBy validates and dispatches the same privately sealed UPDATE. It provides the existing immediate write lifecycle, not a ValidatedPlan API.
+
+<a name="UpdateOperationReturningBy"></a>
+## func UpdateOperationReturningBy
+
+```go
+func UpdateOperationReturningBy[T any](ctx context.Context, db *DB, s operation.UpdateSpec, opts operation.Options) (out T, err error)
+```
+
+UpdateOperationReturningBy uses the existing one\-row scanner and bool policy. A first row is not an exact affected\-row or automatic rollback guarantee.
+
 <a name="UpdateReturning"></a>
 ## func UpdateReturning
 
@@ -1204,6 +1225,15 @@ func (db *DB) CompileOperationWithDiagnostics(ctx context.Context, spec Operatio
 ```
 
 CompileOperationWithDiagnostics forces this DB's immutable settings and dialect.
+
+<a name="DB.CompileUpdateWithDiagnostics"></a>
+### func \(\*DB\) CompileUpdateWithDiagnostics
+
+```go
+func (db *DB) CompileUpdateWithDiagnostics(ctx context.Context, s operation.UpdateSpec, opts operation.Options) (*QueryPlan, operation.DiagnosticView, error)
+```
+
+CompileUpdateWithDiagnostics is DB\-free and forces this DB's actual settings.
 
 <a name="DB.Dialect"></a>
 ### func \(\*DB\) Dialect
@@ -3353,6 +3383,7 @@ import "github.com/recoweft/goquent/orm/manifest"
 - [func GenerateRepositorySkeleton\(m \*Manifest, opts RepositorySkeletonOptions\) \(\[\]byte, error\)](<#GenerateRepositorySkeleton>)
 - [func GenerateRepositorySkeletonForTable\(table Table, opts RepositorySkeletonOptions\) \(\[\]byte, error\)](<#GenerateRepositorySkeletonForTable>)
 - [func JSONSchema\(\) \(\[\]byte, error\)](<#JSONSchema>)
+- [func RepositoryUpdateCandidate\(t Table, c Column\) bool](<#RepositoryUpdateCandidate>)
 - [func Validate\(m \*Manifest\) error](<#Validate>)
 - [func WriteJSON\(w io.Writer, m \*Manifest\) error](<#WriteJSON>)
 - [func WritePretty\(w io.Writer, m \*Manifest\) error](<#WritePretty>)
@@ -3374,8 +3405,15 @@ import "github.com/recoweft/goquent/orm/manifest"
 - [type Policy](<#Policy>)
 - [type QueryExample](<#QueryExample>)
 - [type Relation](<#Relation>)
+- [type RepositoryCheckOptions](<#RepositoryCheckOptions>)
+- [type RepositoryCheckProjection](<#RepositoryCheckProjection>)
+- [type RepositoryCheckResult](<#RepositoryCheckResult>)
+  - [func CheckRepositories\(configPath string\) RepositoryCheckResult](<#CheckRepositories>)
+- [type RepositoryEntry](<#RepositoryEntry>)
 - [type RepositoryProjection](<#RepositoryProjection>)
+- [type RepositoryRegistry](<#RepositoryRegistry>)
 - [type RepositorySkeletonOptions](<#RepositorySkeletonOptions>)
+- [type RepositoryTableSnapshot](<#RepositoryTableSnapshot>)
 - [type Table](<#Table>)
 - [type Verification](<#Verification>)
   - [func Verify\(stored, current \*Manifest, checkedAt time.Time\) Verification](<#Verify>)
@@ -3397,10 +3435,40 @@ const (
 )
 ```
 
+<a name="RepositoryCheckMaxEntries"></a>
+
+```go
+const RepositoryCheckMaxEntries = 256
+```
+
+<a name="RepositoryCheckMaxFileBytes"></a>
+
+```go
+const RepositoryCheckMaxFileBytes = 4 << 20
+```
+
+<a name="RepositoryCheckMaxFiles"></a>
+
+```go
+const RepositoryCheckMaxFiles = 4096
+```
+
+<a name="RepositoryCheckMaxTotalBytes"></a>
+
+```go
+const RepositoryCheckMaxTotalBytes = 64 << 20
+```
+
 <a name="RepositoryGeneratorVersion"></a>RepositoryGeneratorVersion identifies this implementation, not caller metadata.
 
 ```go
-const RepositoryGeneratorVersion = "typed-repository-v1"
+const RepositoryGeneratorVersion = "typed-repository-v2"
+```
+
+<a name="RepositoryOwnershipHeader"></a>
+
+```go
+const RepositoryOwnershipHeader = "// Code generated by goquent typed repository; DO NOT EDIT."
 ```
 
 ## Variables
@@ -3437,6 +3505,15 @@ func JSONSchema() ([]byte, error)
 ```
 
 JSONSchema returns a JSON Schema for manifest version 1.
+
+<a name="RepositoryUpdateCandidate"></a>
+## func RepositoryUpdateCandidate
+
+```go
+func RepositoryUpdateCandidate(t Table, c Column) bool
+```
+
+RepositoryUpdateCandidate reports supplied update metadata only. Runtime settings and write policy checks remain mandatory, including for dynamic input.
 
 <a name="Validate"></a>
 ## func Validate
@@ -3698,6 +3775,75 @@ type Relation struct {
 }
 ```
 
+<a name="RepositoryCheckOptions"></a>
+## type RepositoryCheckOptions
+
+
+
+```go
+type RepositoryCheckOptions struct {
+    PackageName        string                      `json:"package_name"`
+    TableName          string                      `json:"table_name"`
+    RowTypeName        string                      `json:"row_type_name"`
+    RepositoryTypeName string                      `json:"repository_type_name"`
+    ORMImportPath      string                      `json:"orm_import_path"`
+    Typed              bool                        `json:"typed"`
+    Dialect            string                      `json:"dialect"`
+    Projections        []RepositoryCheckProjection `json:"projections"`
+}
+```
+
+<a name="RepositoryCheckProjection"></a>
+## type RepositoryCheckProjection
+
+
+
+```go
+type RepositoryCheckProjection struct {
+    Name    string   `json:"name"`
+    Columns []string `json:"columns"`
+}
+```
+
+<a name="RepositoryCheckResult"></a>
+## type RepositoryCheckResult
+
+RepositoryCheckResult contains only fixed classifications and bounded counts. Success means source equality against supplied input, not live verification.
+
+```go
+type RepositoryCheckResult struct {
+    Status  string `json:"status"`
+    Checked int    `json:"checked"`
+}
+```
+
+<a name="CheckRepositories"></a>
+### func CheckRepositories
+
+```go
+func CheckRepositories(configPath string) RepositoryCheckResult
+```
+
+CheckRepositories reads a bounded registry and compares actual regenerated source bytes. It does not write, run a compiler, read a DB or refresh globals.
+
+<a name="RepositoryEntry"></a>
+## type RepositoryEntry
+
+
+
+```go
+type RepositoryEntry struct {
+    SnapshotKind     string `json:"snapshot_kind"`
+    Input            string `json:"input"`
+    Target           string `json:"target"`
+    GeneratorVersion string `json:"generator_version"`
+    // CodePaths documents the fixed snapshot's original code hash scope. It may
+    // not overlap any managed output. The checker never rebuilds that snapshot.
+    CodePaths []string               `json:"code_paths"`
+    Options   RepositoryCheckOptions `json:"options"`
+}
+```
+
 <a name="RepositoryProjection"></a>
 ## type RepositoryProjection
 
@@ -3707,6 +3853,19 @@ RepositoryProjection declares an ordered, literal\-column result shape. Names an
 type RepositoryProjection struct {
     Name    string
     Columns []string
+}
+```
+
+<a name="RepositoryRegistry"></a>
+## type RepositoryRegistry
+
+RepositoryRegistry is sensitive source configuration, rooted at its own directory. It contains no executable commands. All fields must be explicit.
+
+```go
+type RepositoryRegistry struct {
+    Version      int               `json:"version"`
+    ManagedRoots []string          `json:"managed_roots"`
+    Entries      []RepositoryEntry `json:"entries"`
 }
 ```
 
@@ -3726,6 +3885,22 @@ type RepositorySkeletonOptions struct {
     Dialect            string
     Projections        []RepositoryProjection
     // contains filtered or unexported fields
+}
+```
+
+<a name="RepositoryTableSnapshot"></a>
+## type RepositoryTableSnapshot
+
+RepositoryTableSnapshot keeps table\-scoped fingerprints separate from a full manifest. Supplying it does not create whole\-manifest freshness evidence.
+
+```go
+type RepositoryTableSnapshot struct {
+    Version           int    `json:"version"`
+    SnapshotKind      string `json:"snapshot_kind"`
+    Dialect           string `json:"dialect"`
+    SchemaFingerprint string `json:"schema_fingerprint"`
+    PolicyFingerprint string `json:"policy_fingerprint"`
+    Table             Table  `json:"table"`
 }
 ```
 
@@ -4911,6 +5086,7 @@ import "github.com/recoweft/goquent/orm/operation"
   - [func \(v DiagnosticLocation\) MarshalJSON\(\) \(\[\]byte, error\)](<#DiagnosticLocation.MarshalJSON>)
   - [func \(v DiagnosticLocation\) String\(\) string](<#DiagnosticLocation.String>)
 - [type DiagnosticView](<#DiagnosticView>)
+  - [func CompileUpdateWithDiagnostics\(ctx context.Context, s UpdateSpec, opts Options\) \(\*query.QueryPlan, DiagnosticView, error\)](<#CompileUpdateWithDiagnostics>)
   - [func CompileWithDiagnostics\(ctx context.Context, spec OperationSpec, opts Options\) \(\*query.QueryPlan, DiagnosticView, error\)](<#CompileWithDiagnostics>)
   - [func DecodeDiagnosticView\(b \[\]byte\) \(DiagnosticView, error\)](<#DecodeDiagnosticView>)
   - [func ValidateWithDiagnostics\(spec OperationSpec, opts Options\) \(\[\]query.Warning, DiagnosticView, error\)](<#ValidateWithDiagnostics>)
@@ -4928,6 +5104,12 @@ import "github.com/recoweft/goquent/orm/operation"
 - [type Options](<#Options>)
 - [type OrderSpec](<#OrderSpec>)
   - [func \(o \*OrderSpec\) UnmarshalJSON\(b \[\]byte\) error](<#OrderSpec.UnmarshalJSON>)
+- [type UpdateAssignment](<#UpdateAssignment>)
+  - [func \(a UpdateAssignment\) MarshalJSON\(\) \(\[\]byte, error\)](<#UpdateAssignment.MarshalJSON>)
+  - [func \(a \*UpdateAssignment\) UnmarshalJSON\(b \[\]byte\) error](<#UpdateAssignment.UnmarshalJSON>)
+- [type UpdateSpec](<#UpdateSpec>)
+  - [func \(s \*UpdateSpec\) UnmarshalJSON\(b \[\]byte\) error](<#UpdateSpec.UnmarshalJSON>)
+- [type UpdateState](<#UpdateState>)
 
 
 ## Constants
@@ -5007,6 +5189,15 @@ var (
     ErrArrayBinding    = errors.New("goquent operation: array column binding is unsupported")
     ErrReservedBinding = errors.New("goquent operation: reserved binding requires application context")
     ErrInvalidManifest = sqltype.ErrInvalidDeclaration
+)
+```
+
+<a name="ErrInvalidAssignment"></a>
+
+```go
+var (
+    ErrInvalidAssignment = errors.New("goquent operation: invalid update assignment")
+    ErrEmptyPatch        = errors.New("goquent operation: empty update patch")
 )
 ```
 
@@ -5166,6 +5357,15 @@ type DiagnosticView struct {
     Plan            *query.PlanView   `json:"plan,omitempty"`
 }
 ```
+
+<a name="CompileUpdateWithDiagnostics"></a>
+### func CompileUpdateWithDiagnostics
+
+```go
+func CompileUpdateWithDiagnostics(ctx context.Context, s UpdateSpec, opts Options) (*query.QueryPlan, DiagnosticView, error)
+```
+
+CompileUpdateWithDiagnostics validates and plans one update without execution.
 
 <a name="CompileWithDiagnostics"></a>
 ### func CompileWithDiagnostics
@@ -5347,6 +5547,83 @@ func (o *OrderSpec) UnmarshalJSON(b []byte) error
 ```
 
 
+
+<a name="UpdateAssignment"></a>
+## type UpdateAssignment
+
+UpdateAssignment is sensitive source data, not a display or execution permit.
+
+```go
+type UpdateAssignment struct {
+    Column       string      `json:"column"`
+    State        UpdateState `json:"state"`
+    Value        any         `json:"value,omitempty"`
+    ValuePresent bool        `json:"-"`
+}
+```
+
+<a name="UpdateAssignment.MarshalJSON"></a>
+### func \(UpdateAssignment\) MarshalJSON
+
+```go
+func (a UpdateAssignment) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="UpdateAssignment.UnmarshalJSON"></a>
+### func \(\*UpdateAssignment\) UnmarshalJSON
+
+```go
+func (a *UpdateAssignment) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="UpdateSpec"></a>
+## type UpdateSpec
+
+UpdateSpec is a separate application\-only source contract. OperationSpec, CLI and MCP remain SELECT\-only. Compilation never executes a database call.
+
+```go
+type UpdateSpec struct {
+    Version      int                `json:"version"`
+    Model        string             `json:"model"`
+    Filters      []FilterSpec       `json:"filters,omitempty"`
+    Assignments  []UpdateAssignment `json:"assignments"`
+    Returning    []string           `json:"returning,omitempty"`
+    AccessReason string             `json:"access_reason,omitempty"`
+    // contains filtered or unexported fields
+}
+```
+
+<a name="UpdateSpec.UnmarshalJSON"></a>
+### func \(\*UpdateSpec\) UnmarshalJSON
+
+```go
+func (s *UpdateSpec) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="UpdateState"></a>
+## type UpdateState
+
+UpdateState describes presence independently of the value. A zero assignment is deliberately invalid; generated zero patches emit no assignments.
+
+```go
+type UpdateState string
+```
+
+<a name="UpdateUnchanged"></a>
+
+```go
+const (
+    UpdateUnchanged UpdateState = "unchanged"
+    UpdateNull      UpdateState = "null"
+    UpdateValue     UpdateState = "value"
+)
+```
 
 # predicate
 
