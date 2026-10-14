@@ -1,4 +1,8 @@
-# GQ-AI-09 PR1 validation
+# GQ-AI-09 PR1 validation (revision 3)
+
+Revision 4 independently rechecks these results and records fixes in
+[revision 4 validation](gq-ai-09-pr1-revision4-validation.md). The counts and CI
+references below are historical revision 3 measurements.
 
 Issue: https://github.com/recoweft/goquent/issues/82. Planned PR: PR1 (1/3).
 Branch: `feature/gq-ai-09-review-types`; base: `main`.

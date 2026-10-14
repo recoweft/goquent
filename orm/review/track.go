@@ -11,6 +11,8 @@ import (
 )
 
 type queryState struct {
+	// origin preserves receiver identity across branch snapshots.
+	origin  *queryState
 	calls   []chainCall
 	partial bool
 }
@@ -52,7 +54,7 @@ func reviewTypedGo(ctx reviewContext, path string, tf *typedFile) ([]Finding, er
 			for _, spec := range x.Specs {
 				if v, ok := spec.(*ast.ValueSpec); ok {
 					for _, e := range v.Values {
-						t.eval(e)
+						t.escapeCallables([]trackedValue{t.eval(e)}, t.loc(e))
 					}
 				}
 			}
@@ -110,6 +112,10 @@ func (t *goTracker) stmt(s ast.Stmt) {
 					t.env[o] = v
 				}
 			} else {
+				if i < len(values) {
+					t.escapeCallables(values[i:i+1], t.loc(x.Rhs[i]))
+				}
+				t.eval(e)
 				t.invalidate()
 			}
 		}
@@ -132,12 +138,7 @@ func (t *goTracker) stmt(s ast.Stmt) {
 	case *ast.ReturnStmt:
 		for _, e := range x.Results {
 			v := t.eval(e)
-			if v.q != nil {
-				v.q.partial = true
-			}
-			if v.recv != nil {
-				v.recv.partial = true
-			}
+			t.escapeCallables([]trackedValue{v}, t.loc(e))
 		}
 	case *ast.IfStmt:
 		if x.Init != nil {
@@ -162,17 +163,23 @@ func (t *goTracker) stmt(s ast.Stmt) {
 		}
 		t.eval(x.Cond)
 		t.invalidate()
+		original := t.env
+		t.env = cloneEnvironment(original)
 		t.withUncertainty(func() {
 			t.block(x.Body)
 			if x.Post != nil {
 				t.stmt(x.Post)
 			}
 		})
+		t.env = joinEnvironments(original, original, t.env)
 		t.invalidate()
 	case *ast.RangeStmt:
 		t.eval(x.X)
 		t.invalidate()
+		original := t.env
+		t.env = cloneEnvironment(original)
 		t.withUncertainty(func() { t.block(x.Body) })
+		t.env = joinEnvironments(original, original, t.env)
 		t.invalidate()
 	case *ast.SwitchStmt:
 		if x.Init != nil {
@@ -220,7 +227,7 @@ func (t *goTracker) stmt(s ast.Stmt) {
 		t.stmt(x.Stmt)
 	case *ast.SendStmt:
 		t.eval(x.Chan)
-		t.eval(x.Value)
+		t.escapeCallables([]trackedValue{t.eval(x.Value)}, t.loc(x.Value))
 		t.invalidate()
 	case *ast.BranchStmt:
 		t.invalidate()
@@ -250,7 +257,7 @@ func cloneEnvironment(src map[types.Object]trackedValue) map[types.Object]tracke
 			return nil
 		}
 		if states[q] == nil {
-			states[q] = &queryState{calls: append([]chainCall(nil), q.calls...), partial: q.partial}
+			states[q] = &queryState{origin: stateOrigin(q), calls: append([]chainCall(nil), q.calls...), partial: q.partial}
 		}
 		return states[q]
 	}
@@ -261,11 +268,17 @@ func cloneEnvironment(src map[types.Object]trackedValue) map[types.Object]tracke
 	}
 	return dst
 }
+func stateOrigin(q *queryState) *queryState {
+	if q == nil || q.origin == nil {
+		return q
+	}
+	return q.origin
+}
 func sameState(a, b *queryState) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	if a.partial != b.partial || len(a.calls) != len(b.calls) {
+	if stateOrigin(a) != stateOrigin(b) || a.partial != b.partial || len(a.calls) != len(b.calls) {
 		return false
 	}
 	for i := range a.calls {
@@ -277,19 +290,27 @@ func sameState(a, b *queryState) bool {
 }
 func joinEnvironments(base, a, b map[types.Object]trackedValue) map[types.Object]trackedValue {
 	out := cloneEnvironment(base)
+	changed := map[*queryState]bool{}
 	for o, v := range out {
 		av, bv := a[o], b[o]
 		if !sameState(av.q, bv.q) || !sameState(v.q, av.q) {
+			if stateOrigin(v.q) != stateOrigin(av.q) || stateOrigin(v.q) != stateOrigin(bv.q) {
+				for _, q := range []*queryState{v.q, av.q, bv.q} {
+					if q != nil {
+						changed[stateOrigin(q)] = true
+					}
+				}
+			}
 			if v.q == nil {
 				v.q = &queryState{partial: true}
 			}
 			v.q.partial = true
 		}
-		if av.fn != bv.fn || !sameState(av.recv, bv.recv) {
+		if av.fn != bv.fn || v.fn != av.fn || !sameState(av.recv, bv.recv) || !sameState(v.recv, av.recv) {
 			for _, candidate := range []trackedValue{av, bv, v} {
 				if databaseFunction(candidate.fn) {
 					v.fn = candidate.fn
-					v.recv = candidate.recv
+					v.recv = &queryState{partial: true}
 					v.expression = candidate.expression
 					break
 				}
@@ -303,6 +324,16 @@ func joinEnvironments(base, a, b map[types.Object]trackedValue) map[types.Object
 			v.scope = nil
 		}
 		out[o] = v
+	}
+	// A branch may rebind an alias to another receiver. Neither receiver's
+	// predicates or limits may become evidence for the other after the join.
+	for _, v := range out {
+		for _, q := range []*queryState{v.q, v.recv} {
+			if q != nil && changed[stateOrigin(q)] {
+				q.calls = nil
+				q.partial = true
+			}
+		}
 	}
 	return out
 }
@@ -369,12 +400,7 @@ func (t *goTracker) eval(e ast.Expr) trackedValue {
 	case *ast.CompositeLit:
 		for _, e := range x.Elts {
 			v := t.eval(e)
-			if v.q != nil {
-				v.q.partial = true
-			}
-			if v.recv != nil {
-				v.recv.partial = true
-			}
+			t.escapeCallables([]trackedValue{v}, t.loc(e))
 		}
 	case *ast.KeyValueExpr:
 		t.eval(x.Key)
@@ -445,18 +471,13 @@ func (t *goTracker) call(c *ast.CallExpr) trackedValue {
 		t.raw(name, normalized, loc)
 		return trackedValue{}
 	}
-	if (path == "database/sql" && (recv == "DB" || recv == "Tx" || recv == "Conn" || recv == "Stmt")) || (path == ormPath && (recv == "DB" || recv == "Tx" || recv == "Executor")) ||
-		(path == queryPath && recv == "executor") ||
-		(path == ormPath+"/migration" && (recv == "Executor" || recv == "StatusExecutor")) ||
-		(path == ormPath+"/internal/querybridge" && recv == "Executor") {
-		if isRawSQLMethod(name) || name == "QueryRowE" || name == "SelectMap" || name == "SelectMaps" || name == "Prepare" || name == "PrepareContext" {
-			if recv == "Stmt" {
-				t.partial(loc, "prepared statement SQL is not tracked")
-			} else {
-				t.raw(name, normalized, loc)
-			}
-			return trackedValue{}
+	if rawDatabaseFunction(fn) {
+		if recv == "Stmt" {
+			t.partial(loc, "prepared statement SQL is not tracked")
+		} else {
+			t.raw(name, normalized, loc)
 		}
+		return trackedValue{}
 	}
 	if (path == ormPath && (recv == "DB" || recv == "Tx") && (name == "Table" || name == "TablePath" || name == "Model")) || (path == queryPath && recv == "" && (name == "New" || name == "NewWithSettings")) {
 		root := chainCall{Method: name, Call: normalized}
@@ -544,21 +565,31 @@ func (t *goTracker) call(c *ast.CallExpr) trackedValue {
 	}
 	return trackedValue{}
 }
+func rawDatabaseFunction(fn *types.Func) bool {
+	if fn == nil || fn.Pkg() == nil {
+		return false
+	}
+	path, name, recv := fn.Pkg().Path(), fn.Name(), declaredReceiverName(fn)
+	receiver := (path == "database/sql" && (recv == "DB" || recv == "Tx" || recv == "Conn" || recv == "Stmt")) ||
+		(path == ormPath && (recv == "DB" || recv == "Tx" || recv == "Executor")) ||
+		(path == queryPath && recv == "executor") ||
+		(path == ormPath+"/migration" && (recv == "Executor" || recv == "StatusExecutor")) ||
+		(path == ormPath+"/internal/querybridge" && recv == "Executor")
+	return receiver && (isRawSQLMethod(name) || name == "QueryRowE" || name == "SelectMap" || name == "SelectMaps" || name == "Prepare" || name == "PrepareContext")
+}
 func databaseFunction(fn *types.Func) bool {
 	if fn == nil || fn.Pkg() == nil {
 		return false
 	}
 	path, name, recv := fn.Pkg().Path(), fn.Name(), declaredReceiverName(fn)
-	if path == queryPath {
-		return (recv == "Query" && isQueryOperation(name)) || name == "NewRawPlan"
-	}
-	if path == ormPath {
-		return genericOperation(name) || isRawSQLMethod(name) || name == "QueryRowE"
-	}
-	return path == "database/sql" && (isRawSQLMethod(name) || name == "Prepare" || name == "PrepareContext")
+	return rawDatabaseFunction(fn) || (path == queryPath && ((recv == "Query" && isQueryOperation(name)) || (recv == "" && name == "NewRawPlan"))) ||
+		(path == ormPath && recv == "" && genericOperation(name))
 }
 func (t *goTracker) escapeCallables(args []trackedValue, loc *query.SourceLocation) {
 	for _, v := range args {
+		if v.q != nil {
+			v.q.partial = true
+		}
 		if v.recv != nil {
 			v.recv.partial = true
 		}
@@ -623,7 +654,9 @@ func isQueryOperation(name string) bool {
 		return true
 	}
 	switch name {
-	case "Count", "Insert", "InsertBatch", "InsertGetId", "InsertOrIgnore", "InsertUsing", "Upsert", "UpdateOrInsert", "PlanInsert", "PlanInsertBatch", "Increment", "Decrement", "UpdateReturning", "DeleteReturning":
+	case "ValidateSelect", "ValidateCount", "ValidateInsert", "ValidateInsertBatch", "ValidateUpdate", "ValidateDelete",
+		"ExecuteValidatedSelect", "ExecuteValidatedCount", "ExecuteValidatedInsert", "ExecuteValidatedInsertBatch", "ExecuteValidatedUpdate", "ExecuteValidatedDelete",
+		"Count", "Insert", "InsertBatch", "InsertGetId", "InsertOrIgnore", "InsertUsing", "Upsert", "UpdateOrInsert", "PlanInsert", "PlanInsertBatch", "Increment", "Decrement", "UpdateReturning", "DeleteReturning":
 		return true
 	}
 	return false

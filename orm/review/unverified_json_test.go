@@ -81,3 +81,46 @@ func TestJSONRecomputedReadRiskSurvivesSuppliedWarnings(t *testing.T) {
 		t.Fatal("recomputed read risk hidden")
 	}
 }
+
+func TestExternalQueryPlanMarkerLocationAndConfigExpiry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	body := `{"operation":"insert","sql":"INSERT INTO CANARY_JSON_BOUNDARY VALUES (1)","warnings":[],"suppressed_warnings":[{"code":"STATIC_REVIEW_PARTIAL","level":"low","message":"CANARY_JSON_BOUNDARY","location":{"file":"CANARY_JSON_BOUNDARY","line":88}}],"approval":{"reason":"CANARY_JSON_BOUNDARY"},"metadata":{"Fresh":true}}`
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, expiry := range []string{"", "2099-01-01", "2000-01-01"} {
+		opts := Options{Paths: []string{path}}
+		if expiry != "" {
+			opts.ConfigSuppressions = []ConfigSuppression{{Code: query.WarningStaticReviewPartial, Path: path, Reason: "temporary diagnostic review", Owner: "review-team", Expires: expiry}}
+		}
+		r, err := Run(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := 0
+		for _, fs := range [][]Finding{r.Findings, r.SuppressedFindings} {
+			for _, f := range fs {
+				if f.Message != "external query plan has no verified runtime correspondence" {
+					continue
+				}
+				found++
+				if f.Location == nil || f.Location.File != path || f.Location.Line != 1 || f.AnalysisPrecision != query.AnalysisPartial {
+					t.Fatal("marker inherited input location or precision")
+				}
+				if f.Suppressed != (expiry == "2099-01-01") {
+					t.Fatal("configuration expiry boundary changed")
+				}
+			}
+		}
+		if found != 1 {
+			t.Fatalf("expected one independent marker, got %d", found)
+		}
+		if expiry == "2000-01-01" && !hasFinding(r.Findings, query.WarningSuppressionExpired) {
+			t.Fatal("expired suppression hidden")
+		}
+		v, _ := r.PublicView()
+		if strings.Contains(v.String(), "CANARY_JSON_BOUNDARY") {
+			t.Fatal("JSON marker leaked source")
+		}
+	}
+}

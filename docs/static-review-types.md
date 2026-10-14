@@ -10,7 +10,13 @@ Goquent DB/Executor raw methods, Query operations and generic CRUD are identifie
 Prepared statement execution remains partial because statement SQL is not tracked.
 Literal raw SQL with dynamic bindings also retains partial evidence.
 Function and method values assigned locally, aliases, and method expressions are
-recognized; an unavailable receiver remains partial. Arbitrary dispatch through
+recognized; an unavailable receiver remains partial. Returning a type-confirmed
+DB callable, storing it in a struct/slice/map literal or a field/index assignment,
+or sending it through a channel retains a fixed partial escape marker at the
+escape site. Container contents and calls through them are not reconstructed;
+the marker preserves the loss of tracking without interprocedural analysis.
+Direct calls and callable escapes share the same declared raw-API inventory,
+including SelectMap/SelectMaps and known Executor interfaces. Arbitrary dispatch through
 interfaces declared by applications and function parameters is outside this
 bounded analysis. This is not a complete whole-program call graph.
 
@@ -51,7 +57,12 @@ Query objects are mutable. Assignments and aliases share their state, keyed by
 Straight-line modifications are ordered. Branches inspect both arms and retain
 uncertainty after joining; they never combine a predicate from one arm with a
 limit from another into a precise plan. Untouched queries retain their state.
-Loops, closure capture, escapes and opaque calls make affected state partial.
+Branch snapshots preserve receiver identity. Rebinding a Query alias cannot
+transfer another receiver's predicates or limits into precise evidence. Both
+arms replacing a method receiver also retain uncertainty. Loops join the
+zero-iteration and body states, preserving a possible DB callable even when the
+body assigns an unrelated method. Loops, closure capture, escapes and opaque
+calls make affected state partial.
 Planning and execution terminals do not manufacture runtime evidence.
 
 Known `ApplyScopes`, `ComposeScopes` and `TenantScope` declarations are followed.
@@ -65,7 +76,9 @@ parameter and one Query result, only Query modifier expression statements and a
 final return. It can be in another file of that package. Calls to another helper,
 assignments, loops, closures, escapes or other Query objects reject expansion.
 Unsupported helpers retain unknown state; this is not general interprocedural
-analysis. Generic CRUD/composite operations retain a partial operation marker;
+analysis. The six Query Validate* and six ExecuteValidated* operation families retain
+partial markers; static review does not validate their private runtime handles.
+Generic CRUD/composite operations retain a partial operation marker;
 their SQL is not reconstructed. Complex DSL modifiers, Model-derived tables,
 dynamic tables/columns/bindings and missing receiver state remain partial.
 
