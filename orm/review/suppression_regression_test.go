@@ -80,9 +80,7 @@ func TestRunGoSuppressionRegression(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "source.go")
-			if err := os.WriteFile(path, []byte(tt.source), 0o644); err != nil {
-				t.Fatal(err)
-			}
+			writeTypedLegacy(t, path, tt.source)
 			report, err := Run(Options{Paths: []string{path}})
 			if tt.wantError {
 				if err == nil || !strings.Contains(err.Error(), path+":3:") || !strings.Contains(err.Error(), "unterminated suppression quote") {

@@ -236,8 +236,8 @@ func TestRunReviewsSuppressedWarningsFromQueryPlanJSON(t *testing.T) {
 	if report.Summary.Suppressed != 1 {
 		t.Fatalf("expected one suppressed finding, got %d", report.Summary.Suppressed)
 	}
-	if len(report.Findings) != 0 {
-		t.Fatalf("expected suppressed finding to be hidden by default, got %#v", report.Findings)
+	if !hasFinding(report.Findings, query.WarningStaticReviewPartial) || hasFinding(report.Findings, query.WarningLimitMissing) {
+		t.Fatalf("expected independent unverified marker and hidden supplied warning")
 	}
 }
 
@@ -272,9 +272,7 @@ func run(db any) {
 	db.Table("users").Select("id").GetMaps(&rows)
 }
 `
-	if err := os.WriteFile(goPath, []byte(src), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTypedLegacy(t, goPath, src)
 
 	report, err := Run(Options{Paths: []string{goPath}})
 	if err != nil {
@@ -317,9 +315,7 @@ func run(q any, db any, sqlText string) {
 	db.Exec(sqlText)
 }
 `
-	if err := os.WriteFile(goPath, []byte(src), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTypedLegacy(t, goPath, src)
 
 	report, err := Run(Options{Paths: []string{goPath}})
 	if err != nil {
@@ -353,9 +349,7 @@ func run(db any) {
 	db.Table("users").Where("tenant_id", "tenant-1").Update(map[string]any{"name": "x"})
 }
 `
-	if err := os.WriteFile(goPath, []byte(src), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTypedLegacy(t, goPath, src)
 	m := &manifest.Manifest{Tables: []manifest.Table{{
 		Name:  "users",
 		Model: "User",
@@ -399,9 +393,7 @@ func run(db any) {
 	db.Table("users").Select("id").GetMaps(&rows)
 }
 `
-	if err := os.WriteFile(goPath, []byte(src), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTypedLegacy(t, goPath, src)
 	configPath := filepath.Join(dir, "goquent.review.json")
 
 	report, err := Run(Options{

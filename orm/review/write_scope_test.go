@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/recoweft/goquent/orm/query"
@@ -14,9 +15,10 @@ func TestDynamicTableWriteScopeIsUnknown(t *testing.T) {
 		t.Run(terminal, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "dynamic.go")
 			body := fmt.Sprintf("package fixture\nfunc write(table string) { db.Table(table).Where(\"id\", 1).%s }\n", terminal)
-			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			if err := os.WriteFile(path+".original.txt", []byte(body), 0600); err != nil {
 				t.Fatal(err)
 			}
+			writeTypedLegacy(t, path, strings.Replace(body, "func write(table string)", "func write(db any, table string)", 1))
 			report, err := Run(Options{Paths: []string{path}})
 			if err != nil {
 				t.Fatal(err)

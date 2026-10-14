@@ -30,7 +30,10 @@ examples/, docs/, specs/   Runnable examples, usage guides and design contracts
   `goquent-query-builder` module dependency.
 - `go.mod` is the dependency inventory: production drivers are
   `github.com/go-sql-driver/mysql` and `github.com/lib/pq`; tests also use
-  `github.com/DATA-DOG/go-sqlmock`. `filippo.io/edwards25519` is indirect.
+  `github.com/DATA-DOG/go-sqlmock`. `filippo.io/edwards25519` is indirect. Static review uses
+  `golang.org/x/tools/go/packages` (with indirect `x/mod` and `x/sync`) for
+  build-aware Go type identity; see docs/static-review-types.md for dependency
+  review and bounded loading.
   Prefer the standard library. Explain additional dependencies and update
   `go.mod`/`go.sum` with relevant tests; a TODO alone is not dependency review.
 
