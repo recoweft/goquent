@@ -467,3 +467,16 @@ bounded source session. It is not execution authorization or proof that source
 ran. Standalone CLI/MCP JSON remains unverified. Existing public v1 is unchanged
 by default; opt-in v2 contains only bounded closed classifications. PR3 SARIF,
 changed-line review and expiring baselines remain separate work.
+
+## GQ-AI-09 PR3 source comparison and public SARIF
+
+See [review CI formats and bounded baselines](../docs/static-review-ci.md) for
+explicit SARIF 2.1.0 and independent review-CI JSON v1 output, actual bounded
+source-tree comparison and exact, expiring baseline annotations. Original full
+head risk/precision/manifest gates remain authoritative; selected or truncated
+public views and baseline matches never relax them. Public SARIF carries the
+same canonical public line/byte-column projection as JSON, but omits file
+identity, physical locations, paths and snippets. Git tracking is not assessed;
+no commit resolver or private SARIF artifact route is introduced. Existing
+PR1/2 type/precision/evidence and v1-default/v2-opt-in contracts remain in force.
+Whole-Issue acceptance and main integration require separate review.

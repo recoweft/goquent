@@ -54,7 +54,10 @@ func runReviewEvidence(args []string, stdout, stderr io.Writer, evidence func(*r
 	fs.SetOutput(io.Discard)
 	failOn := fs.String("fail-on", "high", "risk threshold that returns exit code 1")
 	failOnPrecision := fs.String("fail-on-precision", "", "analysis precision threshold that returns exit code 1: partial or unsupported")
-	format := fs.String("format", "pretty", "output format: pretty, json, json-v2, github")
+	format := fs.String("format", "pretty", "output format: pretty, json, json-v2, github, sarif (no file identity), review-ci-json")
+	diffPath := fs.String("diff", "", "bounded unified diff; display selection only, full gate retained")
+	baseRoot := fs.String("diff-base-root", "", "old source root for actual diff correspondence")
+	baselinePath := fs.String("baseline", "", "bounded expiring source baseline; annotation only")
 	showSuppressed := fs.Bool("show-suppressed", false, "include suppressed findings in the primary output")
 	configPath := fs.String("config", "", "path to a JSON goquent review config file")
 	manifestPath := fs.String("manifest", "", "manifest JSON path for freshness warnings")
@@ -137,13 +140,13 @@ func runReviewEvidence(args []string, stdout, stderr io.Writer, evidence func(*r
 	precisionThresholdSet := strings.TrimSpace(*failOnPrecision) != ""
 	outputFormat := strings.ToLower(strings.TrimSpace(*format))
 	switch outputFormat {
-	case "", "pretty", "text", "json", "json-v2", "github":
+	case "", "pretty", "text", "json", "json-v2", "github", "sarif", "review-ci-json":
 	default:
 		fmt.Fprintln(stderr, "PUBLIC_INPUT: unknown command or format")
 		return 2
 	}
 
-	report, err := review.Run(review.Options{
+	reviewOptions := review.Options{
 		Evidence: evidence, EvidenceDialect: dialect, EvidenceSettings: settings,
 		Paths:                fs.Args(),
 		ShowSuppressed:       *showSuppressed,
@@ -154,7 +157,11 @@ func runReviewEvidence(args []string, stdout, stderr io.Writer, evidence func(*r
 		ManifestInputs:       manifestInputs,
 		Rules:                cfg.Rules,
 		ConfigSuppressions:   cfg.Suppressions,
-	})
+	}
+	if *diffPath != "" || *baseRoot != "" || *baselinePath != "" || outputFormat == "sarif" || outputFormat == "review-ci-json" {
+		return runReviewCI(reviewOptions, *diffPath, *baseRoot, *baselinePath, outputFormat, threshold, precisionThreshold, stdout, stderr)
+	}
+	report, err := review.Run(reviewOptions)
 	if err != nil {
 		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2

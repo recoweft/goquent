@@ -52,6 +52,9 @@ type ManifestStatus struct {
 
 // ReviewReport is the top-level report produced by goquent review.
 type ReviewReport struct {
+	canonicalFindings         []Finding
+	canonicalSuppressed       []Finding
+	canonical                 bool
 	OperationCount            int `json:"operation_count,omitempty"`
 	privateOperations         []OperationReview
 	privateFindings           []Finding
@@ -66,6 +69,7 @@ type ReviewReport struct {
 
 // Options controls review discovery and output behavior.
 type Options struct {
+	capture *ciCapture
 	// Evidence is an explicit synchronous application test producer, never a file loader.
 	Evidence         func(*Session)
 	EvidenceDialect  string
@@ -132,6 +136,10 @@ func Run(opts Options) (ReviewReport, error) {
 				errs = append(errs, err)
 			}
 			for _, finding := range findings {
+				// Serialized warning locations are claims, not source provenance.
+				if filepath.Ext(file) != ".go" {
+					finding.Location = &query.SourceLocation{File: file, Line: 1}
+				}
 				if finding.Suppressed {
 					report.SuppressedFindings = append(report.SuppressedFindings, finding)
 					if opts.ShowSuppressed {
@@ -146,6 +154,9 @@ func Run(opts Options) (ReviewReport, error) {
 	report.Findings = append(report.Findings, lintConfigSuppressions(opts.ConfigPath, opts.ConfigSuppressions, reviewedFiles, report.SuppressedFindings)...)
 	ctx.session.fallback(append(append([]Finding(nil), report.Findings...), report.SuppressedFindings...))
 	ctx.session.finish(&report)
+	report.canonical = true
+	report.canonicalFindings = copyCanonical(report.Findings)
+	report.canonicalSuppressed = copyCanonical(report.SuppressedFindings)
 	report.Summary = summarize(report)
 	return report, errors.Join(errs...)
 }
