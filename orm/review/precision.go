@@ -35,6 +35,8 @@ type SourceReference struct {
 
 // OperationReview retains operations even when they produce no risk warnings.
 type OperationReview struct {
+	startLine      int
+	endLine        int
 	Suppressed     bool                    `json:"suppressed"`
 	Source         SourceReference         `json:"source"`
 	Location       *query.SourceLocation   `json:"location"`
@@ -206,6 +208,10 @@ func (s *Session) finish(r *ReviewReport) {
 		s.opts.Evidence(s)
 	}
 	unchanged := s.unchanged()
+	if s.opts.capture != nil {
+		s.opts.capture.inputs = s.inputs
+		s.opts.capture.valid = unchanged
+	}
 	for i := range s.operations {
 		op := &s.operations[i]
 		rs := s.records[i]

@@ -469,7 +469,7 @@ func (t *goTracker) call(c *ast.CallExpr) trackedValue {
 	if offset <= len(callArgs) {
 		callArgs = callArgs[offset:]
 	}
-	normalized := &ast.CallExpr{Fun: c.Fun, Args: callArgs, Ellipsis: c.Ellipsis}
+	normalized := &ast.CallExpr{Fun: c.Fun, Args: callArgs, Ellipsis: c.Ellipsis, Lparen: c.Lparen, Rparen: c.Rparen}
 	if path == queryPath && recv == "" && name == "NewRawPlan" {
 		t.raw(name, normalized, loc)
 		return trackedValue{}
@@ -745,6 +745,8 @@ func (t *goTracker) terminal(name string, q *queryState, c *ast.CallExpr, loc *q
 		if len(t.ctx.session.operations) > before {
 			op, _ := operationForTerminal(name)
 			t.ctx.session.operations[before].operation = op
+			t.ctx.session.operations[before].startLine = t.tf.fset.PositionFor(c.Pos(), false).Line
+			t.ctx.session.operations[before].endLine = t.tf.fset.PositionFor(c.End(), false).Line
 		}
 	}
 	if p, ok := staticPlanFromChain(t.ctx, name, calls); ok {

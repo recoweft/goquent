@@ -36,7 +36,7 @@ func TestReviewCommandExitCodesAndJSON(t *testing.T) {
 
 func TestReviewCommandRejectsBadFormat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"review", "--format", "sarif"}, &stdout, &stderr)
+	code := run([]string{"review", "--format", "unsupported-format"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("expected config error exit code, got %d", code)
 	}
