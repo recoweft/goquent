@@ -3144,6 +3144,192 @@ func WherePK() WriteOpt
 
 WherePK uses primary key columns in WHERE clause.
 
+# analysis
+
+```go
+import "github.com/recoweft/goquent/orm/analysis"
+```
+
+Package analysis describes bounded review coverage, never execution authority.
+
+## Index
+
+- [Constants](<#constants>)
+- [Variables](<#variables>)
+- [type Correspondence](<#Correspondence>)
+  - [func \(c Correspondence\) Normalize\(\) Correspondence](<#Correspondence.Normalize>)
+- [type Detail](<#Detail>)
+  - [func \(d Detail\) Coverage\(\) State](<#Detail.Coverage>)
+  - [func \(d Detail\) MarshalJSON\(\) \(\[\]byte, error\)](<#Detail.MarshalJSON>)
+  - [func \(d Detail\) Normalize\(\) Detail](<#Detail.Normalize>)
+  - [func \(d Detail\) Precision\(\) string](<#Detail.Precision>)
+  - [func \(d \*Detail\) UnmarshalJSON\(b \[\]byte\) error](<#Detail.UnmarshalJSON>)
+- [type Match](<#Match>)
+  - [func NormalizeMatch\(m Match\) Match](<#NormalizeMatch>)
+- [type State](<#State>)
+  - [func NormalizeState\(s State\) State](<#NormalizeState>)
+
+
+## Constants
+
+<a name="Version"></a>
+
+```go
+const Version = 1
+```
+
+## Variables
+
+<a name="ErrVersion"></a>
+
+```go
+var ErrVersion = errors.New("goquent: unsupported analysis version")
+```
+
+<a name="Correspondence"></a>
+## type Correspondence
+
+Correspondence reports independent comparisons, not a runtime safety verdict.
+
+```go
+type Correspondence struct {
+    Operation Match `json:"operation"`
+    Target    Match `json:"target"`
+    Structure Match `json:"structure"`
+    Arguments Match `json:"arguments"`
+    Source    Match `json:"source"`
+    Context   Match `json:"context"`
+}
+```
+
+<a name="Correspondence.Normalize"></a>
+### func \(Correspondence\) Normalize
+
+```go
+func (c Correspondence) Normalize() Correspondence
+```
+
+
+
+<a name="Detail"></a>
+## type Detail
+
+Detail separates static knowledge from sample\-plan correspondence. Policy describes declared checks only; live authorization is always unverified.
+
+```go
+type Detail struct {
+    Version  int      `json:"version"`
+    SQL      State    `json:"sql"`
+    Columns  State    `json:"columns"`
+    Bindings State    `json:"bindings"`
+    Policy   State    `json:"policy"`
+    Reasons  []string `json:"reasons"`
+    Missing  []string `json:"missing"`
+}
+```
+
+<a name="Detail.Coverage"></a>
+### func \(Detail\) Coverage
+
+```go
+func (d Detail) Coverage() State
+```
+
+Coverage distinguishes entirely unknown input from partial static knowledge.
+
+<a name="Detail.MarshalJSON"></a>
+### func \(Detail\) MarshalJSON
+
+```go
+func (d Detail) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="Detail.Normalize"></a>
+### func \(Detail\) Normalize
+
+```go
+func (d Detail) Normalize() Detail
+```
+
+
+
+<a name="Detail.Precision"></a>
+### func \(Detail\) Precision
+
+```go
+func (d Detail) Precision() string
+```
+
+Precision is a conservative gate adapter. Missing axes cannot be precise.
+
+<a name="Detail.UnmarshalJSON"></a>
+### func \(\*Detail\) UnmarshalJSON
+
+```go
+func (d *Detail) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="Match"></a>
+## type Match
+
+
+
+```go
+type Match string
+```
+
+<a name="Unconfirmed"></a>
+
+```go
+const (
+    Unconfirmed Match = "unconfirmed"
+    Matched     Match = "matched"
+    Mismatched  Match = "mismatched"
+)
+```
+
+<a name="NormalizeMatch"></a>
+### func NormalizeMatch
+
+```go
+func NormalizeMatch(m Match) Match
+```
+
+
+
+<a name="State"></a>
+## type State
+
+
+
+```go
+type State string
+```
+
+<a name="Unknown"></a>
+
+```go
+const (
+    Unknown     State = "unknown"
+    Known       State = "known"
+    Partial     State = "partial"
+    Unsupported State = "unsupported"
+)
+```
+
+<a name="NormalizeState"></a>
+### func NormalizeState
+
+```go
+func NormalizeState(s State) State
+```
+
+
+
 # conv
 
 ```go
@@ -5921,6 +6107,8 @@ import "github.com/recoweft/goquent/orm/query"
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func AttachTableRiskMetadata\(plan \*QueryPlan, metadata \[\]TableRiskMetadata\)](<#AttachTableRiskMetadata>)
+- [func CompareReviewOperation\(t ReviewToken, r ReviewReceipt, operation OperationType\) analysis.Match](<#CompareReviewOperation>)
+- [func CompareReviewReceipts\(t ReviewToken, a, b ReviewReceipt\) analysis.Correspondence](<#CompareReviewReceipts>)
 - [func EnsurePlanExecutable\(plan \*QueryPlan\) error](<#EnsurePlanExecutable>)
 - [func PlanHasPredicateColumn\(plan \*QueryPlan, table, column string\) bool](<#PlanHasPredicateColumn>)
 - [func RegisterTablePolicy\(policy TablePolicy\) error](<#RegisterTablePolicy>)
@@ -6059,6 +6247,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) ReOrder\(\) \*Query](<#Query.ReOrder>)
   - [func \(q \*Query\) RequireApproval\(reason string\) \*Query](<#Query.RequireApproval>)
   - [func \(q \*Query\) RequirePredicates\(required ...RequiredPredicate\) \*Query](<#Query.RequirePredicates>)
+  - [func \(q \*Query\) ReviewReceipt\(ctx context.Context, t ReviewToken\) \(ReviewReceipt, error\)](<#Query.ReviewReceipt>)
   - [func \(q \*Query\) RightJoin\(table, localColumn, cond, target string\) \*Query](<#Query.RightJoin>)
   - [func \(q \*Query\) RightJoinQuery\(table string, fn func\(b \*JoinClause\)\) \*Query](<#Query.RightJoinQuery>)
   - [func \(q \*Query\) RightJoinSubQuery\(sub \*Query, alias, my, condition, target string\) \*Query](<#Query.RightJoinSubQuery>)
@@ -6130,6 +6319,16 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(p \*QueryPlan\) UnmarshalJSON\(b \[\]byte\) error](<#QueryPlan.UnmarshalJSON>)
 - [type RequiredPredicate](<#RequiredPredicate>)
   - [func MissingRequiredPredicates\(plan \*QueryPlan, required \[\]RequiredPredicate\) \[\]RequiredPredicate](<#MissingRequiredPredicates>)
+- [type ReviewReceipt](<#ReviewReceipt>)
+  - [func \(ReviewReceipt\) Format\(s fmt.State, \_ rune\)](<#ReviewReceipt.Format>)
+  - [func \(ReviewReceipt\) MarshalJSON\(\) \(\[\]byte, error\)](<#ReviewReceipt.MarshalJSON>)
+  - [func \(r \*ReviewReceipt\) UnmarshalJSON\(\[\]byte\) error](<#ReviewReceipt.UnmarshalJSON>)
+- [type ReviewToken](<#ReviewToken>)
+  - [func NewReviewToken\(ctx context.Context\) ReviewToken](<#NewReviewToken>)
+  - [func \(t ReviewToken\) Close\(\)](<#ReviewToken.Close>)
+  - [func \(ReviewToken\) Format\(s fmt.State, \_ rune\)](<#ReviewToken.Format>)
+  - [func \(ReviewToken\) MarshalJSON\(\) \(\[\]byte, error\)](<#ReviewToken.MarshalJSON>)
+  - [func \(t \*ReviewToken\) UnmarshalJSON\(\[\]byte\) error](<#ReviewToken.UnmarshalJSON>)
 - [type RiskConfig](<#RiskConfig>)
 - [type RiskEngine](<#RiskEngine>)
   - [func NewRiskEngine\(config RiskConfig\) RiskEngine](<#NewRiskEngine>)
@@ -6316,6 +6515,18 @@ var ErrOutputCycle = valueguard.ErrCycle
 var ErrOutputDepth = valueguard.ErrDepth
 ```
 
+<a name="ErrReviewBudget"></a>
+
+```go
+var ErrReviewBudget = errors.New("goquent: review receipt budget exceeded")
+```
+
+<a name="ErrReviewReceipt"></a>
+
+```go
+var ErrReviewReceipt = errors.New("goquent: review receipt unavailable")
+```
+
 <a name="AttachTableRiskMetadata"></a>
 ## func AttachTableRiskMetadata
 
@@ -6324,6 +6535,24 @@ func AttachTableRiskMetadata(plan *QueryPlan, metadata []TableRiskMetadata)
 ```
 
 AttachTableRiskMetadata attaches legacy descriptive table metadata. Use Query.WithWriteKeyContext for explicit, conditional write key analysis.
+
+<a name="CompareReviewOperation"></a>
+## func CompareReviewOperation
+
+```go
+func CompareReviewOperation(t ReviewToken, r ReviewReceipt, operation OperationType) analysis.Match
+```
+
+CompareReviewOperation compares a known static operation with a planner sample. It does not disclose executable material or certify source execution.
+
+<a name="CompareReviewReceipts"></a>
+## func CompareReviewReceipts
+
+```go
+func CompareReviewReceipts(t ReviewToken, a, b ReviewReceipt) analysis.Correspondence
+```
+
+CompareReviewReceipts compares private samples. Context is matched only within the existing supported identity domain; neither result grants authorization.
 
 <a name="EnsurePlanExecutable"></a>
 ## func EnsurePlanExecutable
@@ -7694,6 +7923,15 @@ func (q *Query) RequirePredicates(required ...RequiredPredicate) *Query
 
 RequirePredicates blocks execution unless the finalized QueryPlan contains the given predicate columns. It is useful for repository\-level tenant or parent\-scope guards that are stricter than global table policy.
 
+<a name="Query.ReviewReceipt"></a>
+### func \(\*Query\) ReviewReceipt
+
+```go
+func (q *Query) ReviewReceipt(ctx context.Context, t ReviewToken) (ReviewReceipt, error)
+```
+
+ReviewReceipt plans a SELECT without executing SQL. Public QueryPlan fields are never accepted as receipt inputs. Missing identity context stays unknown.
+
 <a name="Query.RightJoin"></a>
 ### func \(\*Query\) RightJoin
 
@@ -8368,6 +8606,100 @@ func MissingRequiredPredicates(plan *QueryPlan, required []RequiredPredicate) []
 
 MissingRequiredPredicates returns required predicates not present in plan.
 
+<a name="ReviewReceipt"></a>
+## type ReviewReceipt
+
+ReviewReceipt contains only an immutable private planner sample and its owner. It cannot be serialized or used by any execution API. SELECT is the initial supported family. Source correspondence is declared by the application's test.
+
+```go
+type ReviewReceipt struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="ReviewReceipt.Format"></a>
+### func \(ReviewReceipt\) Format
+
+```go
+func (ReviewReceipt) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="ReviewReceipt.MarshalJSON"></a>
+### func \(ReviewReceipt\) MarshalJSON
+
+```go
+func (ReviewReceipt) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="ReviewReceipt.UnmarshalJSON"></a>
+### func \(\*ReviewReceipt\) UnmarshalJSON
+
+```go
+func (r *ReviewReceipt) UnmarshalJSON([]byte) error
+```
+
+
+
+<a name="ReviewToken"></a>
+## type ReviewToken
+
+ReviewToken scopes ephemeral planner samples. It is not an execution handle. Review callers must use the token supplied by their active review session.
+
+```go
+type ReviewToken struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewReviewToken"></a>
+### func NewReviewToken
+
+```go
+func NewReviewToken(ctx context.Context) ReviewToken
+```
+
+
+
+<a name="ReviewToken.Close"></a>
+### func \(ReviewToken\) Close
+
+```go
+func (t ReviewToken) Close()
+```
+
+
+
+<a name="ReviewToken.Format"></a>
+### func \(ReviewToken\) Format
+
+```go
+func (ReviewToken) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="ReviewToken.MarshalJSON"></a>
+### func \(ReviewToken\) MarshalJSON
+
+```go
+func (ReviewToken) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="ReviewToken.UnmarshalJSON"></a>
+### func \(\*ReviewToken\) UnmarshalJSON
+
+```go
+func (t *ReviewToken) UnmarshalJSON([]byte) error
+```
+
+
+
 <a name="RiskConfig"></a>
 ## type RiskConfig
 
@@ -8973,12 +9305,15 @@ import "github.com/recoweft/goquent/orm/review"
 - [type Config](<#Config>)
   - [func LoadConfig\(path string\) \(Config, error\)](<#LoadConfig>)
 - [type ConfigSuppression](<#ConfigSuppression>)
+- [type DetailView](<#DetailView>)
 - [type Finding](<#Finding>)
 - [type FindingView](<#FindingView>)
   - [func \(v FindingView\) Format\(s fmt.State, \_ rune\)](<#FindingView.Format>)
   - [func \(v FindingView\) MarshalJSON\(\) \(\[\]byte, error\)](<#FindingView.MarshalJSON>)
   - [func \(v FindingView\) String\(\) string](<#FindingView.String>)
 - [type ManifestStatus](<#ManifestStatus>)
+- [type OperationReview](<#OperationReview>)
+- [type OperationView](<#OperationView>)
 - [type Options](<#Options>)
 - [type ReportView](<#ReportView>)
   - [func DecodeReportView\(b \[\]byte\) \(ReportView, error\)](<#DecodeReportView>)
@@ -8987,12 +9322,28 @@ import "github.com/recoweft/goquent/orm/review"
   - [func \(v ReportView\) String\(\) string](<#ReportView.String>)
   - [func \(v ReportView\) ToJSON\(\) \(\[\]byte, error\)](<#ReportView.ToJSON>)
   - [func \(v \*ReportView\) UnmarshalJSON\(b \[\]byte\) error](<#ReportView.UnmarshalJSON>)
+- [type ReportViewV2](<#ReportViewV2>)
+  - [func DecodeReportViewV2\(b \[\]byte\) \(ReportViewV2, error\)](<#DecodeReportViewV2>)
+  - [func \(v ReportViewV2\) Format\(s fmt.State, \_ rune\)](<#ReportViewV2.Format>)
+  - [func \(v ReportViewV2\) MarshalJSON\(\) \(\[\]byte, error\)](<#ReportViewV2.MarshalJSON>)
+  - [func \(v ReportViewV2\) String\(\) string](<#ReportViewV2.String>)
+  - [func \(v ReportViewV2\) ToJSON\(\) \(\[\]byte, error\)](<#ReportViewV2.ToJSON>)
+  - [func \(v \*ReportViewV2\) UnmarshalJSON\(b \[\]byte\) error](<#ReportViewV2.UnmarshalJSON>)
 - [type ReviewReport](<#ReviewReport>)
+  - [func ReviewSQL\(sql string\) ReviewReport](<#ReviewSQL>)
   - [func Run\(opts Options\) \(ReviewReport, error\)](<#Run>)
   - [func \(p ReviewReport\) MarshalJSON\(\) \(\[\]byte, error\)](<#ReviewReport.MarshalJSON>)
   - [func \(r ReviewReport\) PublicView\(\) \(ReportView, error\)](<#ReviewReport.PublicView>)
+  - [func \(r ReviewReport\) PublicViewV2\(\) \(ReportViewV2, error\)](<#ReviewReport.PublicViewV2>)
   - [func \(p \*ReviewReport\) UnmarshalJSON\(b \[\]byte\) error](<#ReviewReport.UnmarshalJSON>)
 - [type ReviewSummary](<#ReviewSummary>)
+- [type Session](<#Session>)
+  - [func \(\*Session\) Format\(s fmt.State, \_ rune\)](<#Session.Format>)
+  - [func \(\*Session\) MarshalJSON\(\) \(\[\]byte, error\)](<#Session.MarshalJSON>)
+  - [func \(s \*Session\) Record\(ref SourceReference, r query.ReviewReceipt\)](<#Session.Record>)
+  - [func \(s \*Session\) References\(\) \[\]SourceReference](<#Session.References>)
+  - [func \(s \*Session\) Token\(\) query.ReviewToken](<#Session.Token>)
+- [type SourceReference](<#SourceReference>)
 
 
 ## Constants
@@ -9019,6 +9370,12 @@ const JSONVersion = planversion.Current
 
 ```go
 const MaxReportViewFindings = 256
+```
+
+<a name="MaxReviewReceipts"></a>
+
+```go
+const MaxReviewReceipts = 4096
 ```
 
 <a name="ReportViewKind"></a>
@@ -9176,6 +9533,23 @@ type ConfigSuppression struct {
 }
 ```
 
+<a name="DetailView"></a>
+## type DetailView
+
+DetailView contains only closed classifications. No source evidence is copied.
+
+```go
+type DetailView struct {
+    Coverage string   `json:"coverage"`
+    SQL      string   `json:"sql"`
+    Columns  string   `json:"columns"`
+    Bindings string   `json:"bindings"`
+    Policy   string   `json:"policy"`
+    Reasons  []string `json:"reasons"`
+    Missing  []string `json:"missing"`
+}
+```
+
 <a name="Finding"></a>
 ## type Finding
 
@@ -9183,6 +9557,7 @@ Finding is a review finding emitted by goquent review.
 
 ```go
 type Finding struct {
+    Detail            analysis.Detail         `json:"detail"`
     Code              string                  `json:"code"`
     Level             query.RiskLevel         `json:"level"`
     Message           string                  `json:"message"`
@@ -9254,6 +9629,37 @@ type ManifestStatus struct {
 }
 ```
 
+<a name="OperationReview"></a>
+## type OperationReview
+
+OperationReview retains operations even when they produce no risk warnings.
+
+```go
+type OperationReview struct {
+    Suppressed     bool                    `json:"suppressed"`
+    Source         SourceReference         `json:"source"`
+    Location       *query.SourceLocation   `json:"location"`
+    Detail         analysis.Detail         `json:"detail"`
+    Correspondence analysis.Correspondence `json:"correspondence"`
+    // contains filtered or unexported fields
+}
+```
+
+<a name="OperationView"></a>
+## type OperationView
+
+
+
+```go
+type OperationView struct {
+    Suppressed     bool                    `json:"suppressed"`
+    Ordinal        int                     `json:"ordinal"`
+    Precision      string                  `json:"precision"`
+    Detail         DetailView              `json:"detail"`
+    Correspondence analysis.Correspondence `json:"correspondence"`
+}
+```
+
 <a name="Options"></a>
 ## type Options
 
@@ -9261,6 +9667,10 @@ Options controls review discovery and output behavior.
 
 ```go
 type Options struct {
+    // Evidence is an explicit synchronous application test producer, never a file loader.
+    Evidence         func(*Session)
+    EvidenceDialect  string
+    EvidenceSettings query.Settings
     // Context cancels best-effort type loading. Nil uses a bounded background context.
     Context              context.Context
     Paths                []string
@@ -9347,6 +9757,80 @@ func (v *ReportView) UnmarshalJSON(b []byte) error
 
 
 
+<a name="ReportViewV2"></a>
+## type ReportViewV2
+
+ReportViewV2 is an opt\-in display contract. V1 defaults and readers are unchanged.
+
+```go
+type ReportViewV2 struct {
+    Kind                   string          `json:"kind"`
+    Version                int             `json:"version"`
+    FindingCount           int             `json:"finding_count"`
+    SuppressedFindingCount int             `json:"suppressed_finding_count"`
+    OperationCount         int             `json:"operation_count"`
+    Findings               []FindingView   `json:"findings"`
+    SuppressedFindings     []FindingView   `json:"suppressed_findings"`
+    Operations             []OperationView `json:"operations"`
+    Truncated              bool            `json:"truncated"`
+    DetailsOmitted         bool            `json:"details_omitted"`
+}
+```
+
+<a name="DecodeReportViewV2"></a>
+### func DecodeReportViewV2
+
+```go
+func DecodeReportViewV2(b []byte) (ReportViewV2, error)
+```
+
+
+
+<a name="ReportViewV2.Format"></a>
+### func \(ReportViewV2\) Format
+
+```go
+func (v ReportViewV2) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="ReportViewV2.MarshalJSON"></a>
+### func \(ReportViewV2\) MarshalJSON
+
+```go
+func (v ReportViewV2) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="ReportViewV2.String"></a>
+### func \(ReportViewV2\) String
+
+```go
+func (v ReportViewV2) String() string
+```
+
+
+
+<a name="ReportViewV2.ToJSON"></a>
+### func \(ReportViewV2\) ToJSON
+
+```go
+func (v ReportViewV2) ToJSON() ([]byte, error)
+```
+
+
+
+<a name="ReportViewV2.UnmarshalJSON"></a>
+### func \(\*ReportViewV2\) UnmarshalJSON
+
+```go
+func (v *ReportViewV2) UnmarshalJSON(b []byte) error
+```
+
+
+
 <a name="ReviewReport"></a>
 ## type ReviewReport
 
@@ -9354,13 +9838,26 @@ ReviewReport is the top\-level report produced by goquent review.
 
 ```go
 type ReviewReport struct {
-    Version            int             `json:"version"`
-    Findings           []Finding       `json:"findings"`
-    SuppressedFindings []Finding       `json:"suppressed_findings,omitempty"`
-    Summary            ReviewSummary   `json:"summary"`
-    ManifestStatus     *ManifestStatus `json:"manifest_status,omitempty"`
+    OperationCount int `json:"operation_count,omitempty"`
+
+    Operations         []OperationReview `json:"operations,omitempty"`
+    Version            int               `json:"version"`
+    Findings           []Finding         `json:"findings"`
+    SuppressedFindings []Finding         `json:"suppressed_findings,omitempty"`
+    Summary            ReviewSummary     `json:"summary"`
+    ManifestStatus     *ManifestStatus   `json:"manifest_status,omitempty"`
+    // contains filtered or unexported fields
 }
 ```
+
+<a name="ReviewSQL"></a>
+### func ReviewSQL
+
+```go
+func ReviewSQL(sql string) ReviewReport
+```
+
+ReviewSQL reports structural raw\-SQL findings without execution or evidence. This source API is sensitive; publication must use PublicView or PublicViewV2.
 
 <a name="Run"></a>
 ### func Run
@@ -9389,6 +9886,15 @@ func (r ReviewReport) PublicView() (ReportView, error)
 
 PublicView projects bounded outer structure without visiting opaque contents.
 
+<a name="ReviewReport.PublicViewV2"></a>
+### func \(ReviewReport\) PublicViewV2
+
+```go
+func (r ReviewReport) PublicViewV2() (ReportViewV2, error)
+```
+
+
+
 <a name="ReviewReport.UnmarshalJSON"></a>
 ### func \(\*ReviewReport\) UnmarshalJSON
 
@@ -9409,6 +9915,77 @@ type ReviewSummary struct {
     Suppressed  int                     `json:"suppressed"`
     ByLevel     map[query.RiskLevel]int `json:"by_level,omitempty"`
     HighestRisk query.RiskLevel         `json:"highest_risk"`
+}
+```
+
+<a name="Session"></a>
+## type Session
+
+Session is valid only during Options.Evidence. It owns a bounded input snapshot. Methods are synchronous; callers must not mutate queries concurrently with review.
+
+```go
+type Session struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="Session.Format"></a>
+### func \(\*Session\) Format
+
+```go
+func (*Session) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="Session.MarshalJSON"></a>
+### func \(\*Session\) MarshalJSON
+
+```go
+func (*Session) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="Session.Record"></a>
+### func \(\*Session\) Record
+
+```go
+func (s *Session) Record(ref SourceReference, r query.ReviewReceipt)
+```
+
+Record associates a real planner receipt with one exact session operation. Duplicate registrations/IDs remain ambiguous, even when the receipts agree.
+
+<a name="Session.References"></a>
+### func \(\*Session\) References
+
+```go
+func (s *Session) References() []SourceReference
+```
+
+References returns detached source references for test declarations.
+
+<a name="Session.Token"></a>
+### func \(\*Session\) Token
+
+```go
+func (s *Session) Token() query.ReviewToken
+```
+
+
+
+<a name="SourceReference"></a>
+## type SourceReference
+
+SourceReference is sensitive source API data. A test declares correspondence; neither this reference nor its digest proves that the source was executed.
+
+```go
+type SourceReference struct {
+    File    string `json:"file"`
+    Offset  int    `json:"offset"`
+    ID      string `json:"id,omitempty"`
+    Version string `json:"version"`
+    // contains filtered or unexported fields
 }
 ```
 
