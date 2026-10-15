@@ -107,6 +107,56 @@ source report JSON decoding restores no correspondence evidence. Private gate
 operation snapshots are separate from mutable source/public operation views.
 Do not use public views as authorization, evidence, or CI decision inputs.
 
+### Serialized source reports and file discovery
+
+`ReviewReport.UnmarshalJSON` preserves source diagnostic fields, including codes,
+risk, locations and suppression flags. Those fields are input data, not trusted
+analysis evidence. Successful decoding (including missing/0/1 envelope versions)
+creates separate private finding and operation snapshots for precision decisions.
+Missing detail and self-reported known axes become unknown with `unverified_input`;
+unsupported findings and axes remain unsupported. Both finding lists project the
+same conservative precision in public v1 and v2. Findings-only reports do not
+invent operation records: v2 retains their partial/unsupported finding precision,
+while per-operation axes are available only for supplied operation records.
+Subsequent edits to decoded source views cannot replace these private snapshots.
+In-process analysis retains its existing semantics. Source operations continue to
+lose correspondence on decoding, and their private coverage is not suppressed by
+supplied operation flags. Finding suppression flags retain their diagnostic meaning.
+Neither form is authorization. Risk fields are not recomputed by this decode API.
+
+This intentionally changes precision gates for legacy findings-only reports:
+self-reported `precise` without verifiable analysis now meets the `partial`
+threshold. Source JSON remains readable and retains its diagnostic data; display
+and gate classification no longer repeat its precision claims. Decode failure is
+atomic, including method-level version/type errors; the previous receiver remains
+unchanged. Always decode external input into a fresh receiver and discard it on
+error. No invalidation of copies/aliases is promised.
+
+Standalone CLI and `review.Run` file discovery have a different contract: they
+**do not import source reports**. A top-level `findings`, `suppressed_findings` or
+`operations` list/null, or a truncated value after such a key, identifies a possible
+source report and produces one fixed `STATIC_REVIEW_UNSUPPORTED` diagnostic at
+line 1 of the input file. Keys are recognized case-insensitively, like the source
+JSON decoder. This also covers legacy findings-only inputs, unknown/duplicate
+versions, duplicate/mixed envelopes and damage after the identifying structure.
+It deliberately changes previously ignored report files from zero findings to an
+unsupported finding. Ordinary empty objects, nested keys and string contents do
+not establish a report. Independently valid strict public v1/v2 report views are
+separate display artifacts, not source reports. The detector examines at most
+2 MiB, 65,536 tokens and 64 nested containers; it does not claim to classify every
+arbitrary or damaged JSON file. Existing discovery/session budgets still apply.
+
+The CLI marker imports no supplied diagnostics, locations, policy, provenance,
+precision, correspondence or suppression. JSON strings are never inline
+suppression directives. Only the existing application configuration rules and
+expiring suppressions can configure it. Existing QueryPlan version errors remain
+errors even in a mixed report/plan envelope. Independently recognized QueryPlan
+or MigrationPlan risks in a mixed envelope are retained alongside the marker. `--fail-on-precision partial` and
+`unsupported` fail on the unsuppressed marker. Its medium risk does not change a
+risk-only `--fail-on high` exit status. Public output omits the input path and all
+supplied arbitrary content. No producer, trusted artifact input, receipt recovery,
+execution capability or PR3 import/baseline facility is introduced.
+
 Existing `PublicView()`, v1 strict readers/writers and CLI default output remain
 v1. Opt in with `report.PublicViewV2()`, `DecodeReportViewV2`, or:
 

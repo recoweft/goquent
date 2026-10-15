@@ -52,14 +52,16 @@ type ManifestStatus struct {
 
 // ReviewReport is the top-level report produced by goquent review.
 type ReviewReport struct {
-	OperationCount     int `json:"operation_count,omitempty"`
-	privateOperations  []OperationReview
-	Operations         []OperationReview `json:"operations,omitempty"`
-	Version            int               `json:"version"`
-	Findings           []Finding         `json:"findings"`
-	SuppressedFindings []Finding         `json:"suppressed_findings,omitempty"`
-	Summary            ReviewSummary     `json:"summary"`
-	ManifestStatus     *ManifestStatus   `json:"manifest_status,omitempty"`
+	OperationCount            int `json:"operation_count,omitempty"`
+	privateOperations         []OperationReview
+	privateFindings           []Finding
+	privateSuppressedFindings []Finding
+	Operations                []OperationReview `json:"operations,omitempty"`
+	Version                   int               `json:"version"`
+	Findings                  []Finding         `json:"findings"`
+	SuppressedFindings        []Finding         `json:"suppressed_findings,omitempty"`
+	Summary                   ReviewSummary     `json:"summary"`
+	ManifestStatus            *ManifestStatus   `json:"manifest_status,omitempty"`
 }
 
 // Options controls review discovery and output behavior.
@@ -343,6 +345,16 @@ func reviewPlanJSONFile(ctx reviewContext, path string) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	if sourceReportEnvelope(b) {
+		markers, markerErr := unsupportedReportJSONFindings(ctx, path)
+		// A mixed envelope must not hide independently recognized plan risks.
+		findings, err := reviewPlanJSON(ctx, path, b)
+		return append(findings, markers...), errors.Join(err, markerErr)
+	}
+	return reviewPlanJSON(ctx, path, b)
+}
+
+func reviewPlanJSON(ctx reviewContext, path string, b []byte) ([]Finding, error) {
 	envelope := queryPlanEnvelope(b)
 	var plan query.QueryPlan
 	if err := json.Unmarshal(b, &plan); err != nil {
@@ -718,6 +730,7 @@ func HasFindingsAtOrAbove(report ReviewReport, threshold query.RiskLevel) bool {
 
 // HasFindingsAtOrAbovePrecision reports whether findings meet a precision threshold.
 func HasFindingsAtOrAbovePrecision(report ReviewReport, threshold query.AnalysisPrecision) bool {
+	report = report.precisionFindings()
 	for _, op := range report.privateOperations {
 		if op.Suppressed {
 			continue

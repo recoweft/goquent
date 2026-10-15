@@ -330,3 +330,79 @@ func TestMatchedPlannerContextDoesNotFillStaticAxes(t *testing.T) {
 		t.Fatal("sample context promoted static coverage")
 	}
 }
+
+func TestPlannerSessionHelperSnapshotAndDistinctIDs(t *testing.T) {
+	for _, mode := range []string{"helper", "id_collision", "view_mutation"} {
+		t.Run(mode, func(t *testing.T) {
+			path := precisionFixture(t)
+			source, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			source = []byte(strings.ReplaceAll(string(source), `db.Table("PRIVATE_TABLE_CANARY").Select("id").Where("id", 1).Limit(2)`, `helper(db)`))
+			helper := filepath.Join(filepath.Dir(path), "helper.go")
+			helperSource := []byte(`package fixture
+import "github.com/recoweft/goquent/orm"
+import "github.com/recoweft/goquent/orm/query"
+func helper(db *orm.DB) *query.Query { return db.Table("PRIVATE_TABLE_CANARY").Select("id").Where("id", 1).Limit(2) }
+`)
+			if err = os.WriteFile(path, source, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(helper, helperSource, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if mode == "id_collision" {
+				second := []byte(strings.Replace(string(source), "func sample(", "func second(", 1))
+				if err = os.WriteFile(filepath.Join(filepath.Dir(path), "second.go"), second, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			paths := []string{path}
+			if mode == "id_collision" {
+				paths = append(paths, filepath.Join(filepath.Dir(path), "second.go"))
+			}
+			r, err := Run(Options{Paths: paths, Evidence: func(s *Session) {
+				refs := s.References()
+				if len(refs) != len(paths) {
+					t.Fatal("unexpected static operation count")
+				}
+				for _, ref := range refs {
+					receipt, e := receiptQuery().ReviewReceipt(context.Background(), s.Token())
+					if e != nil {
+						t.Fatal(e)
+					}
+					ref.ID = "shared-test-id"
+					s.Record(ref, receipt)
+				}
+				if mode == "helper" {
+					if e := os.WriteFile(helper, append(helperSource, []byte("\n// changed input\n")...), 0600); e != nil {
+						t.Fatal(e)
+					}
+				}
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "view_mutation" {
+				for i := range r.Operations {
+					r.Operations[i].Detail = analysis.Detail{SQL: analysis.Known, Columns: analysis.Known, Bindings: analysis.Known, Policy: analysis.Known}
+					r.Operations[i].Suppressed = true
+				}
+				if !HasFindingsAtOrAbovePrecision(r, query.AnalysisPartial) {
+					t.Fatal("source view changed private gate")
+				}
+				v, _ := r.PublicViewV2()
+				if v.Operations[0].Precision == "precise" || v.Operations[0].Suppressed {
+					t.Fatal("source view changed private projection")
+				}
+			} else {
+				for _, op := range r.Operations {
+					if op.Correspondence.Source != analysis.Mismatched {
+						t.Fatal("changed helper/colliding operation IDs matched")
+					}
+				}
+			}
+		})
+	}
+}

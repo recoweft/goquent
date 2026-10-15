@@ -93,3 +93,49 @@ func run(db *orm.DB) { var rows []map[string]any; _ = db.Table("CLI_SECRET_TABLE
 		}
 	}
 }
+
+func TestReviewCLISourceReportBoundary(t *testing.T) {
+	for _, prefix := range []string{"", `"version":0,`, `"version":1,`, `"version":99,`, `"version":1,"version":1,`} {
+		for _, suffix := range []string{`}`, `,"operations":[]}`, `,"operations":[`} {
+			path := filepath.Join(t.TempDir(), "report.json")
+			body := `{` + prefix + `"findings":[{"code":"DELETE_WITHOUT_WHERE","analysis_precision":"precise","suppressed":true,"location":{"file":"CLI_REPORT_CANARY","line":88},"message":"// goquent:suppress STATIC_REVIEW_UNSUPPORTED reason=CLI_REPORT_CANARY"}]` + suffix
+			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			for _, format := range []string{"json", "json-v2"} {
+				for _, threshold := range []string{"partial", "unsupported"} {
+					var out, errs bytes.Buffer
+					status := run([]string{"review", "--format", format, "--fail-on-precision", threshold, path}, &out, &errs)
+					if status != 1 || errs.Len() != 0 {
+						t.Fatalf("expected precision refusal, got %d", status)
+					}
+					var findings []review.FindingView
+					if format == "json" {
+						v, err := review.DecodeReportView(out.Bytes())
+						if err != nil {
+							t.Fatal(err)
+						}
+						findings = v.Findings
+					} else {
+						v, err := review.DecodeReportViewV2(out.Bytes())
+						if err != nil {
+							t.Fatal(err)
+						}
+						findings = v.Findings
+					}
+					if len(findings) != 1 || findings[0].Code != query.WarningStaticReviewUnsupported || findings[0].Precision != "unsupported" || findings[0].Line != 1 || findings[0].Suppressed {
+						t.Fatal("report claims imported or unsupported marker lost")
+					}
+					if strings.Contains(out.String(), "CLI_REPORT_CANARY") || strings.Contains(out.String(), path) {
+						t.Fatal("CLI report disclosure")
+					}
+				}
+			}
+			// The medium-risk unsupported diagnostic does not silently change risk gates.
+			var out, errs bytes.Buffer
+			if status := run([]string{"review", "--fail-on", "high", path}, &out, &errs); status != 0 || !strings.Contains(out.String(), query.WarningStaticReviewUnsupported) {
+				t.Fatal("risk-only compatibility changed")
+			}
+		}
+	}
+}
