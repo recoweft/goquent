@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/recoweft/goquent/orm/analysis"
 	"github.com/recoweft/goquent/orm/manifest"
 	"github.com/recoweft/goquent/orm/migration"
 	"github.com/recoweft/goquent/orm/query"
@@ -21,6 +22,7 @@ import (
 
 // Finding is a review finding emitted by goquent review.
 type Finding struct {
+	Detail            analysis.Detail         `json:"detail"`
 	Code              string                  `json:"code"`
 	Level             query.RiskLevel         `json:"level"`
 	Message           string                  `json:"message"`
@@ -50,15 +52,24 @@ type ManifestStatus struct {
 
 // ReviewReport is the top-level report produced by goquent review.
 type ReviewReport struct {
-	Version            int             `json:"version"`
-	Findings           []Finding       `json:"findings"`
-	SuppressedFindings []Finding       `json:"suppressed_findings,omitempty"`
-	Summary            ReviewSummary   `json:"summary"`
-	ManifestStatus     *ManifestStatus `json:"manifest_status,omitempty"`
+	OperationCount            int `json:"operation_count,omitempty"`
+	privateOperations         []OperationReview
+	privateFindings           []Finding
+	privateSuppressedFindings []Finding
+	Operations                []OperationReview `json:"operations,omitempty"`
+	Version                   int               `json:"version"`
+	Findings                  []Finding         `json:"findings"`
+	SuppressedFindings        []Finding         `json:"suppressed_findings,omitempty"`
+	Summary                   ReviewSummary     `json:"summary"`
+	ManifestStatus            *ManifestStatus   `json:"manifest_status,omitempty"`
 }
 
 // Options controls review discovery and output behavior.
 type Options struct {
+	// Evidence is an explicit synchronous application test producer, never a file loader.
+	Evidence         func(*Session)
+	EvidenceDialect  string
+	EvidenceSettings query.Settings
 	// Context cancels best-effort type loading. Nil uses a bounded background context.
 	Context              context.Context
 	Paths                []string
@@ -109,7 +120,9 @@ func Run(opts Options) (ReviewReport, error) {
 			}
 		}
 	}
-	ctx.types = loadReviewTypes(opts.Context, allFiles)
+	ctx.session = newSession(opts, allFiles)
+	defer ctx.session.token.Close()
+	ctx.types = loadReviewTypesSnapshot(opts.Context, allFiles, ctx.session.inputs)
 	reviewedFiles = allFiles
 	{
 		files := allFiles
@@ -131,6 +144,8 @@ func Run(opts Options) (ReviewReport, error) {
 		}
 	}
 	report.Findings = append(report.Findings, lintConfigSuppressions(opts.ConfigPath, opts.ConfigSuppressions, reviewedFiles, report.SuppressedFindings)...)
+	ctx.session.fallback(append(append([]Finding(nil), report.Findings...), report.SuppressedFindings...))
+	ctx.session.finish(&report)
 	report.Summary = summarize(report)
 	return report, errors.Join(errs...)
 }
@@ -330,6 +345,16 @@ func reviewPlanJSONFile(ctx reviewContext, path string) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	if sourceReportEnvelope(b) {
+		markers, markerErr := unsupportedReportJSONFindings(ctx, path)
+		// A mixed envelope must not hide independently recognized plan risks.
+		findings, err := reviewPlanJSON(ctx, path, b)
+		return append(findings, markers...), errors.Join(err, markerErr)
+	}
+	return reviewPlanJSON(ctx, path, b)
+}
+
+func reviewPlanJSON(ctx reviewContext, path string, b []byte) ([]Finding, error) {
 	envelope := queryPlanEnvelope(b)
 	var plan query.QueryPlan
 	if err := json.Unmarshal(b, &plan); err != nil {
@@ -705,6 +730,15 @@ func HasFindingsAtOrAbove(report ReviewReport, threshold query.RiskLevel) bool {
 
 // HasFindingsAtOrAbovePrecision reports whether findings meet a precision threshold.
 func HasFindingsAtOrAbovePrecision(report ReviewReport, threshold query.AnalysisPrecision) bool {
+	report = report.precisionFindings()
+	for _, op := range report.privateOperations {
+		if op.Suppressed {
+			continue
+		}
+		if comparePrecision(query.AnalysisPrecision(op.Detail.Precision()), threshold) >= 0 {
+			return true
+		}
+	}
 	for _, finding := range report.Findings {
 		if finding.Suppressed {
 			continue

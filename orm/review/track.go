@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/recoweft/goquent/orm/analysis"
 	"github.com/recoweft/goquent/orm/query"
 )
 
@@ -67,7 +68,9 @@ func reviewTypedGo(ctx reviewContext, path string, tf *typedFile) ([]Finding, er
 	return fs, nil
 }
 func typeUnavailable(loc *query.SourceLocation) Finding {
-	return staticFinding(query.WarningStaticReviewUnsupported, query.RiskMedium, "type loading incomplete; database operations may be missing", "provide a buildable package and review unsupported inputs", loc, query.AnalysisUnsupported)
+	f := staticFinding(query.WarningStaticReviewUnsupported, query.RiskMedium, "type loading incomplete; database operations may be missing", "provide a buildable package and review unsupported inputs", loc, query.AnalysisUnsupported)
+	f.Detail = analysis.Detail{SQL: analysis.Unsupported, Reasons: []string{"type_unavailable"}}.Normalize()
+	return f
 }
 func (t *goTracker) partial(loc *query.SourceLocation, reason string) {
 	f := staticReviewPartial(loc)
@@ -654,7 +657,7 @@ func isQueryOperation(name string) bool {
 		return true
 	}
 	switch name {
-	case "ValidateSelect", "ValidateCount", "ValidateInsert", "ValidateInsertBatch", "ValidateUpdate", "ValidateDelete",
+	case "ReviewReceipt", "ValidateSelect", "ValidateCount", "ValidateInsert", "ValidateInsertBatch", "ValidateUpdate", "ValidateDelete",
 		"ExecuteValidatedSelect", "ExecuteValidatedCount", "ExecuteValidatedInsert", "ExecuteValidatedInsertBatch", "ExecuteValidatedUpdate", "ExecuteValidatedDelete",
 		"Count", "Insert", "InsertBatch", "InsertGetId", "InsertOrIgnore", "InsertUsing", "Upsert", "UpdateOrInsert", "PlanInsert", "PlanInsertBatch", "Increment", "Decrement", "UpdateReturning", "DeleteReturning":
 		return true
@@ -734,6 +737,15 @@ func (t *goTracker) terminal(name string, q *queryState, c *ast.CallExpr, loc *q
 	}
 	if !isGoquentTerminal(name) {
 		partial = true
+	}
+	if t.ctx.session != nil {
+		d, r := t.sampleSelect(name, calls, partial)
+		before := len(t.ctx.session.operations)
+		t.ctx.session.add(t.path, t.tf.fset.PositionFor(c.Pos(), false).Offset, loc, d, r)
+		if len(t.ctx.session.operations) > before {
+			op, _ := operationForTerminal(name)
+			t.ctx.session.operations[before].operation = op
+		}
 	}
 	if p, ok := staticPlanFromChain(t.ctx, name, calls); ok {
 		fs := warningsToFindings(query.DefaultRiskEngine.CheckQuery(p).Warnings, query.AnalysisPrecise, loc)

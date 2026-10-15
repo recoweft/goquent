@@ -42,6 +42,7 @@ type FindingView struct {
 
 // PublicView projects bounded outer structure without visiting opaque contents.
 func (r ReviewReport) PublicView() (ReportView, error) {
+	r = r.precisionFindings()
 	if r.Version != 0 && r.Version != 1 {
 		return ReportView{}, publicview.ErrSource
 	}

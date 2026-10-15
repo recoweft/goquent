@@ -46,3 +46,9 @@ local Query tracking. See [typed review and fixture migration](static-review-typ
 for build requirements, generic/Scope/helper limits and external QueryPlan JSON
 precision gates. A fresh supplied manifest does not turn incomplete analysis into
 precise analysis; serialized plans now retain an independent unverified marker.
+
+GQ-AI-09 PR2 adds [multi-axis precision and ephemeral planner samples](static-review-precision.md).
+The historical shape-only `precise` examples above are now conservatively partial
+when binding or policy coverage is unknown. Public v1 remains the default; v2
+coverage is explicitly selected. A matching test sample is not a runtime safety
+or source-execution guarantee.
