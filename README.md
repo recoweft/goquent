@@ -9296,21 +9296,46 @@ import "github.com/recoweft/goquent/orm/review"
 - [func HasFindingsAtOrAbovePrecision\(report ReviewReport, threshold query.AnalysisPrecision\) bool](<#HasFindingsAtOrAbovePrecision>)
 - [func ParseAnalysisPrecision\(s string\) \(query.AnalysisPrecision, error\)](<#ParseAnalysisPrecision>)
 - [func ParseRiskLevel\(s string\) \(query.RiskLevel, error\)](<#ParseRiskLevel>)
+- [func ReadCIInput\(p string, limit int\) \(\[\]byte, error\)](<#ReadCIInput>)
 - [func WriteGitHub\(w io.Writer, report ReviewReport\) error](<#WriteGitHub>)
 - [func WriteJSON\(w io.Writer, report ReviewReport\) error](<#WriteJSON>)
 - [func WritePretty\(w io.Writer, report ReviewReport\) error](<#WritePretty>)
 - [func WritePublicGitHub\(w io.Writer, v ReportView\) error](<#WritePublicGitHub>)
 - [func WritePublicJSON\(w io.Writer, v ReportView\) error](<#WritePublicJSON>)
 - [func WritePublicPretty\(w io.Writer, v ReportView\) error](<#WritePublicPretty>)
+- [func WriteSARIF\(w io.Writer, r ReviewReport\) error](<#WriteSARIF>)
+- [type Baseline](<#Baseline>)
+  - [func DecodeBaseline\(b \[\]byte\) \(Baseline, error\)](<#DecodeBaseline>)
+- [type BaselineEntry](<#BaselineEntry>)
+- [type CIOptions](<#CIOptions>)
+- [type CIResult](<#CIResult>)
+  - [func RunCI\(opts Options, ci CIOptions\) \(CIResult, error\)](<#RunCI>)
+  - [func \(r CIResult\) ExitCode\(\) int](<#CIResult.ExitCode>)
+  - [func \(r CIResult\) Format\(s fmt.State, \_ rune\)](<#CIResult.Format>)
+  - [func \(r CIResult\) PublicView\(\) \(CIView, error\)](<#CIResult.PublicView>)
+  - [func \(r CIResult\) String\(\) string](<#CIResult.String>)
+  - [func \(r CIResult\) WriteDisplay\(w io.Writer, format string\) error](<#CIResult.WriteDisplay>)
+  - [func \(r CIResult\) WriteJSON\(w io.Writer\) error](<#CIResult.WriteJSON>)
+  - [func \(r CIResult\) WriteSARIF\(w io.Writer\) error](<#CIResult.WriteSARIF>)
+- [type CIView](<#CIView>)
+  - [func DecodeCIView\(b \[\]byte\) \(CIView, error\)](<#DecodeCIView>)
+  - [func \(v CIView\) Format\(s fmt.State, \_ rune\)](<#CIView.Format>)
+  - [func \(v CIView\) MarshalJSON\(\) \(\[\]byte, error\)](<#CIView.MarshalJSON>)
+  - [func \(v CIView\) String\(\) string](<#CIView.String>)
+  - [func \(v \*CIView\) UnmarshalJSON\(b \[\]byte\) error](<#CIView.UnmarshalJSON>)
 - [type Config](<#Config>)
   - [func LoadConfig\(path string\) \(Config, error\)](<#LoadConfig>)
 - [type ConfigSuppression](<#ConfigSuppression>)
 - [type DetailView](<#DetailView>)
+- [type DiffCounts](<#DiffCounts>)
+- [type EntryCounts](<#EntryCounts>)
 - [type Finding](<#Finding>)
+- [type FindingCounts](<#FindingCounts>)
 - [type FindingView](<#FindingView>)
   - [func \(v FindingView\) Format\(s fmt.State, \_ rune\)](<#FindingView.Format>)
   - [func \(v FindingView\) MarshalJSON\(\) \(\[\]byte, error\)](<#FindingView.MarshalJSON>)
   - [func \(v FindingView\) String\(\) string](<#FindingView.String>)
+- [type GateView](<#GateView>)
 - [type ManifestStatus](<#ManifestStatus>)
 - [type OperationReview](<#OperationReview>)
 - [type OperationView](<#OperationView>)
@@ -9360,10 +9385,58 @@ const (
 )
 ```
 
+<a name="BaselineKind"></a>
+
+```go
+const BaselineKind = "goquent.review_baseline"
+```
+
+<a name="CIViewKind"></a>
+
+```go
+const CIViewKind = "goquent.review_ci_view"
+```
+
 <a name="JSONVersion"></a>JSONVersion is the current diagnostic/input envelope version, not authorization.
 
 ```go
 const JSONVersion = planversion.Current
+```
+
+<a name="MaxBaselineAge"></a>
+
+```go
+const MaxBaselineAge = 30 * 24 * time.Hour
+```
+
+<a name="MaxBaselineBytes"></a>
+
+```go
+const MaxBaselineBytes = 256 << 10
+```
+
+<a name="MaxBaselineEntries"></a>
+
+```go
+const MaxBaselineEntries = 64
+```
+
+<a name="MaxDiffBytes"></a>
+
+```go
+const MaxDiffBytes = 1 << 20
+```
+
+<a name="MaxDiffFiles"></a>
+
+```go
+const MaxDiffFiles = 4096
+```
+
+<a name="MaxDiffHunks"></a>
+
+```go
+const MaxDiffHunks = 10000
 ```
 
 <a name="MaxReportViewFindings"></a>MaxReportViewFindings applies independently to each finding list.
@@ -9434,6 +9507,15 @@ func ParseRiskLevel(s string) (query.RiskLevel, error)
 
 ParseRiskLevel parses a CLI threshold.
 
+<a name="ReadCIInput"></a>
+## func ReadCIInput
+
+```go
+func ReadCIInput(p string, limit int) ([]byte, error)
+```
+
+ReadCIInput bounds file input before allocation and rejects special files.
+
 <a name="WriteGitHub"></a>
 ## func WriteGitHub
 
@@ -9487,6 +9569,230 @@ func WritePublicPretty(w io.Writer, v ReportView) error
 ```
 
 WritePublicPretty labels omitted and truncated detail instead of "No findings".
+
+<a name="WriteSARIF"></a>
+## func WriteSARIF
+
+```go
+func WriteSARIF(w io.Writer, r ReviewReport) error
+```
+
+WriteSARIF writes a SARIF 2.1.0 public projection, never file annotations. Line/column properties match the public JSON projection of canonical Run diagnostics. File identity and all supplied URI/message claims are omitted.
+
+<a name="Baseline"></a>
+## type Baseline
+
+Baseline is sensitive source configuration, never evidence or authorization. Only DecodeBaseline and RunCI consume it; no serialized report is accepted.
+
+```go
+type Baseline struct {
+    Kind    string          `json:"kind"`
+    Version int             `json:"version"`
+    Entries []BaselineEntry `json:"entries"`
+}
+```
+
+<a name="DecodeBaseline"></a>
+### func DecodeBaseline
+
+```go
+func DecodeBaseline(b []byte) (Baseline, error)
+```
+
+DecodeBaseline rejects unknown/duplicate fields and unsupported envelopes. Entry semantic failures are retained by RunCI as invalid, not silently removed.
+
+<a name="BaselineEntry"></a>
+## type BaselineEntry
+
+
+
+```go
+type BaselineEntry struct {
+    File      string `json:"file"`
+    Line      int    `json:"line"`
+    Column    int    `json:"column"`
+    Operation string `json:"operation"`
+    Code      string `json:"code"`
+    Risk      string `json:"risk"`
+    Precision string `json:"precision"`
+    SQL       string `json:"sql"`
+    Columns   string `json:"columns"`
+    Bindings  string `json:"bindings"`
+    Policy    string `json:"policy"`
+    Owner     string `json:"owner"`
+    Reason    string `json:"reason"`
+    CreatedAt string `json:"created_at"`
+    ExpiresAt string `json:"expires_at"`
+}
+```
+
+<a name="CIOptions"></a>
+## type CIOptions
+
+CIOptions explicitly selects bounded display comparison. Roots and source inputs are sensitive. Now is a test clock; the CLI always uses current UTC.
+
+```go
+type CIOptions struct {
+    Root            string
+    BaseRoot        string
+    Diff            []byte
+    Baseline        []byte
+    Now             time.Time
+    FailOn          query.RiskLevel
+    FailOnPrecision query.AnalysisPrecision
+}
+```
+
+<a name="CIResult"></a>
+## type CIResult
+
+CIResult owns full gate inputs separately from its bounded selected display. It cannot be decoded from public JSON or a caller\-supplied report.
+
+```go
+type CIResult struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="RunCI"></a>
+### func RunCI
+
+```go
+func RunCI(opts Options, ci CIOptions) (CIResult, error)
+```
+
+RunCI reuses Run's common diagnostics. It never parses diff text as code or starts Git, a shell or a network client. Type loading retains Run's contract.
+
+<a name="CIResult.ExitCode"></a>
+### func \(CIResult\) ExitCode
+
+```go
+func (r CIResult) ExitCode() int
+```
+
+
+
+<a name="CIResult.Format"></a>
+### func \(CIResult\) Format
+
+```go
+func (r CIResult) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="CIResult.PublicView"></a>
+### func \(CIResult\) PublicView
+
+```go
+func (r CIResult) PublicView() (CIView, error)
+```
+
+
+
+<a name="CIResult.String"></a>
+### func \(CIResult\) String
+
+```go
+func (r CIResult) String() string
+```
+
+String and Format use only the public view; private baseline text never reaches display.
+
+<a name="CIResult.WriteDisplay"></a>
+### func \(CIResult\) WriteDisplay
+
+```go
+func (r CIResult) WriteDisplay(w io.Writer, format string) error
+```
+
+WriteDisplay preserves existing v1/v2 output formats without feeding them back into the complete private gate. New comparison metadata requires explicit CI JSON.
+
+<a name="CIResult.WriteJSON"></a>
+### func \(CIResult\) WriteJSON
+
+```go
+func (r CIResult) WriteJSON(w io.Writer) error
+```
+
+
+
+<a name="CIResult.WriteSARIF"></a>
+### func \(CIResult\) WriteSARIF
+
+```go
+func (r CIResult) WriteSARIF(w io.Writer) error
+```
+
+
+
+<a name="CIView"></a>
+## type CIView
+
+
+
+```go
+type CIView struct {
+    Kind                       string        `json:"kind"`
+    Version                    int           `json:"version"`
+    Selected                   ReportViewV2  `json:"selected"`
+    FullFindingCount           int           `json:"full_finding_count"`
+    FullSuppressedFindingCount int           `json:"full_suppressed_finding_count"`
+    Gate                       GateView      `json:"gate"`
+    Entries                    EntryCounts   `json:"baseline_entries"`
+    Findings                   FindingCounts `json:"head_findings"`
+    Diff                       DiffCounts    `json:"diff"`
+    Compared                   bool          `json:"compared"`
+    DetailsOmitted             bool          `json:"details_omitted"`
+    BaselineReason             string        `json:"baseline_reason"`
+    GitTracking                string        `json:"git_tracking"`
+}
+```
+
+<a name="DecodeCIView"></a>
+### func DecodeCIView
+
+```go
+func DecodeCIView(b []byte) (CIView, error)
+```
+
+DecodeCIView reads only the new strict display envelope, not source evidence.
+
+<a name="CIView.Format"></a>
+### func \(CIView\) Format
+
+```go
+func (v CIView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="CIView.MarshalJSON"></a>
+### func \(CIView\) MarshalJSON
+
+```go
+func (v CIView) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON closes all classifications. A modified public view cannot change the private CIResult or its gate, and is never an input to RunCI.
+
+<a name="CIView.String"></a>
+### func \(CIView\) String
+
+```go
+func (v CIView) String() string
+```
+
+
+
+<a name="CIView.UnmarshalJSON"></a>
+### func \(\*CIView\) UnmarshalJSON
+
+```go
+func (v *CIView) UnmarshalJSON(b []byte) error
+```
+
+UnmarshalJSON enforces the same independent strict reader for standard JSON use.
 
 <a name="Config"></a>
 ## type Config
@@ -9550,6 +9856,41 @@ type DetailView struct {
 }
 ```
 
+<a name="DiffCounts"></a>
+## type DiffCounts
+
+DiffCounts counts file records, except Invalid/Unknown, which count input or source correspondence problems. These are classifications, not trust evidence.
+
+```go
+type DiffCounts struct {
+    Modified   int `json:"modified"`
+    Added      int `json:"added"`
+    Deleted    int `json:"deleted"`
+    Renamed    int `json:"renamed"`
+    Binary     int `json:"binary"`
+    Invalid    int `json:"invalid"`
+    Unknown    int `json:"unknown"`
+    Unlisted   int `json:"unlisted"`
+    ReadFailed int `json:"read_failed"`
+}
+```
+
+<a name="EntryCounts"></a>
+## type EntryCounts
+
+EntryCounts counts baseline entries. Invalid=1 with zero Entries denotes an invalid document. FindingCounts independently classifies head diagnostics.
+
+```go
+type EntryCounts struct {
+    Entries int `json:"entries"`
+    Matched int `json:"matched"`
+    Expired int `json:"expired"`
+    Invalid int `json:"invalid"`
+    Unused  int `json:"unused"`
+    Unknown int `json:"unknown"`
+}
+```
+
 <a name="Finding"></a>
 ## type Finding
 
@@ -9567,6 +9908,21 @@ type Finding struct {
     AnalysisPrecision query.AnalysisPrecision `json:"analysis_precision"`
     Suppressed        bool                    `json:"suppressed"`
     Suppression       *query.Suppression      `json:"suppression,omitempty"`
+}
+```
+
+<a name="FindingCounts"></a>
+## type FindingCounts
+
+
+
+```go
+type FindingCounts struct {
+    Matched   int `json:"matched"`
+    New       int `json:"new"`
+    Worsened  int `json:"worsened"`
+    Unknown   int `json:"unknown"`
+    Unchanged int `json:"unchanged"`
 }
 ```
 
@@ -9614,6 +9970,21 @@ func (v FindingView) String() string
 ```
 
 
+
+<a name="GateView"></a>
+## type GateView
+
+
+
+```go
+type GateView struct {
+    Risk      bool `json:"risk_failed"`
+    Precision bool `json:"precision_failed"`
+    Manifest  bool `json:"manifest_failed"`
+    Input     bool `json:"input_failed"`
+    Full      bool `json:"full_report"`
+}
+```
 
 <a name="ManifestStatus"></a>
 ## type ManifestStatus
@@ -9667,6 +10038,7 @@ Options controls review discovery and output behavior.
 
 ```go
 type Options struct {
+
     // Evidence is an explicit synchronous application test producer, never a file loader.
     Evidence         func(*Session)
     EvidenceDialect  string
@@ -9682,6 +10054,7 @@ type Options struct {
     ManifestInputs       bool
     Rules                map[string]query.RiskRuleConfig
     ConfigSuppressions   []ConfigSuppression
+    // contains filtered or unexported fields
 }
 ```
 
