@@ -208,3 +208,11 @@ public application boundary use a fixed error such as `publicoutput.ErrOutput`,
 not the source error, and define a separately bounded display projection. Public
 views, reason strings, low risk, `precise`, Fresh or suppressed findings cannot
 supply authorization or input correspondence.
+
+## PR2 extension
+
+The PR1-only boundaries above are retained as historical context.
+[Atomic write results](atomic-write-results.md) defines the added finite version
+and expectation fields, shared checks, input-only v2 migration and old-reader
+refusal. Unextended commands retain the original v1 bytes and behavior. PR3 hooks
+remain unimplemented.

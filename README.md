@@ -51,8 +51,8 @@ import "github.com/recoweft/goquent/orm"
 - [func UpdateBy\(ctx context.Context, base \*query.Query, data any, scopes ...Scope\) \(sql.Result, error\)](<#UpdateBy>)
 - [func UpdateByReturning\[T any\]\(ctx context.Context, db \*DB, base \*query.Query, data any, scopes ...Scope\) \(T, error\)](<#UpdateByReturning>)
 - [func UpdateByReturningWithOptions\[T any\]\(ctx context.Context, db \*DB, base \*query.Query, data any, opts \[\]WriteOpt, scopes ...Scope\) \(T, error\)](<#UpdateByReturningWithOptions>)
-- [func UpdateOperationBy\(ctx context.Context, db \*DB, s operation.UpdateSpec, opts operation.Options\) \(sql.Result, error\)](<#UpdateOperationBy>)
-- [func UpdateOperationReturningBy\[T any\]\(ctx context.Context, db \*DB, s operation.UpdateSpec, opts operation.Options\) \(out T, err error\)](<#UpdateOperationReturningBy>)
+- [func UpdateOperationBy\(ctx context.Context, db \*DB, s operation.UpdateSpec, opts operation.Options, writeOpts ...WriteOpt\) \(sql.Result, error\)](<#UpdateOperationBy>)
+- [func UpdateOperationReturningBy\[T any\]\(ctx context.Context, db \*DB, s operation.UpdateSpec, opts operation.Options, writeOpts ...WriteOpt\) \(out T, err error\)](<#UpdateOperationReturningBy>)
 - [func UpdateReturning\[T any, V any\]\(ctx context.Context, db \*DB, v V, opts ...WriteOpt\) \(T, error\)](<#UpdateReturning>)
 - [func Upsert\[T any\]\(ctx context.Context, db \*DB, v T, opts ...WriteOpt\) \(sql.Result, error\)](<#Upsert>)
 - [func UpsertMany\[T any\]\(ctx context.Context, db \*DB, values \[\]T, opts ...WriteOpt\) \(sql.Result, error\)](<#UpsertMany>)
@@ -77,6 +77,7 @@ import "github.com/recoweft/goquent/orm"
   - [func NewCommandStore\(ctx context.Context, db \*DB, namespace string\) \(\*CommandStore, error\)](<#NewCommandStore>)
   - [func \(s \*CommandStore\) Run\(ctx context.Context, c Command\) \(CommandResult, error\)](<#CommandStore.Run>)
 - [type CommandSummary](<#CommandSummary>)
+- [type CommandVersion](<#CommandVersion>)
 - [type CursorColumn](<#CursorColumn>)
   - [func CursorAsc\(name string\) CursorColumn](<#CursorAsc>)
   - [func CursorAscAlias\(alias string\) CursorColumn](<#CursorAscAlias>)
@@ -237,9 +238,6 @@ import "github.com/recoweft/goquent/orm"
   - [func \(r \*Row\) Err\(\) error](<#Row.Err>)
   - [func \(r \*Row\) Scan\(dest ...any\) error](<#Row.Scan>)
 - [type RowsAffectedError](<#RowsAffectedError>)
-  - [func \(e RowsAffectedError\) Error\(\) string](<#RowsAffectedError.Error>)
-  - [func \(e RowsAffectedError\) Is\(target error\) bool](<#RowsAffectedError.Is>)
-  - [func \(e RowsAffectedError\) Unwrap\(\) error](<#RowsAffectedError.Unwrap>)
 - [type ScanOptions](<#ScanOptions>)
 - [type Schema](<#Schema>)
 - [type Scope](<#Scope>)
@@ -275,6 +273,7 @@ import "github.com/recoweft/goquent/orm"
   - [func ValidateOperationSpec\(spec OperationSpec, opts OperationOptions\) \(\[\]Warning, error\)](<#ValidateOperationSpec>)
   - [func ValidateOperationSpecWithDiagnostics\(spec OperationSpec, opts OperationOptions\) \(\[\]Warning, operation.DiagnosticView, error\)](<#ValidateOperationSpecWithDiagnostics>)
 - [type WriteOpt](<#WriteOpt>)
+  - [func AtomicWrite\(\) WriteOpt](<#AtomicWrite>)
   - [func Columns\(cols ...string\) WriteOpt](<#Columns>)
   - [func ConflictColumns\(cols ...string\) WriteOpt](<#ConflictColumns>)
   - [func ConflictConstraint\(name string\) WriteOpt](<#ConflictConstraint>)
@@ -285,6 +284,7 @@ import "github.com/recoweft/goquent/orm"
   - [func Increment\(column string, delta any\) WriteOpt](<#Increment>)
   - [func NoRowsAs\(err error\) WriteOpt](<#NoRowsAs>)
   - [func Omit\(cols ...string\) WriteOpt](<#Omit>)
+  - [func OptimisticVersion\(column string, expected int64\) WriteOpt](<#OptimisticVersion>)
   - [func PK\(cols ...string\) WriteOpt](<#PK>)
   - [func Returning\(cols ...string\) WriteOpt](<#Returning>)
   - [func SchemaName\(name string\) WriteOpt](<#SchemaName>)
@@ -463,10 +463,10 @@ var (
 )
 ```
 
-<a name="ErrConflict"></a>ErrConflict represents an explicit optimistic\-concurrency or stale\-write conflict chosen by the caller.
+<a name="ErrConflict"></a>Write error identities are shared with the private execution layer.
 
 ```go
-var ErrConflict = errors.New("goquent: conflict")
+var ErrConflict = writecheck.ErrConflict
 ```
 
 <a name="ErrNotFound"></a>ErrNotFound is returned by one\-row read helpers when no row is available.
@@ -477,10 +477,10 @@ It aliases sql.ErrNoRows for compatibility with existing callers.
 var ErrNotFound = sql.ErrNoRows
 ```
 
-<a name="ErrRowsAffected"></a>ErrRowsAffected reports that a write did not affect the requested number of rows.
+<a name="ErrRowsAffected"></a>
 
 ```go
-var ErrRowsAffected = errors.New("goquent: unexpected rows affected")
+var ErrRowsAffected = writecheck.ErrRowsAffected
 ```
 
 <a name="ErrUnsupportedCompound"></a>ErrUnsupportedCompound identifies opaque recipes refused by conditional strict inspection.
@@ -499,6 +499,24 @@ var ErrUnsupportedExecutionContext = query.ErrUnsupportedExecutionContext
 
 ```go
 var ErrUnsupportedRiskEngine = query.ErrUnsupportedRiskEngine
+```
+
+<a name="ErrWriteOptions"></a>
+
+```go
+var ErrWriteOptions = writecheck.ErrOptions
+```
+
+<a name="ErrWriteOutcomeUnknown"></a>
+
+```go
+var ErrWriteOutcomeUnknown = writecheck.ErrOutcomeUnknown
+```
+
+<a name="ErrWriteOwnership"></a>
+
+```go
+var ErrWriteOwnership = writecheck.ErrOwnership
 ```
 
 <a name="ApplyProjection"></a>
@@ -882,13 +900,13 @@ UpdateByReturning applies scopes, executes an UPDATE, and scans the Postgres RET
 func UpdateByReturningWithOptions[T any](ctx context.Context, db *DB, base *query.Query, data any, opts []WriteOpt, scopes ...Scope) (T, error)
 ```
 
-UpdateByReturningWithOptions applies scopes, executes an UPDATE with RETURNING, and applies Returning and NoRowsAs. Other WriteOpt fields \(including ExpectAffected, table, column, key, assignment and conflict options\) retain their legacy nonapplication here. Options are still evaluated. The base/scopes and data determine the actual UPDATE, which is inspected on the destination DB.
+UpdateByReturningWithOptions applies scopes, executes an UPDATE with RETURNING, and applies Returning and the result/atomic/version options. Other table, column, key, assignment and conflict options retain their legacy nonapplication here. Options are still evaluated. The base/scopes and data determine the actual UPDATE, which is inspected on the destination DB.
 
 <a name="UpdateOperationBy"></a>
 ## func UpdateOperationBy
 
 ```go
-func UpdateOperationBy(ctx context.Context, db *DB, s operation.UpdateSpec, opts operation.Options) (sql.Result, error)
+func UpdateOperationBy(ctx context.Context, db *DB, s operation.UpdateSpec, opts operation.Options, writeOpts ...WriteOpt) (sql.Result, error)
 ```
 
 UpdateOperationBy validates and dispatches the same privately sealed UPDATE. It provides the existing immediate write lifecycle, not a ValidatedPlan API.
@@ -897,10 +915,10 @@ UpdateOperationBy validates and dispatches the same privately sealed UPDATE. It 
 ## func UpdateOperationReturningBy
 
 ```go
-func UpdateOperationReturningBy[T any](ctx context.Context, db *DB, s operation.UpdateSpec, opts operation.Options) (out T, err error)
+func UpdateOperationReturningBy[T any](ctx context.Context, db *DB, s operation.UpdateSpec, opts operation.Options, writeOpts ...WriteOpt) (out T, err error)
 ```
 
-UpdateOperationReturningBy uses the existing one\-row scanner and bool policy. A first row is not an exact affected\-row or automatic rollback guarantee.
+UpdateOperationReturningBy retains the first row using the existing bool policy, scans the complete stream, and applies optional result and atomic checks.
 
 <a name="UpdateReturning"></a>
 ## func UpdateReturning
@@ -1102,14 +1120,16 @@ type CommandResult struct {
 <a name="CommandStep"></a>
 ## type CommandStep
 
-CommandStep is one literal INSERT or equality\-key UPDATE. Values and Keys accept only the scalar domain documented in docs/command\-identity.md. Keys are mandatory for updates and forbidden for inserts. No SQL is accepted.
+
 
 ```go
 type CommandStep struct {
-    Operation string
-    Table     string
-    Values    map[string]any
-    Keys      map[string]any
+    ExpectAffected *int64
+    Version        *CommandVersion
+    Operation      string
+    Table          string
+    Values         map[string]any
+    Keys           map[string]any
 }
 ```
 
@@ -1151,6 +1171,18 @@ CommandSummary contains actual driver row counts, not hydrated rows or IDs.
 type CommandSummary struct {
     Version      int     `json:"version"`
     RowsAffected []int64 `json:"rows_affected"`
+}
+```
+
+<a name="CommandVersion"></a>
+## type CommandVersion
+
+CommandStep is one literal INSERT or equality\-key UPDATE. Values and Keys accept only the scalar domain documented in docs/command\-identity.md. Keys are mandatory for updates and forbidden for inserts. No SQL is accepted. CommandVersion is a finite UPDATE comparison and increment.
+
+```go
+type CommandVersion struct {
+    Column   string
+    Expected int64
 }
 ```
 
@@ -2699,42 +2731,11 @@ Scan delegates without additional dispatch. A rejected Row never writes dest.
 <a name="RowsAffectedError"></a>
 ## type RowsAffectedError
 
-RowsAffectedError describes a failed rows\-affected expectation.
+
 
 ```go
-type RowsAffectedError struct {
-    Expected int64
-    Actual   int64
-    Cause    error
-}
+type RowsAffectedError = writecheck.RowsAffectedError
 ```
-
-<a name="RowsAffectedError.Error"></a>
-### func \(RowsAffectedError\) Error
-
-```go
-func (e RowsAffectedError) Error() string
-```
-
-
-
-<a name="RowsAffectedError.Is"></a>
-### func \(RowsAffectedError\) Is
-
-```go
-func (e RowsAffectedError) Is(target error) bool
-```
-
-
-
-<a name="RowsAffectedError.Unwrap"></a>
-### func \(RowsAffectedError\) Unwrap
-
-```go
-func (e RowsAffectedError) Unwrap() error
-```
-
-
 
 <a name="ScanOptions"></a>
 ## type ScanOptions
@@ -3064,6 +3065,15 @@ WriteOpt configures write behavior.
 type WriteOpt func(*writeOptions)
 ```
 
+<a name="AtomicWrite"></a>
+### func AtomicWrite
+
+```go
+func AtomicWrite() WriteOpt
+```
+
+AtomicWrite completes the write and result inspection in an owned transaction.
+
 <a name="Columns"></a>
 ### func Columns
 
@@ -3161,6 +3171,15 @@ func Omit(cols ...string) WriteOpt
 ```
 
 Omit excludes specified columns.
+
+<a name="OptimisticVersion"></a>
+### func OptimisticVersion
+
+```go
+func OptimisticVersion(column string, expected int64) WriteOpt
+```
+
+OptimisticVersion compares and advances a supported signed version in one UPDATE. It requires an owned transaction and exactly one affected row.
 
 <a name="PK"></a>
 ### func PK
@@ -6277,6 +6296,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func New\(exec executor, table string, dialect driver.Dialect\) \*Query](<#New>)
   - [func NewWithSettings\(exec executor, table string, dialect driver.Dialect, settings Settings\) \*Query](<#NewWithSettings>)
   - [func \(q \*Query\) AccessReason\(reason string\) \*Query](<#Query.AccessReason>)
+  - [func \(q \*Query\) AtomicWrite\(\) \*Query](<#Query.AtomicWrite>)
   - [func \(q \*Query\) Avg\(col string\) \*Query](<#Query.Avg>)
   - [func \(q \*Query\) Build\(\) \(string, \[\]any, error\)](<#Query.Build>)
   - [func \(q \*Query\) Count\(cols ...string\) \(int64, error\)](<#Query.Count>)
@@ -6290,6 +6310,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) ExecuteValidatedInsertBatch\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan, data \[\]map\[string\]any\) \(sql.Result, error\)](<#Query.ExecuteValidatedInsertBatch>)
   - [func \(q \*Query\) ExecuteValidatedSelect\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan, dest any\) error](<#Query.ExecuteValidatedSelect>)
   - [func \(q \*Query\) ExecuteValidatedUpdate\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan, data any\) \(sql.Result, error\)](<#Query.ExecuteValidatedUpdate>)
+  - [func \(q \*Query\) ExpectAffected\(n int64\) \*Query](<#Query.ExpectAffected>)
   - [func \(q \*Query\) First\(dest any\) error](<#Query.First>)
   - [func \(q \*Query\) FirstMap\(dest \*map\[string\]any\) error](<#Query.FirstMap>)
   - [func \(q \*Query\) Get\(dest any\) error](<#Query.Get>)
@@ -6315,8 +6336,10 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) LockForUpdate\(\) \*Query](<#Query.LockForUpdate>)
   - [func \(q \*Query\) Max\(col string\) \*Query](<#Query.Max>)
   - [func \(q \*Query\) Min\(col string\) \*Query](<#Query.Min>)
+  - [func \(q \*Query\) NoRowsAs\(err error\) \*Query](<#Query.NoRowsAs>)
   - [func \(q \*Query\) Offset\(n int\) \*Query](<#Query.Offset>)
   - [func \(q \*Query\) OnlyDeleted\(\) \*Query](<#Query.OnlyDeleted>)
+  - [func \(q \*Query\) OptimisticVersion\(column string, expected int64\) \*Query](<#Query.OptimisticVersion>)
   - [func \(q \*Query\) OrHaving\(col, cond string, val any\) \*Query](<#Query.OrHaving>)
   - [func \(q \*Query\) OrHavingRaw\(raw string\) \*Query](<#Query.OrHavingRaw>)
   - [func \(q \*Query\) OrWhere\(col string, args ...any\) \*Query](<#Query.OrWhere>)
@@ -7313,6 +7336,15 @@ func (q *Query) AccessReason(reason string) *Query
 
 AccessReason records why this query needs access to sensitive columns.
 
+<a name="Query.AtomicWrite"></a>
+### func \(\*Query\) AtomicWrite
+
+```go
+func (q *Query) AtomicWrite() *Query
+```
+
+AtomicWrite opts into an owned transaction through complete result inspection. Queries made from external executors or transactions reject before execution.
+
 <a name="Query.Avg"></a>
 ### func \(\*Query\) Avg
 
@@ -7429,6 +7461,15 @@ func (q *Query) ExecuteValidatedUpdate(ctx context.Context, c BindingCurrent, h 
 ```
 
 ExecuteValidatedUpdate attempts a handle once with current UPDATE data.
+
+<a name="Query.ExpectAffected"></a>
+### func \(\*Query\) ExpectAffected
+
+```go
+func (q *Query) ExpectAffected(n int64) *Query
+```
+
+ExpectAffected checks the driver count \(or complete RETURNING row count\). Without AtomicWrite, an autocommitted write cannot be rolled back by this check.
 
 <a name="Query.First"></a>
 ### func \(\*Query\) First
@@ -7655,6 +7696,15 @@ func (q *Query) Min(col string) *Query
 
 Min adds MIN aggregate function.
 
+<a name="Query.NoRowsAs"></a>
+### func \(\*Query\) NoRowsAs
+
+```go
+func (q *Query) NoRowsAs(err error) *Query
+```
+
+NoRowsAs maps zero affected rows to a source error, unless ExpectAffected\(0\) matches.
+
 <a name="Query.Offset"></a>
 ### func \(\*Query\) Offset
 
@@ -7672,6 +7722,15 @@ func (q *Query) OnlyDeleted() *Query
 ```
 
 OnlyDeleted restricts a soft\-delete policy table to deleted rows.
+
+<a name="Query.OptimisticVersion"></a>
+### func \(\*Query\) OptimisticVersion
+
+```go
+func (q *Query) OptimisticVersion(column string, expected int64) *Query
+```
+
+OptimisticVersion compares and advances a signed, nonnegative version atomically.
 
 <a name="Query.OrHaving"></a>
 ### func \(\*Query\) OrHaving
