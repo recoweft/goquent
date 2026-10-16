@@ -52,15 +52,26 @@ type CommandStep struct {
 	Keys           map[string]any
 }
 
+// CommandHook is one named literal INSERT after all business steps. It accepts
+// the same table, column and scalar domain as CommandStep, with exactly one
+// affected row required. It cannot contain a TransactionHook or callback.
+type CommandHook struct {
+	Name   string
+	Table  string
+	Values map[string]any
+}
+
 // Command identifies an ordered, bounded write request. Keep this ID and input
 // durably before calling Run; never replace the ID after an ambiguous response.
 type Command struct {
 	ID    string
 	Kind  string
 	Steps []CommandStep
+	Hooks []CommandHook
 }
 
-// CommandSummary contains actual driver row counts, not hydrated rows or IDs.
+// CommandSummary contains actual driver row counts in business-then-hook order,
+// not hydrated rows or IDs. Replays return the same persisted counts.
 type CommandSummary struct {
 	Version      int     `json:"version"`
 	RowsAffected []int64 `json:"rows_affected"`
@@ -168,16 +179,32 @@ func commandFields(in map[string]any, budget *int, nodes *int) ([]commandField, 
 }
 
 func snapshotCommand(c Command, schema string) ([]byte, []querybridge.Request, error) {
-	if !commandUUID.MatchString(c.ID) || !commandLabel.MatchString(c.Kind) || len(c.Steps) == 0 || len(c.Steps) > CommandMaxSteps {
+	if !commandUUID.MatchString(c.ID) || !commandLabel.MatchString(c.Kind) || len(c.Steps) == 0 || len(c.Steps) > CommandMaxSteps || len(c.Hooks) > CommandMaxSteps-len(c.Steps) {
 		return nil, nil, ErrCommandInput
 	}
 	canonical := commandInput{Version: 1, Kind: c.Kind}
 	v2 := commandInputV2{Version: 2, Kind: c.Kind}
+	v3 := commandInputV3{Version: 3, Kind: c.Kind}
+	steps := append([]CommandStep(nil), c.Steps...)
+	for _, hook := range c.Hooks {
+		if !commandLabel.MatchString(hook.Name) {
+			return nil, nil, ErrCommandInput
+		}
+		one := int64(1)
+		steps = append(steps, CommandStep{Operation: "insert", Table: hook.Table, Values: hook.Values, ExpectAffected: &one})
+	}
 	extended := false
-	requests := make([]querybridge.Request, 0, len(c.Steps))
+	requests := make([]querybridge.Request, 0, len(steps))
 	budget, nodes := len(c.Kind), 0
-	for _, s := range c.Steps {
+	for i, s := range steps {
 		if !commandIdent.MatchString(s.Table) || s.Table == commandTable || len(s.Values) == 0 || (s.Operation != "insert" && s.Operation != "update") || (s.Operation == "insert" && len(s.Keys) != 0) || (s.Operation == "update" && len(s.Keys) == 0) {
+			return nil, nil, ErrCommandInput
+		}
+		budget += len(s.Table) + len(s.Operation)
+		if i >= len(c.Steps) {
+			budget += len(c.Hooks[i-len(c.Steps)].Name)
+		}
+		if budget > CommandMaxBytes {
 			return nil, nil, ErrCommandInput
 		}
 		vf, values, err := commandFields(s.Values, &budget, &nodes)
@@ -214,13 +241,21 @@ func snapshotCommand(c Command, schema string) ([]byte, []querybridge.Request, e
 			r.WhereColumns = append(r.WhereColumns, k.Name)
 			r.WhereValues = append(r.WhereValues, keys[k.Name])
 		}
-		canonical.Steps = append(canonical.Steps, commandCanonicalStep{s.Operation, s.Table, vf, kf})
-		v2.Steps = append(v2.Steps, commandCanonicalStepV2{s.Operation, s.Table, vf, kf, result.Expected, result.Version})
+		if i < len(c.Steps) {
+			canonical.Steps = append(canonical.Steps, commandCanonicalStep{s.Operation, s.Table, vf, kf})
+			v2.Steps = append(v2.Steps, commandCanonicalStepV2{s.Operation, s.Table, vf, kf, result.Expected, result.Version})
+		} else {
+			v3.Hooks = append(v3.Hooks, commandCanonicalHook{c.Hooks[i-len(c.Steps)].Name, s.Table, vf})
+		}
 		requests = append(requests, r)
 	}
 	var encoded any = canonical
 	if extended {
 		encoded = v2
+	}
+	if len(c.Hooks) != 0 {
+		v3.Steps = v2.Steps
+		encoded = v3
 	}
 	b, err := json.Marshal(encoded)
 	if err != nil || len(b) > CommandMaxBytes {
@@ -241,6 +276,17 @@ type commandInputV2 struct {
 	Version int
 	Kind    string
 	Steps   []commandCanonicalStepV2
+}
+
+type commandCanonicalHook struct {
+	Name, Table string
+	Values      []commandField
+}
+type commandInputV3 struct {
+	Version int
+	Kind    string
+	Steps   []commandCanonicalStepV2
+	Hooks   []commandCanonicalHook
 }
 
 func commandFingerprint(input []byte) ([32]byte, error) {
@@ -273,8 +319,8 @@ func commandFingerprint(input []byte) ([32]byte, error) {
 			}
 			c.Steps = append(c.Steps, CommandStep{Operation: s.Operation, Table: s.Table, Values: values, Keys: keys})
 		}
-	case 2:
-		var v commandInputV2
+	case 2, 3:
+		var v commandInputV3
 		if json.Unmarshal(input, &v) != nil {
 			return zero, ErrCommandCorrupt
 		}
@@ -294,6 +340,15 @@ func commandFingerprint(input []byte) ([32]byte, error) {
 			}
 			c.Steps = append(c.Steps, step)
 		}
+		if header.Version == 3 {
+			for _, h := range v.Hooks {
+				values, e := commandDecodeFields(h.Values)
+				if e != nil {
+					return zero, e
+				}
+				c.Hooks = append(c.Hooks, CommandHook{Name: h.Name, Table: h.Table, Values: values})
+			}
+		}
 	default:
 		return zero, ErrCommandCorrupt
 	}
@@ -304,6 +359,9 @@ func commandFingerprint(input []byte) ([32]byte, error) {
 	domain := "goquent.command.input.v1\x00"
 	if header.Version == 2 {
 		domain = "goquent.command.input.v2\x00"
+	}
+	if header.Version == 3 {
+		domain = "goquent.command.input.v3\x00"
 	}
 	return sha256.Sum256(append([]byte(domain), input...)), nil
 }

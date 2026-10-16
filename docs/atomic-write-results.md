@@ -182,3 +182,13 @@ types. The RowsAffectedError public name is an alias to the shared implementatio
 source errors.Is/As behavior remains, but reflected package identity changes.
 The corrected RETURNING checks and duplicate-option refusals can surface errors
 previously ignored; audit those callers before upgrading.
+
+
+## GQ-AI-10 PR3 finite command hooks
+
+[Command audit/outbox hooks](command-hooks.md) supersedes the historical PR3-pending
+statements above. Ordered finite INSERT hooks now share the owned command
+transaction, private gates and replay identity. Hook-bearing input uses v3;
+legacy v1/v2, ledger/scope/result v1 and opaque callback Strict refusal remain.
+See the linked recipe, rollout, tenant scope and evidence limits. Whole-Issue
+acceptance and merge remain separate.
