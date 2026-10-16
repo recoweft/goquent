@@ -1,14 +1,32 @@
 package orm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/go-sql-driver/mysql"
 	"math"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+// The existing sql.Scanner extension cancels only after a real returned row
+// has been decoded. Its own Scan succeeds; the next Rows iteration reports the
+// asynchronous cancellation. This is not a network/COMMIT fault injection.
+var atomicScanCancel atomic.Pointer[context.CancelFunc]
+
+type cancelAfterRow struct{}
+
+func (*cancelAfterRow) Scan(any) error {
+	if cancel := atomicScanCancel.Load(); cancel != nil {
+		(*cancel)()
+		time.Sleep(30 * time.Millisecond)
+	}
+	return nil
+}
 
 func testAtomicIntegration(t *testing.T, db *DB, store *CommandStore, schema, dialect string) {
 	raw := db.SQLDB()
@@ -187,6 +205,22 @@ func testAtomicIntegration(t *testing.T, db *DB, store *CommandStore, schema, di
 			t.Fatal("scan failure persisted")
 		}
 	})
+	if dialect == Postgres {
+		t.Run("returning-late-cancellation", func(t *testing.T) {
+			cancelled, cancel := context.WithCancel(ctx)
+			defer cancel()
+			atomicScanCancel.Store(&cancel)
+			defer atomicScanCancel.Store(nil)
+			_, e := UpdateByReturningWithOptions[struct{ Score cancelAfterRow }](cancelled, trusted, trusted.Table(table).Where("id", ">=", int64(900)), map[string]any{"score": int64(22)}, []WriteOpt{Returning("score"), AtomicWrite()})
+			if !errors.Is(e, context.Canceled) {
+				t.Fatal("late cancellation missing", e)
+			}
+			score, _ := read(900)
+			if score != 2 {
+				t.Fatal("late cancellation retained update")
+			}
+		})
+	}
 	t.Run("command-v2-rollback-and-replay", func(t *testing.T) {
 		one := int64(1)
 		c := Command{ID: "00000000-0000-4000-8000-000000009000", Kind: "optimistic", Steps: []CommandStep{{Operation: "update", Table: "gq10_items", Keys: map[string]any{"id": int64(900)}, Values: map[string]any{"score": int64(6)}, Version: &CommandVersion{Column: "version", Expected: 1}}, {Operation: "update", Table: "gq10_items", Keys: map[string]any{"id": int64(9999)}, Values: map[string]any{"score": int64(8)}, ExpectAffected: &one}}}
