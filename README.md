@@ -70,6 +70,13 @@ import "github.com/recoweft/goquent/orm"
   - [func \(p BoolScanPolicy\) String\(\) string](<#BoolScanPolicy.String>)
 - [type ColumnRef](<#ColumnRef>)
 - [type ColumnSchema](<#ColumnSchema>)
+- [type Command](<#Command>)
+- [type CommandResult](<#CommandResult>)
+- [type CommandStep](<#CommandStep>)
+- [type CommandStore](<#CommandStore>)
+  - [func NewCommandStore\(ctx context.Context, db \*DB, namespace string\) \(\*CommandStore, error\)](<#NewCommandStore>)
+  - [func \(s \*CommandStore\) Run\(ctx context.Context, c Command\) \(CommandResult, error\)](<#CommandStore.Run>)
+- [type CommandSummary](<#CommandSummary>)
 - [type CursorColumn](<#CursorColumn>)
   - [func CursorAsc\(name string\) CursorColumn](<#CursorAsc>)
   - [func CursorAscAlias\(alias string\) CursorColumn](<#CursorAscAlias>)
@@ -292,6 +299,16 @@ import "github.com/recoweft/goquent/orm"
 
 ## Constants
 
+<a name="CommandMaxBytes"></a>Command limits are independent of the read\-only OperationSpec contract.
+
+```go
+const (
+    CommandMaxBytes   = 1 << 20
+    CommandMaxSteps   = 64
+    CommandMaxColumns = 256
+)
+```
+
 <a name="ManifestVersion"></a>
 
 ```go
@@ -401,6 +418,19 @@ const (
 ```
 
 ## Variables
+
+<a name="ErrCommandInput"></a>
+
+```go
+var (
+    ErrCommandInput            = errors.New("goquent: unsupported command input")
+    ErrCommandIdentityConflict = errors.New("goquent: command identity conflict")
+    ErrCommandStore            = errors.New("goquent: invalid command store")
+    ErrCommandCorrupt          = errors.New("goquent: corrupt or unsupported command record")
+    ErrCommandOutcomeUnknown   = errors.New("goquent: command outcome unknown; reconcile with the same ID and input")
+    ErrCommandOwnership        = errors.New("goquent: command requires an owned database")
+)
+```
 
 <a name="ErrOperationManifestRequired"></a>
 
@@ -1042,6 +1072,86 @@ type ColumnRef = query.ColumnRef
 
 ```go
 type ColumnSchema = migration.ColumnSchema
+```
+
+<a name="Command"></a>
+## type Command
+
+Command identifies an ordered, bounded write request. Keep this ID and input durably before calling Run; never replace the ID after an ambiguous response.
+
+```go
+type Command struct {
+    ID    string
+    Kind  string
+    Steps []CommandStep
+}
+```
+
+<a name="CommandResult"></a>
+## type CommandResult
+
+CommandResult returns the persisted summary. Applied is false for a replay. This source result is not a redacted public display artifact.
+
+```go
+type CommandResult struct {
+    Summary CommandSummary
+    Applied bool
+}
+```
+
+<a name="CommandStep"></a>
+## type CommandStep
+
+CommandStep is one literal INSERT or equality\-key UPDATE. Values and Keys accept only the scalar domain documented in docs/command\-identity.md. Keys are mandatory for updates and forbidden for inserts. No SQL is accepted.
+
+```go
+type CommandStep struct {
+    Operation string
+    Table     string
+    Values    map[string]any
+    Keys      map[string]any
+}
+```
+
+<a name="CommandStore"></a>
+## type CommandStore
+
+CommandStore binds a fixed v1 ledger to a private snapshot of one owned DB, dialect, namespace and trusted application tenant. Its zero value is invalid. Construct a new store to adopt changed settings. It cannot be rebound.
+
+```go
+type CommandStore struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewCommandStore"></a>
+### func NewCommandStore
+
+```go
+func NewCommandStore(ctx context.Context, db *DB, namespace string) (*CommandStore, error)
+```
+
+NewCommandStore performs read\-only ledger schema validation. It never installs or repairs a table. See docs/command\-identity.md for the explicit deployment DDL.
+
+<a name="CommandStore.Run"></a>
+### func \(\*CommandStore\) Run
+
+```go
+func (s *CommandStore) Run(ctx context.Context, c Command) (CommandResult, error)
+```
+
+Run validates every step before looking up a replay or reserving the ID. The reservation, all business statements and the fixed result commit together. No automatic retries are performed, including after an ambiguous commit.
+
+<a name="CommandSummary"></a>
+## type CommandSummary
+
+CommandSummary contains actual driver row counts, not hydrated rows or IDs.
+
+```go
+type CommandSummary struct {
+    Version      int     `json:"version"`
+    RowsAffected []int64 `json:"rows_affected"`
+}
 ```
 
 <a name="CursorColumn"></a>
