@@ -183,8 +183,8 @@ func UpdateByReturning[T any](ctx context.Context, db *DB, base *query.Query, da
 }
 
 // UpdateByReturningWithOptions applies scopes, executes an UPDATE with
-// RETURNING, and applies Returning and NoRowsAs. Other WriteOpt fields (including
-// ExpectAffected, table, column, key, assignment and conflict options) retain their
+// RETURNING, and applies Returning and the result/atomic/version options. Other
+// table, column, key, assignment and conflict options retain their
 // legacy nonapplication here. Options are still evaluated. The base/scopes and
 // data determine the actual UPDATE, which is inspected on the destination DB.
 func UpdateByReturningWithOptions[T any](ctx context.Context, db *DB, base *query.Query, data any, opts []WriteOpt, scopes ...Scope) (T, error) {

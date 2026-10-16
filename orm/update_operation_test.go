@@ -212,3 +212,37 @@ func TestGeneratedTenantPatchCurrentBinding(t *testing.T) {
 		}
 	}
 }
+
+func TestTypedPatchAtomicResults(t *testing.T) {
+	for _, returning := range []bool{false, true} {
+		t.Run(fmt.Sprint(returning), func(t *testing.T) {
+			raw, m, e := sqlmock.New()
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer raw.Close()
+			db := orm.NewDB(raw, driver.PostgresDialect{}, orm.WithSettings(query.Settings{}))
+			s := operation.UpdateSpec{Version: 1, Model: "gq08_records", Filters: []operation.FilterSpec{{Field: "id", Op: "=", Value: int64(1)}, {Field: "segment", Op: "=", Value: int32(0)}}, Assignments: []operation.UpdateAssignment{{Column: "active", State: operation.UpdateValue, Value: false}}}
+			opts := operation.Options{Manifest: typedfixture.Manifest("postgres")}
+			m.ExpectBegin()
+			if returning {
+				s.Returning = []string{"active"}
+				m.ExpectQuery("UPDATE").WillReturnRows(sqlmock.NewRows([]string{"active"}).AddRow(false).AddRow(true)).RowsWillBeClosed()
+			} else {
+				m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 2))
+			}
+			m.ExpectRollback()
+			if returning {
+				_, e = orm.UpdateOperationReturningBy[struct{ Active bool }](t.Context(), db, s, opts, orm.AtomicWrite(), orm.ExpectAffected(1))
+			} else {
+				_, e = orm.UpdateOperationBy(t.Context(), db, s, opts, orm.AtomicWrite(), orm.ExpectAffected(1))
+			}
+			if !errors.Is(e, orm.ErrRowsAffected) {
+				t.Fatal(e)
+			}
+			if e = m.ExpectationsWereMet(); e != nil {
+				t.Fatal(e)
+			}
+		})
+	}
+}

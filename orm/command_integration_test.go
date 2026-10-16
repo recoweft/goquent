@@ -2,7 +2,6 @@ package orm
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -55,13 +54,13 @@ func TestCommandIntegration(t *testing.T) {
 				t.Fatal("fixture ledger must not already exist:", e)
 			}
 			defer raw.Exec("DROP TABLE " + commandTable)
-			if _, e = raw.Exec("CREATE TABLE gq10_items (tenant_id BIGINT NOT NULL, id BIGINT NOT NULL, score BIGINT, PRIMARY KEY(tenant_id,id))"); e != nil {
+			if _, e = raw.Exec("CREATE TABLE gq10_items (tenant_id BIGINT NOT NULL, id BIGINT NOT NULL, score BIGINT, version BIGINT NOT NULL DEFAULT 0, PRIMARY KEY(tenant_id,id))"); e != nil {
 				t.Fatal(e)
 			}
 			defer raw.Exec("DROP TABLE gq10_items")
 			makeDB := func(tenant int64) *DB {
 				c, _ := NewApplicationTenantContext(ExecutionContextInput{TenantPresent: true, CurrentTenant: tenant})
-				cols := []query.WriteKeyColumn{{Name: "tenant_id", DBType: "bigint", Bits: 64}, {Name: "id", DBType: "bigint", Bits: 64}, {Name: "score", DBType: "bigint", Bits: 64}}
+				cols := []query.WriteKeyColumn{{Name: "tenant_id", DBType: "bigint", Bits: 64}, {Name: "id", DBType: "bigint", Bits: 64}, {Name: "score", DBType: "bigint", Bits: 64}, {Name: "version", DBType: "bigint", Bits: 64}}
 				if dialect == MySQL {
 					for i := range cols {
 						cols[i].DBType = "BIGINT"
@@ -83,6 +82,7 @@ func TestCommandIntegration(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
+			t.Run("atomic-results", func(t *testing.T) { testAtomicIntegration(t, db, store, schema, dialect) })
 			command := func(n int) Command {
 				return Command{ID: fmt.Sprintf("00000000-0000-4000-8000-%012d", n), Kind: "insert-score", Steps: []CommandStep{{Operation: "insert", Table: "gq10_items", Values: map[string]any{"id": int64(n), "score": int64(2)}}}}
 			}
@@ -184,69 +184,82 @@ func TestCommandIntegration(t *testing.T) {
 			// Both callers enter the production reservation path, bypassing the initial
 			// lookup only in this internal fixture. This deterministically exercises a
 			// real unique violation and fresh-snapshot reread on each database.
-			for _, different := range []bool{false, true} {
-				name := "forced-reservation-same-input"
-				n := 11
-				if different {
-					name = "forced-reservation-different-input"
-					n = 12
-				}
-				t.Run(name, func(t *testing.T) {
-					start := make(chan struct{})
-					out := make(chan CommandResult, 2)
-					errs := make(chan error, 2)
-					for i := 0; i < 2; i++ {
-						c := command(n)
-						if different && i == 1 {
-							c.Steps[0].Values["score"] = int64(9)
+			for _, v2 := range []bool{false, true} {
+				for _, different := range []bool{false, true} {
+					name := "forced-reservation-same-input"
+					n := 11
+					if different {
+						name = "forced-reservation-different-input"
+						n = 12
+					}
+					if v2 {
+						name += "-v2"
+						n += 20
+					}
+					t.Run(name, func(t *testing.T) {
+						start := make(chan struct{})
+						out := make(chan CommandResult, 2)
+						errs := make(chan error, 2)
+						for i := 0; i < 2; i++ {
+							c := command(n)
+							if v2 {
+								one := int64(1)
+								c.Steps[0].ExpectAffected = &one
+							}
+							if different && i == 1 {
+								c.Steps[0].Values["score"] = int64(9)
+							}
+							b, requests, e := snapshotCommand(c, store.schema)
+							if e != nil {
+								t.Fatal(e)
+							}
+							plan := &compoundPlan{}
+							for _, r := range requests {
+								if e = plan.add(t.Context(), store.db, "command", 0, 1, r, nil); e != nil {
+									t.Fatal(e)
+								}
+							}
+							fp, e := commandFingerprint(b)
+							if e != nil {
+								t.Fatal(e)
+							}
+							go func(c Command, b []byte, fp [32]byte, p *compoundPlan) {
+								<-start
+								r, e := store.apply(t.Context(), c.ID, b, fp, p)
+								out <- r
+								errs <- e
+							}(c, b, fp, plan)
 						}
-						b, requests, e := snapshotCommand(c, store.schema)
-						if e != nil {
-							t.Fatal(e)
-						}
-						plan := &compoundPlan{}
-						for _, r := range requests {
-							if e = plan.add(t.Context(), store.db, "command", 0, 1, r, nil); e != nil {
+						close(start)
+						applied, replayed, conflicted := 0, 0, 0
+						for i := 0; i < 2; i++ {
+							r := <-out
+							if r.Applied {
+								applied++
+							} else if r.Summary.Version == 1 {
+								replayed++
+							}
+							e := <-errs
+							if errors.Is(e, ErrCommandIdentityConflict) {
+								conflicted++
+							} else if e != nil {
 								t.Fatal(e)
 							}
 						}
-						fp := sha256.Sum256(append([]byte("goquent.command.input.v1\x00"), b...))
-						go func(c Command, b []byte, fp [32]byte, p *compoundPlan) {
-							<-start
-							r, e := store.apply(t.Context(), c.ID, b, fp, p)
-							out <- r
-							errs <- e
-						}(c, b, fp, plan)
-					}
-					close(start)
-					applied, replayed, conflicted := 0, 0, 0
-					for i := 0; i < 2; i++ {
-						r := <-out
-						if r.Applied {
-							applied++
-						} else if r.Summary.Version == 1 {
-							replayed++
+						if applied != 1 || count(n) != 1 {
+							t.Fatal("reservation race applied more than once")
 						}
-						e := <-errs
-						if errors.Is(e, ErrCommandIdentityConflict) {
-							conflicted++
-						} else if e != nil {
-							t.Fatal(e)
+						if different {
+							if conflicted != 1 || replayed != 0 {
+								t.Fatal("race mismatch was reused")
+							}
+						} else if replayed != 1 || conflicted != 0 {
+							t.Fatal("race result not replayed")
 						}
-					}
-					if applied != 1 || count(n) != 1 {
-						t.Fatal("reservation race applied more than once")
-					}
-					if different {
-						if conflicted != 1 || replayed != 0 {
-							t.Fatal("race mismatch was reused")
-						}
-					} else if replayed != 1 || conflicted != 0 {
-						t.Fatal("race result not replayed")
-					}
-				})
-			}
+					})
+				}
 
+			}
 			t.Run("business-failure-rollback-and-retry", func(t *testing.T) {
 				c := command(3)
 				c.Steps = append(c.Steps, c.Steps[0])

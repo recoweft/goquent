@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"reflect"
 	"sort"
 	"strings"
@@ -18,6 +19,7 @@ import (
 type WriteOpt func(*writeOptions)
 
 type writeOptions struct {
+	results            writecheck.Options
 	cols               map[string]struct{}
 	omit               map[string]struct{}
 	wherePK            bool
@@ -214,7 +216,11 @@ func Increment(column string, delta any) WriteOpt {
 // ExpectAffected requires the write to affect exactly n rows.
 func ExpectAffected(n int64) WriteOpt {
 	return func(o *writeOptions) {
+		if o.expectAffected != nil {
+			o.results.Invalid = true
+		}
 		o.expectAffected = &n
+		o.results.Expected = &n
 	}
 }
 
@@ -222,7 +228,11 @@ func ExpectAffected(n int64) WriteOpt {
 // optimistic-concurrency guards such as content_hash or version predicates.
 func NoRowsAs(err error) WriteOpt {
 	return func(o *writeOptions) {
+		if o.zeroRowsErr != nil {
+			o.results.Invalid = true
+		}
 		o.zeroRowsErr = err
+		o.results.Zero = err
 	}
 }
 
@@ -302,28 +312,24 @@ func returningColumnsForQuery[T any]() ([]string, error) {
 }
 
 func checkRowsAffected(res sql.Result, o *writeOptions) error {
-	if res == nil || o == nil || (o.expectAffected == nil && o.zeroRowsErr == nil) {
+	if o == nil {
 		return nil
 	}
-	actual, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if o.expectAffected != nil {
-		expected := *o.expectAffected
-		if actual == expected {
-			return nil
+	return o.results.Result(res)
+}
+
+// AtomicWrite completes the write and result inspection in an owned transaction.
+func AtomicWrite() WriteOpt { return func(o *writeOptions) { o.results.Atomic = true } }
+
+// OptimisticVersion compares and advances a supported signed version in one UPDATE.
+// It requires an owned transaction and exactly one affected row.
+func OptimisticVersion(column string, expected int64) WriteOpt {
+	return func(o *writeOptions) {
+		if o.results.Version != nil {
+			o.results.Invalid = true
 		}
-		cause := ErrRowsAffected
-		if actual == 0 && o.zeroRowsErr != nil {
-			cause = o.zeroRowsErr
-		}
-		return RowsAffectedError{Expected: expected, Actual: actual, Cause: cause}
+		o.results.Version = &writecheck.Version{Column: column, Expected: expected}
 	}
-	if actual == 0 && o.zeroRowsErr != nil {
-		return RowsAffectedError{Expected: 1, Actual: actual, Cause: o.zeroRowsErr}
-	}
-	return nil
 }
 
 // Insert inserts v into its table.
@@ -376,7 +382,7 @@ func InsertManyReturning[R any, T any](ctx context.Context, db *DB, values []T, 
 	if err != nil {
 		return nil, err
 	}
-	return queryWriteAll[R](ctx, db, input)
+	return queryWriteAll[R](ctx, db, input, o)
 }
 
 // UpsertMany inserts or updates all values in one bulk UPSERT statement.
@@ -406,7 +412,7 @@ func UpsertManyReturning[R any, T any](ctx context.Context, db *DB, values []T, 
 	if err != nil {
 		return nil, err
 	}
-	return queryWriteAll[R](ctx, db, input)
+	return queryWriteAll[R](ctx, db, input, o)
 }
 
 func buildInsertInput(db *DB, v any, o *writeOptions) (querybridge.Request, error) {
@@ -1017,6 +1023,9 @@ func UpsertReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...Wri
 func InsertOnceReturning[T any, V any](ctx context.Context, db *DB, v V, opts ...WriteOpt) (T, bool, error) {
 	var zero T
 	o := applyWriteOpts(opts)
+	if o.results.Active() {
+		return zero, false, ErrWriteOptions
+	}
 	if err := ensureReturningColumns[T](o); err != nil {
 		return zero, false, err
 	}

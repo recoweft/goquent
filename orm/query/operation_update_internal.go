@@ -4,10 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"github.com/recoweft/goquent/orm/internal/querybridge"
+	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"github.com/recoweft/goquent/orm/internal/writeinput"
 )
 
 func init() {
+	querybridge.ConfigureWrite = func(base any, r querybridge.Request) error {
+		q, ok := base.(*Query)
+		if !ok || q == nil || r.Results.Version != nil {
+			return writecheck.ErrOptions
+		}
+		if err := r.Results.Validate(); err != nil {
+			return err
+		}
+		q.writeOwner = r.Owner
+		q.writeResult = r.Results.Clone()
+		return nil
+	}
 	querybridge.PlanOperationUpdate = planOperationUpdate
 	querybridge.OperationEquality = func(base any, column string, value any) error {
 		q, ok := base.(*Query)
@@ -36,5 +49,5 @@ func planOperationUpdate(ctx context.Context, base any, values map[string]any, r
 	if p.execution == nil || p.execution.owner != q || p.Operation != OperationUpdate {
 		return querybridge.Planned{}, ErrBlockedOperation
 	}
-	return querybridge.Planned{Diagnostic: p, Check: func() error { return q.checkExecution(p) }, Exec: func() (sql.Result, error) { return q.executeResult(p) }, Scan: func(scan func(*sql.Rows) error) error { return q.executeRows(p, scan) }}, nil
+	return querybridge.Planned{ScanCount: func(scan func(*sql.Rows) (int64, error)) error { return q.executeCountedRows(p, scan) }, Diagnostic: p, Check: func() error { return q.checkExecution(p) }, Exec: func() (sql.Result, error) { return q.executeResult(p) }, Scan: func(scan func(*sql.Rows) error) error { return q.executeRows(p, scan) }}, nil
 }

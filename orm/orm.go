@@ -263,7 +263,9 @@ func (db *DB) Model(v any) *query.Query {
 
 // Table creates a query for table name.
 func (db *DB) Table(name string) *query.Query {
-	return query.NewWithSettings(db.exec, name, db.drv.Dialect, db.settings)
+	q := query.NewWithSettings(db.exec, name, db.drv.Dialect, db.settings)
+	querybridge.SetOwner(q, db.writeOwner())
+	return q
 }
 
 // TablePath creates a query for a schema-qualified or otherwise
@@ -336,4 +338,15 @@ func (db *DB) QueryRowE(ctx context.Context, q string, args ...any) (*sql.Row, e
 		return nil, err
 	}
 	return p.Row()
+}
+
+func (db *DB) writeOwner() *sql.DB {
+	if db == nil || db.drv == nil || db.drv.DB == nil {
+		return nil
+	}
+	actual, ok := db.exec.(*sql.DB)
+	if !ok || actual != db.drv.DB {
+		return nil
+	}
+	return actual
 }

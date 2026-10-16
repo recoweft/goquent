@@ -95,7 +95,9 @@ func TestCommandRaceLookupVerification(t *testing.T) {
 			version, status := 1, 1
 			switch kind {
 			case "different-input":
-				stored = []byte("different")
+				other := commandTestInput()
+				other.Kind = "different"
+				stored, _, _ = snapshotCommand(other, "public")
 				h := sha256.Sum256(append([]byte("goquent.command.input.v1\x00"), stored...))
 				hash = h[:]
 			case "different-scope":

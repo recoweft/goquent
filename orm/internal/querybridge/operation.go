@@ -43,6 +43,8 @@ var PrepareOperation func(context.Context, any, any, Executor) (Planned, error)
 var SealedSelect func(any, any) (Planned, error)
 
 // Application updates hand off structural input to the same Query exactly once.
-var PrepareUpdate func(context.Context, any, any, Executor) (Planned, error)
+var PrepareUpdate func(context.Context, any, any, Executor, Request) (Planned, error)
 var PlanOperationUpdate func(context.Context, any, map[string]any, []string) (Planned, error)
 var OperationEquality func(any, string, any) error
+
+var ConfigureWrite func(any, Request) error

@@ -279,7 +279,7 @@ func TestScopedDestinationAndIgnoredOptions(t *testing.T) {
 		{Table("other; DROP TABLE users"), TablePath("wrong", "table"), SchemaName("wrong")},
 		{Columns("id"), Omit("score", "secret"), PK("secret"), WherePK()},
 		{SetRaw("secret", "forbidden"), SetExpr("tenant_id", "?", 99), SetColumn("score", "secret"), Increment("score", 999)},
-		{ConflictColumns("secret"), ConflictWhere("bad"), ConflictConstraint("bad"), ConflictTargetRaw("bad"), UpdateColumns("secret"), ConflictDoNothing(), ExpectAffected(999)},
+		{ConflictColumns("secret"), ConflictWhere("bad"), ConflictConstraint("bad"), ConflictTargetRaw("bad"), UpdateColumns("secret"), ConflictDoNothing()},
 	} {
 		t.Run(fmt.Sprint(index), func(t *testing.T) {
 			sqlDB, mock, err := sqlmock.New()

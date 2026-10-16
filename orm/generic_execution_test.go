@@ -103,12 +103,12 @@ func TestGenericReturningErrorsAndOptionOrder(t *testing.T) {
 	spy := &genericSpy{Executor: sqlDB}
 	db := NewDBWithExecutor(spy, driver.PostgresDialect{}, WithSettings(genericSettings(t, "postgres", true)))
 	base := db.Table("users").Where("id", 3)
-	first, last := errors.New("first"), errors.New("last")
-	opts := []WriteOpt{Returning("secret"), Returning(), NoRowsAs(first), NoRowsAs(last), ExpectAffected(999)}
+	last := errors.New("last")
+	opts := []WriteOpt{Returning("secret"), Returning(), NoRowsAs(last), ExpectAffected(999)}
 	mock.ExpectQuery(`RETURNING "id"`).WillReturnRows(sqlmock.NewRows([]string{"id"})).RowsWillBeClosed()
 	_, err = UpdateByReturningWithOptions[genericID](nil, db, base, map[string]any{"score": 3}, opts)
 	var affected RowsAffectedError
-	if !errors.Is(err, last) || errors.Is(err, first) || !errors.As(err, &affected) || affected.Actual != 0 || affected.Expected != 1 {
+	if !errors.Is(err, last) || !errors.As(err, &affected) || affected.Actual != 0 || affected.Expected != 999 {
 		t.Fatal(err)
 	}
 	// A driver error is not reclassified as NoRowsAs.

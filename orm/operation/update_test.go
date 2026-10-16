@@ -181,7 +181,7 @@ func TestUpdatePrivateSealAndReturning(t *testing.T) {
 		if returning {
 			s.Returning = []string{"v"}
 		}
-		p, e := querybridge.PrepareUpdate(t.Context(), s, o, std)
+		p, e := querybridge.PrepareUpdate(t.Context(), s, o, std, querybridge.Request{})
 		if e != nil {
 			t.Fatal("prepare failed")
 		}

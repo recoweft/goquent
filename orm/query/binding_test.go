@@ -643,3 +643,30 @@ func TestBindingPrivateApprovalDeadlineAndHighRiskRefusal(t *testing.T) {
 		t.Fatal("reason became high-risk authority", err)
 	}
 }
+
+func TestBindingIncludesWriteExpectations(t *testing.T) {
+	for _, change := range []string{"expected", "atomic"} {
+		t.Run(change, func(t *testing.T) {
+			q, c, spy, m := bindingFixture(t, true)
+			data := map[string]any{"score": int32(3)}
+			handle, _, err := q.ValidateUpdate(t.Context(), c, bindingExpiry(), data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if change == "expected" {
+				q.ExpectAffected(1)
+			} else {
+				q.AtomicWrite()
+			}
+			if _, err = q.ExecuteValidatedUpdate(t.Context(), c, handle, data); err == nil {
+				t.Fatal("changed result contract accepted")
+			}
+			if spy.calls != [6]int{} {
+				t.Fatal("mismatched contract executed")
+			}
+			if err = m.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

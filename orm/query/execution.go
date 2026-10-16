@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"sync/atomic"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 // diagnostics are never read back as SQL, arguments or permission to execute.
 // This is an in-process lifecycle, not a serialized plan or external permit.
 type plannedExecution struct {
+	results        writecheck.Options
+	writeOwner     *sql.DB
+	managedTx      bool
 	bindingExpires *time.Time
 	identity       *planidentity.Snapshot
 	identityErr    error
@@ -31,7 +35,7 @@ type plannedExecution struct {
 }
 
 func (q *Query) sealExecution(p *QueryPlan) {
-	e := &plannedExecution{owner: q, ctx: q.ctx, executor: q.exec, sql: p.SQL,
+	e := &plannedExecution{results: q.writeResult.Clone(), writeOwner: q.writeOwner, managedTx: q.managedWriteTx, owner: q, ctx: q.ctx, executor: q.exec, sql: p.SQL,
 		args: valuecopy.Slice(p.Params), gate: ensurePlanExecutable(p)}
 	// Keep structural inspection alongside the exact statement, detached from the
 	// diagnostic projection. Unsupported custom payloads retain compatibility
@@ -132,14 +136,22 @@ const (
 func (q *Query) execute(p *QueryPlan, mode executionMode, scan func(*sql.Rows) error, dest ...any) (sql.Result, error) {
 	switch mode {
 	case executionResult:
-		e, err := q.bindExecution(p)
-		if err != nil {
-			return nil, err
-		}
-		if e.ctx != nil {
-			return e.executor.ExecContext(e.ctx, e.sql, valuecopy.Slice(e.args)...)
-		}
-		return e.executor.Exec(e.sql, valuecopy.Slice(e.args)...)
+		return q.runWrite(p, func(e *plannedExecution) (sql.Result, error) {
+			var res sql.Result
+			var err error
+			if e.ctx != nil {
+				res, err = e.executor.ExecContext(e.ctx, e.sql, valuecopy.Slice(e.args)...)
+			} else {
+				res, err = e.executor.Exec(e.sql, valuecopy.Slice(e.args)...)
+			}
+			if err != nil {
+				return nil, err
+			}
+			if err = e.results.Result(res); err != nil {
+				return nil, err
+			}
+			return res, nil
+		})
 	case executionRow:
 		row, err := q.executeOpenRow(p)
 		if err != nil {
@@ -159,6 +171,9 @@ func (q *Query) execute(p *QueryPlan, mode executionMode, scan func(*sql.Rows) e
 }
 
 func (q *Query) executeOpenRows(p *QueryPlan) (*sql.Rows, error) {
+	if p != nil && p.execution != nil && p.execution.results.Active() {
+		return nil, writecheck.ErrOptions
+	}
 	e, err := q.bindExecution(p)
 	if err != nil {
 		return nil, err
@@ -169,6 +184,9 @@ func (q *Query) executeOpenRows(p *QueryPlan) (*sql.Rows, error) {
 	return e.executor.Query(e.sql, valuecopy.Slice(e.args)...)
 }
 func (q *Query) executeOpenRow(p *QueryPlan) (*sql.Row, error) {
+	if p != nil && p.execution != nil && p.execution.results.Active() {
+		return nil, writecheck.ErrOptions
+	}
 	e, err := q.bindExecution(p)
 	if err != nil {
 		return nil, err
