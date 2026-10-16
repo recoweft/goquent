@@ -129,11 +129,15 @@ reasons, and successful result storage do not establish business authorization.
 | UPSERT inserted | 1 | 1 | 1 |
 | UPSERT changed conflict update | 2 | 2 | 1 |
 | UPSERT unchanged conflict update | 0 | 1 | 1 |
-| ConflictDoNothing for existing row | No-op UPDATE count, usually 0 | No-op UPDATE count, 1 | 0 |
+| ConflictDoNothing for existing row | INSERT IGNORE duplicate, 0 | INSERT IGNORE duplicate, 0 | 0 |
 | RETURNING | Unsupported, rejected | Unsupported, rejected | Returned rows counted after full scan |
 
 These are bounded driver/server observations, not a branch classifier. MySQL
 ON DUPLICATE KEY and PostgreSQL ON CONFLICT do not expose identical semantics.
+The MySQL ConflictDoNothing implementation emits INSERT IGNORE, which can also
+downgrade non-duplicate errors to warnings under server rules; it is not evidence
+that every ignored row was a unique conflict. This differs from an unchanged
+ON DUPLICATE KEY UPDATE, whose count is affected by clientFoundRows.
 Batch counts aggregate their respective outcomes. Do not infer insert/update
 branch, physical rows, trigger effects, or portable ID order from a count.
 

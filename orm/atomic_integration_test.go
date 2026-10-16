@@ -170,6 +170,27 @@ func testAtomicIntegration(t *testing.T, db *DB, store *CommandStore, schema, di
 			}
 			n, _ = res.RowsAffected()
 			t.Log("clientFoundRows unchanged UPSERT", n)
+			// ConflictDoNothing emits INSERT IGNORE, not an unchanged UPDATE.
+			for i, want := range []int64{1, 2, 1, 0} {
+				score := int64(1)
+				if i > 0 {
+					score = 2
+				}
+				options := []WriteOpt{Table(table), ConflictColumns("tenant_id", "id"), UpdateColumns("score"), AtomicWrite(), ExpectAffected(want)}
+				if i == 3 {
+					options = append(options, ConflictDoNothing())
+				}
+				result, e := Upsert(ctx, found, map[string]any{"tenant_id": int64(7), "id": int64(903), "score": score}, options...)
+				if e != nil {
+					t.Fatal(i, e)
+				}
+				actual, e := result.RowsAffected()
+				if e != nil || actual != want {
+					t.Fatal(i, actual, e)
+				}
+				t.Log("clientFoundRows UPSERT case", i, actual)
+			}
+
 		})
 	}
 	if dialect == MySQL {
