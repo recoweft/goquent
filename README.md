@@ -71,6 +71,7 @@ import "github.com/recoweft/goquent/orm"
 - [type ColumnRef](<#ColumnRef>)
 - [type ColumnSchema](<#ColumnSchema>)
 - [type Command](<#Command>)
+- [type CommandHook](<#CommandHook>)
 - [type CommandResult](<#CommandResult>)
 - [type CommandStep](<#CommandStep>)
 - [type CommandStore](<#CommandStore>)
@@ -1102,6 +1103,20 @@ type Command struct {
     ID    string
     Kind  string
     Steps []CommandStep
+    Hooks []CommandHook
+}
+```
+
+<a name="CommandHook"></a>
+## type CommandHook
+
+CommandHook is one named literal INSERT after all business steps. It accepts the same table, column and scalar domain as CommandStep, with exactly one affected row required. It cannot contain a TransactionHook or callback.
+
+```go
+type CommandHook struct {
+    Name   string
+    Table  string
+    Values map[string]any
 }
 ```
 
@@ -1160,12 +1175,12 @@ NewCommandStore performs read\-only ledger schema validation. It never installs 
 func (s *CommandStore) Run(ctx context.Context, c Command) (CommandResult, error)
 ```
 
-Run validates every step before looking up a replay or reserving the ID. The reservation, all business statements and the fixed result commit together. No automatic retries are performed, including after an ambiguous commit.
+Run validates every step before looking up a replay or reserving the ID. The reservation, all business statements, ordered finite hooks and the fixed result commit together. Hooks require exactly one affected row each. No automatic retries are performed, including after an ambiguous commit.
 
 <a name="CommandSummary"></a>
 ## type CommandSummary
 
-CommandSummary contains actual driver row counts, not hydrated rows or IDs.
+CommandSummary contains actual driver row counts in business\-then\-hook order, not hydrated rows or IDs. Replays return the same persisted counts.
 
 ```go
 type CommandSummary struct {
