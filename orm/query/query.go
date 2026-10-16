@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/recoweft/goquent/orm/internal/querybridge"
+	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"strings"
 	"time"
 
@@ -40,6 +41,9 @@ type ownedExecutor struct{ executor }
 
 // Query wraps goquent QueryBuilder and the executor.
 type Query struct {
+	writeResult         writecheck.Options
+	writeOwner          *sql.DB
+	managedWriteTx      bool
 	operationValidation *querybridge.OperationValidation
 	settings            Settings
 	writeKeys           *WriteKeyContext
@@ -1496,6 +1500,9 @@ func (q *Query) PlanInsert(ctx context.Context, data any) (*QueryPlan, error) {
 // For PostgreSQL, it appends a RETURNING clause for the configured
 // primary key column because the driver does not support LastInsertId.
 func (q *Query) InsertGetId(data any) (int64, error) {
+	if q.writeResult.Active() {
+		return 0, writecheck.ErrOptions
+	}
 	m, err := dataToMap(data)
 	if err != nil {
 		return 0, err

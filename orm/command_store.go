@@ -154,7 +154,10 @@ func (s *CommandStore) Run(ctx context.Context, c Command) (CommandResult, error
 			seen[table] = true
 		}
 	}
-	fingerprint := sha256.Sum256(append([]byte("goquent.command.input.v1\x00"), input...))
+	fingerprint, err := commandFingerprint(input)
+	if err != nil {
+		return zero, err
+	}
 	existing, err := s.lookup(ctx, c.ID, input, fingerprint, len(requests))
 	if err == nil {
 		return existing, nil
@@ -269,8 +272,8 @@ func (s *CommandStore) lookup(ctx context.Context, id string, input []byte, fp [
 	if version != 1 || status != 1 || len(scope) > CommandMaxBytes || len(stored) > CommandMaxBytes || len(result) > CommandMaxBytes || len(hash) != 32 {
 		return zero, ErrCommandCorrupt
 	}
-	actual := sha256.Sum256(append([]byte("goquent.command.input.v1\x00"), stored...))
-	if !bytes.Equal(hash, actual[:]) {
+	actual, decodeErr := commandFingerprint(stored)
+	if decodeErr != nil || !bytes.Equal(hash, actual[:]) {
 		return zero, ErrCommandCorrupt
 	}
 	if !bytes.Equal(scope, s.scope) || !bytes.Equal(stored, input) || !bytes.Equal(hash, fp[:]) {

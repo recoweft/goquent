@@ -92,6 +92,21 @@ func (q *Query) identitySnapshot(e *plannedExecution) (*planidentity.Snapshot, e
 	if err != nil {
 		return fail()
 	}
+	// Preserve legacy identity bytes when no new result contract is supplied.
+	if e.results.Active() {
+		if e.results.Zero != nil || e.results.Validate() != nil {
+			return fail()
+		}
+		config, err = identityFields(struct {
+			Base     any
+			Atomic   bool
+			Expected *int64
+			Version  any
+		}{config, e.results.Atomic, e.results.Expected, e.results.Version})
+		if err != nil {
+			return fail()
+		}
+	}
 	return planidentity.Seal(planidentity.Material{Dialect: dialect, Target: s.database, Operation: string(p.Operation), SQL: e.sql, Shape: shape, Args: e.args, Tenant: s.execution.input.CurrentTenant, TenantPresent: s.execution.input.TenantPresent, Policy: policy, Schema: schema, Config: config})
 }
 

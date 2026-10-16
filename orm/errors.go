@@ -3,7 +3,7 @@ package orm
 import (
 	"database/sql"
 	"errors"
-	"fmt"
+	"github.com/recoweft/goquent/orm/internal/writecheck"
 )
 
 // ErrNotFound is returned by one-row read helpers when no row is available.
@@ -11,41 +11,15 @@ import (
 // It aliases sql.ErrNoRows for compatibility with existing callers.
 var ErrNotFound = sql.ErrNoRows
 
-// ErrConflict represents an explicit optimistic-concurrency or stale-write
-// conflict chosen by the caller.
-var ErrConflict = errors.New("goquent: conflict")
+// Write error identities are shared with the private execution layer.
+var ErrConflict = writecheck.ErrConflict
+var ErrRowsAffected = writecheck.ErrRowsAffected
 
-// ErrRowsAffected reports that a write did not affect the requested number of
-// rows.
-var ErrRowsAffected = errors.New("goquent: unexpected rows affected")
+type RowsAffectedError = writecheck.RowsAffectedError
 
-// RowsAffectedError describes a failed rows-affected expectation.
-type RowsAffectedError struct {
-	Expected int64
-	Actual   int64
-	Cause    error
-}
-
-func (e RowsAffectedError) Error() string {
-	if e.Cause != nil && !errors.Is(e.Cause, ErrRowsAffected) {
-		return fmt.Sprintf("%s: expected %d row(s), affected %d: %v", ErrRowsAffected, e.Expected, e.Actual, e.Cause)
-	}
-	return fmt.Sprintf("%s: expected %d row(s), affected %d", ErrRowsAffected, e.Expected, e.Actual)
-}
-
-func (e RowsAffectedError) Unwrap() error {
-	if e.Cause != nil {
-		return e.Cause
-	}
-	return ErrRowsAffected
-}
-
-func (e RowsAffectedError) Is(target error) bool {
-	if target == ErrRowsAffected {
-		return true
-	}
-	return e.Cause != nil && errors.Is(e.Cause, target)
-}
+var ErrWriteOptions = writecheck.ErrOptions
+var ErrWriteOwnership = writecheck.ErrOwnership
+var ErrWriteOutcomeUnknown = writecheck.ErrOutcomeUnknown
 
 // IsNotFound reports whether err represents a no-row result.
 func IsNotFound(err error) bool {

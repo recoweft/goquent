@@ -493,3 +493,13 @@ policy and public/source boundaries remain authoritative. PR2 shared optimistic
 writes/row expectations and PR3 audit/outbox integration are not implemented;
 whole-Issue acceptance remains open. See the linked contract for bounded input,
 schema trust, retention, error recovery, database count semantics and migration.
+
+## GQ-AI-10 PR2 atomic results
+
+[Atomic write results](../docs/atomic-write-results.md) supersedes the historical
+row-result gaps for supported paths. Explicit AtomicWrite and finite
+OptimisticVersion use owned transactions, complete RETURNING inspection and
+shared private expectations; external ownership refuses the new guarantee.
+Compatibility expectations alone still cannot roll back autocommit. Command input
+v2 is opt-in by condition presence; v1 scope/ledger/result and unextended input
+remain compatible. PR3 audit/outbox integration remains separate and unimplemented.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"strings"
 
 	"github.com/recoweft/goquent/orm/internal/querybridge"
@@ -12,6 +13,11 @@ import (
 )
 
 func init() {
+	querybridge.SetOwner = func(v any, owner *sql.DB) {
+		if q, ok := v.(*Query); ok {
+			q.writeOwner = owner
+		}
+	}
 	querybridge.SealedSelect = sealedSelect
 	querybridge.Prepare = prepareGeneric
 	querybridge.PrepareRaw = prepareRaw
@@ -48,6 +54,20 @@ func prepareGeneric(r querybridge.Request) (querybridge.Planned, error) {
 		if settings.Err() != nil {
 			q.err = settings.Err()
 		}
+	}
+	q.writeOwner = r.Owner
+	q.managedWriteTx = r.ManagedTx
+	if r.Results.Active() {
+		if q.writeResult.Active() {
+			return out, writecheck.ErrOptions
+		}
+		q.writeResult = r.Results.Clone()
+	}
+	if err := q.writeResult.Validate(); err != nil {
+		return out, err
+	}
+	if q.writeResult.Version != nil && r.Operation != "update" {
+		return out, writecheck.ErrOptions
 	}
 	if q.err != nil {
 		return out, q.err
@@ -89,6 +109,7 @@ func prepareGeneric(r querybridge.Request) (querybridge.Planned, error) {
 	out.Check = func() error { return q.checkExecution(p) }
 	out.Diagnostic = p
 	out.Exec = func() (sql.Result, error) { return q.executeResult(p) }
+	out.ScanCount = func(scan func(*sql.Rows) (int64, error)) error { return q.executeCountedRows(p, scan) }
 	out.Scan = func(scan func(*sql.Rows) error) error { return q.executeRows(p, scan) }
 	return out, nil
 }
@@ -215,13 +236,17 @@ func (q *Query) planUpdateValues(ctx context.Context, m map[string]any, o writei
 	if err != nil {
 		return nil, err
 	}
-	ub := newUpdateBuilder(q.dialect)
-	ub.Table(q.tableName()).Update(rows[0])
-	ub.WriteOptions(o)
 	source, err := q.policyBuilder(q.builder)
 	if err != nil {
 		return nil, err
 	}
+	source, row, err := q.optimisticInput(source, rows[0], &o)
+	if err != nil {
+		return nil, err
+	}
+	ub := newUpdateBuilder(q.dialect)
+	ub.Table(q.tableName()).Update(row)
+	ub.WriteOptions(o)
 	copyBuilderState(source, ub)
 	sql, args, snapshot, err := ub.BuildSnapshot()
 	if err != nil {

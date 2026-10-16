@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"github.com/recoweft/goquent/orm/internal/writeinput"
 )
 
@@ -19,6 +20,9 @@ type Executor interface {
 }
 
 type Request struct {
+	Owner            *sql.DB
+	Results          writecheck.Options
+	ManagedTx        bool
 	Base, Settings   any // Only the Query package can resolve these concrete identities.
 	Executor         Executor
 	Dialect          driver.Dialect
@@ -33,6 +37,7 @@ type Request struct {
 }
 
 type Planned struct {
+	ScanCount  func(func(*sql.Rows) (int64, error)) error
 	Diagnostic any
 	InsertRows []map[string]any // Detached final INSERT candidates; never public verdicts.
 	Check      func() error
@@ -58,3 +63,6 @@ type RawRequest struct {
 
 var PrepareRaw func(RawRequest) (Planned, error)
 var Strict func(any) bool
+
+// SetOwner transfers a facade ownership capability; it is not public API.
+var SetOwner func(any, *sql.DB)

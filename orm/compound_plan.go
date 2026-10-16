@@ -31,6 +31,13 @@ type compoundStep struct {
 type compoundPlan struct{ steps []compoundStep }
 
 func (p *compoundPlan) add(ctx context.Context, db *DB, phase string, start, end int, r querybridge.Request, o *writeOptions) error {
+	r.Results = r.Results.Clone()
+	if o != nil {
+		r.Results = o.results.Clone()
+		if phase != "command" && (r.Results.Atomic || r.Results.Version != nil) {
+			return ErrWriteOptions
+		}
+	}
 	r.Options = r.Options.Clone()
 	r.Returning = append([]string(nil), r.Returning...)
 	r.WhereColumns = append([]string(nil), r.WhereColumns...)
@@ -62,7 +69,11 @@ func (p *compoundPlan) rebind(ctx context.Context, db *DB) error {
 		if s.plan.Check == nil {
 			continue
 		} // Explicit unresolved compatibility scope slot.
-		plan, err := prepareWrite(ctx, db, s.input)
+		input := s.input
+		if s.phase == "command" {
+			input.ManagedTx = true
+		}
+		plan, err := prepareWrite(ctx, db, input)
 		if err != nil {
 			return err
 		}

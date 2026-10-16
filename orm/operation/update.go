@@ -130,7 +130,7 @@ func CompileUpdateWithDiagnostics(ctx context.Context, s UpdateSpec, opts Option
 	return p, r.view(p, err != nil), err
 }
 
-func prepareUpdate(ctx context.Context, s UpdateSpec, opts Options, d *diagnosticRecorder, executor querybridge.Executor, out *querybridge.Planned) (plan *query.QueryPlan, failure error) {
+func prepareUpdate(ctx context.Context, s UpdateSpec, opts Options, d *diagnosticRecorder, executor querybridge.Executor, out *querybridge.Planned, execution ...querybridge.Request) (plan *query.QueryPlan, failure error) {
 	defer func() {
 		if failure != nil {
 			d.refusal()
@@ -271,6 +271,11 @@ func prepareUpdate(ctx context.Context, s UpdateSpec, opts Options, d *diagnosti
 			return nil, err
 		}
 	}
+	if len(execution) > 0 {
+		if err := querybridge.ConfigureWrite(q, execution[0]); err != nil {
+			return nil, err
+		}
+	}
 	prepared, err := querybridge.PlanOperationUpdate(ctx, q, values, s.Returning)
 	if err != nil {
 		return nil, err
@@ -297,14 +302,14 @@ func prepareUpdate(ctx context.Context, s UpdateSpec, opts Options, d *diagnosti
 }
 
 func init() {
-	querybridge.PrepareUpdate = func(ctx context.Context, source, options any, executor querybridge.Executor) (querybridge.Planned, error) {
+	querybridge.PrepareUpdate = func(ctx context.Context, source, options any, executor querybridge.Executor, execution querybridge.Request) (querybridge.Planned, error) {
 		s, ok := source.(UpdateSpec)
 		opts, valid := options.(Options)
 		if !ok || !valid {
 			return querybridge.Planned{}, ErrInvalidAssignment
 		}
 		var p querybridge.Planned
-		_, err := prepareUpdate(ctx, s, opts, newRecorder(OperationSpec{sourceBytes: s.sourceBytes}), executor, &p)
+		_, err := prepareUpdate(ctx, s, opts, newRecorder(OperationSpec{sourceBytes: s.sourceBytes}), executor, &p, execution)
 		return p, err
 	}
 }

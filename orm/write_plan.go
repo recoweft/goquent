@@ -11,7 +11,7 @@ import (
 )
 
 func newWriteInput(op, table string, cols []string, args []any, count int, pk []string, o *writeOptions) (querybridge.Request, error) {
-	r := querybridge.Request{Operation: op, Returning: append([]string(nil), o.returning...)}
+	r := querybridge.Request{Results: o.results.Clone(), Operation: op, Returning: append([]string(nil), o.returning...)}
 	parts := append([]string(nil), o.tablePath...)
 	if len(parts) == 0 {
 		table = strings.TrimSpace(table)
@@ -63,6 +63,7 @@ func prepareWrite(ctx context.Context, db *DB, r querybridge.Request) (querybrid
 	if db == nil {
 		return querybridge.Planned{}, fmt.Errorf("db is nil")
 	}
+	r.Owner = db.writeOwner()
 	r.Settings = db.settings
 	r.Executor = db.exec
 	r.Dialect = db.drv.Dialect
@@ -71,6 +72,7 @@ func prepareWrite(ctx context.Context, db *DB, r querybridge.Request) (querybrid
 }
 
 func execWriteInput(ctx context.Context, db *DB, r querybridge.Request, o *writeOptions) (sql.Result, error) {
+	r.Results = o.results.Clone()
 	p, err := prepareWrite(ctx, db, r)
 	if err != nil {
 		return nil, err
@@ -85,10 +87,10 @@ func execPreparedWrite(p querybridge.Planned, returning bool, o *writeOptions) (
 		res, err = p.Exec()
 	} else {
 		var count int64
-		err = p.Scan(func(rows *sql.Rows) error {
+		err = p.ScanCount(func(rows *sql.Rows) (int64, error) {
 			cols, err := rows.Columns()
 			if err != nil {
-				return err
+				return count, err
 			}
 			dest := make([]any, len(cols))
 			values := make([]any, len(cols))
@@ -98,46 +100,70 @@ func execPreparedWrite(p querybridge.Planned, returning bool, o *writeOptions) (
 			for rows.Next() {
 				if len(dest) > 0 {
 					if err := rows.Scan(dest...); err != nil {
-						return err
+						return count, err
 					}
 				}
 				count++
 			}
-			return rows.Err()
+			return count, rows.Err()
 		})
 		res = returningResult{rowsAffected: count}
 	}
 	if err != nil {
 		return nil, err
 	}
-	if err = checkRowsAffected(res, o); err != nil {
-		return nil, err
-	}
+
 	return res, nil
 }
-func queryWriteOne[T any](ctx context.Context, db *DB, r querybridge.Request) (out T, err error) {
+func queryWriteOne[T any](ctx context.Context, db *DB, r querybridge.Request) (T, error) {
+	return queryWriteOneWithOptions[T](ctx, db, r, &writeOptions{})
+}
+func queryWriteAll[T any](ctx context.Context, db *DB, r querybridge.Request, options ...*writeOptions) (out []T, err error) {
+	if len(options) > 0 {
+		r.Results = options[0].results.Clone()
+	}
+	p, err := prepareWrite(ctx, db, r)
+	if err != nil {
+		return nil, err
+	}
+	err = p.ScanCount(func(rows *sql.Rows) (int64, error) {
+		out, err = scanRowsAll[T](db, rows)
+		return int64(len(out)), err
+	})
+	return out, err
+}
+func queryWriteOneWithOptions[T any](ctx context.Context, db *DB, r querybridge.Request, o *writeOptions) (out T, err error) {
+	r.Results = o.results.Clone()
 	p, err := prepareWrite(ctx, db, r)
 	if err != nil {
 		return out, err
 	}
-	err = p.Scan(func(rows *sql.Rows) error { out, err = scanRowsOne[T](db, rows); return err })
-	return out, err
-}
-func queryWriteAll[T any](ctx context.Context, db *DB, r querybridge.Request) (out []T, err error) {
-	p, err := prepareWrite(ctx, db, r)
-	if err != nil {
-		return nil, err
+	var missing bool
+	err = p.ScanCount(func(rows *sql.Rows) (int64, error) {
+		var count int64
+		for {
+			row, e := scanRowsOne[T](db, rows)
+			if e == sql.ErrNoRows {
+				break
+			}
+			if e != nil {
+				return count, e
+			}
+			if count == 0 {
+				out = row
+			}
+			count++
+		}
+		missing = count == 0
+		if missing {
+			return count, sql.ErrNoRows
+		}
+		return count, nil
+	})
+	if err == nil && missing {
+		err = sql.ErrNoRows
 	}
-	err = p.Scan(func(rows *sql.Rows) error { out, err = scanRowsAll[T](db, rows); return err })
 	return out, err
-}
-func queryWriteOneWithOptions[T any](ctx context.Context, db *DB, r querybridge.Request, o *writeOptions) (T, error) {
-	row, err := queryWriteOne[T](ctx, db, r)
-	if err == nil || !IsNotFound(err) || o.zeroRowsErr == nil {
-		return row, err
-	}
-	var zero T
-	return zero, RowsAffectedError{Expected: 1, Actual: 0, Cause: o.zeroRowsErr}
 }
 func writeDiagnostic(ctx context.Context, db *DB, r querybridge.Request, err error) (*QueryPlan, error) {
 	if err != nil {

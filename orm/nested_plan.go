@@ -107,7 +107,16 @@ func (p *nestedPlan) addChildren(ctx context.Context, db *DB, r querybridge.Requ
 			one := r
 			one.Rows = []map[string]any{row}
 			one.Batch = false
-			if err := p.plan.add(ctx, db, "child", i, i+1, one, p.childOptions); err != nil {
+			one.Results.Expected = nil
+			one.Results.Zero = nil
+			splitOptions := *p.childOptions
+			splitOptions.results = p.childOptions.results.Clone()
+			if err := splitOptions.results.Validate(); err != nil {
+				return err
+			}
+			splitOptions.results.Expected = nil
+			splitOptions.results.Zero = nil
+			if err := p.plan.add(ctx, db, "child", i, i+1, one, &splitOptions); err != nil {
 				return err
 			}
 		}
