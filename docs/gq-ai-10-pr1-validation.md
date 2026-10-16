@@ -60,7 +60,7 @@ packages.Load. Raw JSON/diagnostic logs were kept outside the repository.
 | --- | --- |
 | `go test ./... -count=1 -json` | Exit 0; 2906 test/subtest pass events, 0 fail, 0 skip; 22 passing packages, 27 no-test packages |
 | `go test -race ./... -count=1 -json` | Exit 0; 2906 test/subtest pass events, 0 fail, 0 skip; same package counts |
-| `go test -race ./orm -run '^TestCommand' -count=1 -json` | Final focused run after adding canonical-v1 boundary coverage: exit 0, 44 pass, 0 fail/skip, including both real DBs |
+| `go test -race ./orm -run '^TestCommand' -count=1 -json` | Final focused run after adding canonical-v1 boundary and forced-reservation coverage: exit 0, 48 pass, 0 fail/skip, including both real DBs |
 | `go vet ./...` | Exit 0 |
 | `go run ./cmd/goquent manifest check-repositories --config tests/typedfixture/repositories.json` | Exit 0; actual supplied-source regeneration comparison, not live DB freshness |
 | `sh scripts/test-public-output-check.sh` | Exit 0, CI_WRAPPER_CHECK_PASSED; success/failure canaries withheld |
@@ -71,8 +71,9 @@ packages.Load. Raw JSON/diagnostic logs were kept outside the repository.
 | `git diff --cached --check` | Exit 0 |
 
 Counts are test events including subtests, not invented independent assertions.
-The last focused run covers the one additional canonical-format/bounds test added
-after the full suites; final-head CI also executes all tests. CI uses its own
+The last focused run covers the additional canonical-format/bounds test and four
+real-DB forced-reservation subtests added after the full suites; final-head CI
+also executes all tests. CI uses its own
 fixed-output wrapper and does not expose these local per-test counts.
 
 ## Failure history
@@ -119,7 +120,7 @@ verification remains skipped. Existing manifests were not rewritten to hide this
 | PR1 AC | Evidence and boundary |
 | --- | --- |
 | AC1 | Explicit bounded structural API; full typed snapshot/canonical v1, type/lexeme/null/missing/map/step-order and mutation tests; opaque methods never evaluated; trusted private tenant and fixed source summary |
-| AC2 | Both DBs: same-input replay, different input/kind conflicts, tenant and namespace isolation; current-policy replay refusal. Unit fault tests force reservation conflict then same/different/corrupt/unknown/missing rereads |
+| AC2 | Both DBs: same-input replay, different input/kind conflicts, tenant and namespace isolation; current-policy replay refusal. Both DBs also force both calls through the actual reservation INSERT path (same and different inputs), so a real unique violation and fresh lookup cannot be avoided by a lucky initial lookup. Unit fault tests cover corrupt/unknown/missing rereads |
 | AC3 | Both DBs: simultaneous first calls and competing different inputs; business unique failure rolls back earlier step; constrained result-save failure leaves no business row and retry succeeds; pending-reservation cancellation and rollback/retry; fresh connection/store replays persisted results |
 | AC4 | Owned handle check; actual external transaction and custom-executor wrappers refused; existing Strict opaque recipe refusal; normal Strict planner checks reused; schema drift/secondary uniqueness/missing ledger rejected; explicit DDL/English migration and source/public boundaries |
 | AC5 | Local results above; actual final-head CI is separate publication evidence. Review high gate and existing manifest/comparison limits remain unsuccessful/unverified rather than silently green |
