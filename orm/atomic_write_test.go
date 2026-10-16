@@ -260,3 +260,39 @@ func TestAtomicOpaqueValueRefused(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestAtomicMySQLTriggerRefusal(t *testing.T) {
+	raw, m, e := sqlmock.New()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer raw.Close()
+	db := NewDB(raw, ormdriver.MySQLDialect{})
+	m.ExpectBegin()
+	m.ExpectQuery("SELECT ENGINE").WithArgs("", "items").WillReturnRows(sqlmock.NewRows([]string{"ENGINE"}).AddRow("InnoDB"))
+	m.ExpectQuery(`SELECT COUNT\(\*\) FROM information_schema.triggers`).WithArgs("", "items").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	m.ExpectRollback()
+	_, e = Insert(t.Context(), db, map[string]any{"id": 1}, Table("items"), AtomicWrite())
+	if !errors.Is(e, ErrWriteOptions) {
+		t.Fatal(e)
+	}
+	if e = m.ExpectationsWereMet(); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestAtomicUnverifiedExpressionsRefused(t *testing.T) {
+	raw, m, e := sqlmock.New()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer raw.Close()
+	db := NewDB(raw, ormdriver.PostgresDialect{})
+	_, e = Update(t.Context(), db, map[string]any{"id": 1, "score": 2}, Table("items"), PK("id"), WherePK(), SetExpr("score", "arbitrary_function()"), AtomicWrite())
+	if e == nil {
+		t.Fatal("unverified expression accepted")
+	}
+	if e = m.ExpectationsWereMet(); e != nil {
+		t.Fatal(e)
+	}
+}

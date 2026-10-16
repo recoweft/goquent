@@ -172,6 +172,30 @@ func testAtomicIntegration(t *testing.T, db *DB, store *CommandStore, schema, di
 			t.Log("clientFoundRows unchanged UPSERT", n)
 		})
 	}
+	if dialect == MySQL {
+		t.Run("nontransactional-and-trigger-refusal", func(t *testing.T) {
+			exec("CREATE TABLE gq10_nontransactional (id BIGINT PRIMARY KEY) ENGINE=MyISAM")
+			defer raw.Exec("DROP TABLE gq10_nontransactional")
+			_, e := Insert(ctx, db, map[string]any{"id": int64(1)}, Table("gq10_nontransactional"), AtomicWrite())
+			if !errors.Is(e, ErrWriteOptions) {
+				t.Fatal(e)
+			}
+			var count int
+			if e = raw.QueryRow("SELECT COUNT(*) FROM gq10_nontransactional").Scan(&count); e != nil || count != 0 {
+				t.Fatal("nontransactional write escaped refusal", e)
+			}
+			exec("CREATE TRIGGER gq10_atomic_trigger BEFORE UPDATE ON " + table + " FOR EACH ROW SET NEW.score=99")
+			defer raw.Exec("DROP TRIGGER gq10_atomic_trigger")
+			_, e = trusted.Table(table).Where("id", int64(901)).AtomicWrite().Update(map[string]any{"score": int64(8)})
+			if !errors.Is(e, ErrWriteOptions) {
+				t.Fatal(e)
+			}
+			score, _ := read(901)
+			if score != 1 {
+				t.Fatal("trigger executed")
+			}
+		})
+	}
 	t.Run("returning", func(t *testing.T) {
 		if dialect == MySQL {
 			_, e := UpdateByReturningWithOptions[genericID](ctx, trusted, trusted.Table(table).Where("id", int64(900)), map[string]any{"score": int64(11)}, []WriteOpt{Returning("id"), AtomicWrite(), ExpectAffected(1)})

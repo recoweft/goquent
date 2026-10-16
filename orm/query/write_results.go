@@ -61,6 +61,10 @@ func (q *Query) runWrite(p *QueryPlan, run func(*plannedExecution) (sql.Result, 
 	}
 	atomic := o.Atomic || o.Version != nil
 	if atomic {
+		inspection := e.inspection
+		if len(inspection.Unverified) > 0 || len(inspection.Joins) > 0 || !identityTree(inspection.WhereTree, 0) || !identityTree(inspection.HavingTree, 0) || inspection.Metadata["insert_mode"] == "insert_using" {
+			return nil, writecheck.ErrOptions
+		}
 		copier := valuecopy.New()
 		for _, arg := range e.args {
 			if _, ok := arg.(json.Number); ok {
@@ -195,6 +199,15 @@ func (q *Query) checkAtomicStorage(ctx context.Context, tx *sql.Tx, p *QueryPlan
 			if engine != "InnoDB" {
 				return writecheck.ErrOptions
 			}
+			var triggers int
+			err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.triggers WHERE event_object_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND event_object_table = ?", schema, name).Scan(&triggers)
+			if err != nil {
+				return err
+			}
+			if triggers != 0 {
+				return writecheck.ErrOptions
+			}
+
 		}
 		return nil
 	default:

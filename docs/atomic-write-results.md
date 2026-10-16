@@ -28,8 +28,10 @@ re-inspects the retained private SQL/typed values with the transaction executor,
 and finishes execution and all result checks before commit. Public diagnostics
 cannot supply an executable plan. Strict tenant/schema/policy/risk, owner/seal,
 binding expiry, and typed presence checks remain in force. MySQL atomic writes
-check the final target tables in `information_schema.tables` and require InnoDB;
-unknown, non-base, aliased or unsupported target identities refuse. PostgreSQL
+check the final target tables in `information_schema.tables`, require InnoDB,
+and refuse catalog-visible triggers;
+unknown, non-base, aliased or unsupported target identities refuse. The application
+must supply catalog privileges sufficient to see all target triggers. PostgreSQL
 uses its transaction semantics. Only built-in MySQL/PostgreSQL dialects qualify.
 Keep schema and engine configuration stable during execution; concurrent
 administrative DDL, malicious drivers, relaxed durability, and external effects
@@ -64,7 +66,7 @@ source errors or invoke their methods to construct public diagnostics.
 | CommandStore ordered literal INSERT/UPDATE steps | Each step, same owned command transaction | Always; no per-step nested transaction | UPDATE steps only |
 | InsertGetId / InsertOnceReturning | Result modifiers explicitly refused | Unsupported | Unsupported |
 | Nested recipes / hooks / opaque callback recipes | Existing aggregate compatibility checks retained | New atomic/version options refused at preflight | Unsupported |
-| SELECT / Raw / externally streamed rows | Write result modifiers refused | Unsupported | Unsupported |
+| SELECT / Raw / unverified expressions / joins / INSERT SELECT / externally streamed rows | Write result modifiers refused | Unsupported | Unsupported |
 
 Typed patch options other than result/atomic options refuse instead of being
 ignored. Existing scoped RETURNING table/column/key/assignment/conflict option
