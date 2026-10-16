@@ -42,8 +42,8 @@ func UpdateOperationBy(ctx context.Context, db *DB, s operation.UpdateSpec, opts
 	return execPreparedWrite(p, len(s.Returning) > 0, applyWriteOpts(nil))
 }
 
-// UpdateOperationReturningBy uses the existing one-row scanner and bool policy.
-// A first row is not an exact affected-row or automatic rollback guarantee.
+// UpdateOperationReturningBy retains the first row using the existing bool policy,
+// scans the complete stream, and applies optional result and atomic checks.
 func UpdateOperationReturningBy[T any](ctx context.Context, db *DB, s operation.UpdateSpec, opts operation.Options, writeOpts ...WriteOpt) (out T, err error) {
 	if len(s.Returning) == 0 {
 		return out, operation.ErrSelectRequired
