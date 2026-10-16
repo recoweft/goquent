@@ -62,6 +62,9 @@ type MigrationStatement struct {
 
 // MigrationStep describes one schema change extracted from migration SQL.
 type MigrationStep struct {
+	// Table definitions are detached sensitive source records, never public views.
+	CurrentTable   *TableSchema       `json:"current_table,omitempty"`
+	DesiredTable   *TableSchema       `json:"desired_table,omitempty"`
 	CurrentIndex   *IndexSchema       `json:"current_index,omitempty"`
 	DesiredIndex   *IndexSchema       `json:"desired_index,omitempty"`
 	CurrentDefault *DefaultDefinition `json:"current_default,omitempty"`

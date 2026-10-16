@@ -196,3 +196,27 @@ func TestSchemaComparisonUnknownIsNonExecuting(t *testing.T) {
 		t.Fatal("identifier leak")
 	}
 }
+
+func TestWholeTableUnknownCLI(t *testing.T) {
+	t.Setenv("TEST_DB_DSN", "invalid://must-not-connect")
+	t.Setenv("TEST_MYSQL_DSN", "invalid://must-not-connect")
+	t.Setenv("TEST_POSTGRES_DSN", "invalid://must-not-connect")
+	dir := t.TempDir()
+	empty, unknown := filepath.Join(dir, "empty.json"), filepath.Join(dir, "unknown.json")
+	writeJSON(t, empty, migration.Schema{})
+	writeJSON(t, unknown, migration.Schema{Tables: []migration.TableSchema{{Name: "private_table", Columns: []migration.ColumnSchema{{Name: "private_column", DefaultExpression: "private_default"}}, Indexes: []migration.IndexSchema{{Name: "private_index", DefinitionUnknown: true, RawDefinition: "private_sql"}}}}})
+	for _, drop := range []bool{false, true} {
+		desired, current := unknown, empty
+		if drop {
+			desired, current = current, desired
+		}
+		var out, errout bytes.Buffer
+		code := run([]string{"migrate", "drift", "--desired-schema", desired, "--database-schema", current, "--format", "json"}, &out, &errout)
+		if code != 2 || !bytes.Contains(out.Bytes(), []byte(`"unknown":true`)) || !bytes.Contains(out.Bytes(), []byte(`"known":false`)) || !bytes.Contains(out.Bytes(), []byte(`"drifted":true`)) {
+			t.Fatalf("unknown table reported complete: %d %s", code, out.String())
+		}
+		if bytes.Contains(out.Bytes(), []byte("private_")) || bytes.Contains(errout.Bytes(), []byte("private_")) {
+			t.Fatal("public leak")
+		}
+	}
+}

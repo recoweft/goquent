@@ -73,14 +73,16 @@ func DiffSchemas(current, desired Schema) *MigrationPlan {
 	}
 	for _, table := range desired.Tables {
 		if _, ok := currentTables[tableKey(table.Name)]; !ok {
-			steps = append(steps, MigrationStep{Type: AddTable, Table: table.Name})
+			steps = append(steps, MigrationStep{Type: AddTable, Table: table.Name, DesiredTable: copyTable(table)})
+			steps = append(steps, tableComparisonDiagnostics(table)...)
 			continue
 		}
 		steps = append(steps, diffTable(currentTables[tableKey(table.Name)], table)...)
 	}
 	for _, table := range current.Tables {
 		if _, ok := desiredTables[tableKey(table.Name)]; !ok {
-			steps = append(steps, MigrationStep{Type: DropTable, Table: table.Name})
+			steps = append(steps, MigrationStep{Type: DropTable, Table: table.Name, CurrentTable: copyTable(table)})
+			steps = append(steps, tableComparisonDiagnostics(table)...)
 		}
 	}
 

@@ -77,6 +77,17 @@ func TestSchemaDefinitionLiveExport(t *testing.T) {
 			if len(current.Tables) != 1 || len(current.Tables[0].Indexes) != 1 {
 				t.Fatal("fixture export incomplete")
 			}
+			// Catalog unknowns must survive whole-table addition and removal too.
+			for _, drop := range []bool{false, true} {
+				a, b := migration.Schema{}, current
+				if drop {
+					a, b = b, a
+				}
+				p := migration.DiffSchemas(a, b)
+				if !p.ComparisonIncomplete || !migration.CompareSchemaDrift(b, a).ComparisonIncomplete || migration.EnsureExecutable(p) == nil {
+					t.Fatal("whole-table export unknown lost")
+				}
+			}
 			cols := current.Tables[0].Columns
 			if cols[0].DefaultState != migration.DefaultExpression || cols[0].DefaultExpression != "1" {
 				t.Fatal("numeric default unavailable")

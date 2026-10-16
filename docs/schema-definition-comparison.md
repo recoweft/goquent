@@ -48,6 +48,16 @@ it alone is not a schema change. `alter_index` and `alter_column_default` record
 current and desired source definitions. Index additions/deletions also retain
 available definitions. Index column slices are detached from caller input.
 
+Whole-table additions and removals retain detached `DesiredTable` / `CurrentTable`
+source records, including all column declarations and index definitions. Their
+columns and indexes use the same completeness checks as matched tables. Unknown
+defaults, ambiguous columns, and unsupported or invalid indexes add comparison
+markers without discarding the known table change or counting nested index/column
+changes again. Fully represented known tables remain complete within this subset.
+These additive sensitive source fields are omitted from public views; consumers
+of source JSON must preserve them to retain the declarations. A complete table
+record is structural information, not DDL execution evidence.
+
 These names describe structural records, not database ALTER syntax. Replacement
 DDL, dependency order, unique-data checks and locking remain unverified. No
 automatic drop/add sequence is prescribed. Both new kinds have high structural

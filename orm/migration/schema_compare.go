@@ -166,3 +166,32 @@ func ambiguousColumns(a, b TableSchema) map[string]bool {
 	}
 	return bad
 }
+
+// Whole-table changes retain declarations without counting nested additions or
+// removals again. Inspect the same supported subset as matched-table comparison.
+func tableComparisonDiagnostics(t TableSchema) []MigrationStep {
+	var steps []MigrationStep
+	if len(ambiguousColumns(t, TableSchema{})) > 0 {
+		steps = append(steps, comparisonUnknown(t.Name, "", ""))
+	}
+	for _, c := range t.Columns {
+		if columnDefault(c).State == DefaultUnknown {
+			steps = append(steps, comparisonUnknown(t.Name, c.Name, ""))
+		}
+	}
+	for _, i := range t.Indexes {
+		if !validIndex(i, t) {
+			steps = append(steps, comparisonUnknown(t.Name, "", i.Name))
+		}
+	}
+	return steps
+}
+
+func copyTable(t TableSchema) *TableSchema {
+	t.Columns = slices.Clone(t.Columns)
+	t.Indexes = slices.Clone(t.Indexes)
+	for j := range t.Indexes {
+		t.Indexes[j] = *copyIndex(t.Indexes[j])
+	}
+	return &t
+}
