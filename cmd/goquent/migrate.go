@@ -233,6 +233,9 @@ func runMigrateDrift(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
 	}
+	if report.ComparisonIncomplete {
+		return 2
+	}
 	if report.Drifted {
 		return 1
 	}

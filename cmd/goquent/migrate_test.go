@@ -117,11 +117,11 @@ func TestMigrateDriftCommand(t *testing.T) {
 	currentPath := filepath.Join(dir, "current.json")
 	writeJSON(t, desiredPath, migration.Schema{Tables: []migration.TableSchema{{
 		Name:    "users",
-		Columns: []migration.ColumnSchema{{Name: "id", Type: "uuid"}},
+		Columns: []migration.ColumnSchema{{Name: "id", Type: "uuid", DefaultState: migration.DefaultNone}},
 	}}})
 	writeJSON(t, currentPath, migration.Schema{Tables: []migration.TableSchema{{
 		Name:    "users",
-		Columns: []migration.ColumnSchema{{Name: "id", Type: "bigint"}},
+		Columns: []migration.ColumnSchema{{Name: "id", Type: "bigint", DefaultState: migration.DefaultNone}},
 	}}})
 
 	var stdout, stderr bytes.Buffer
@@ -177,5 +177,22 @@ func TestMigrationStatusDialect(t *testing.T) {
 	}
 	if _, err := migrationStatusDialect("sqlite"); err == nil {
 		t.Fatalf("expected unsupported driver error")
+	}
+}
+
+func TestSchemaComparisonUnknownIsNonExecuting(t *testing.T) {
+	t.Setenv("TEST_DB_DSN", "invalid://must-not-connect")
+	t.Setenv("TEST_MYSQL_DSN", "invalid://must-not-connect")
+	t.Setenv("TEST_POSTGRES_DSN", "invalid://must-not-connect")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "schema.json")
+	writeJSON(t, path, migration.Schema{Tables: []migration.TableSchema{{Name: "secret_identifier", Columns: []migration.ColumnSchema{{Name: "private_column", Type: "text"}}}}})
+	var out, errout bytes.Buffer
+	code := run([]string{"migrate", "drift", "--desired-schema", path, "--database-schema", path, "--format", "json"}, &out, &errout)
+	if code != 2 || !bytes.Contains(out.Bytes(), []byte(`"unknown":true`)) || !bytes.Contains(out.Bytes(), []byte(`"drifted":false`)) {
+		t.Fatalf("unknown comparison reported complete: %d", code)
+	}
+	if bytes.Contains(out.Bytes(), []byte("secret_identifier")) || bytes.Contains(out.Bytes(), []byte("private_column")) {
+		t.Fatal("identifier leak")
 	}
 }

@@ -89,7 +89,7 @@ ORDER BY table_name, ordinal_position`, schemaName)
 	if err != nil {
 		return Schema{}, err
 	}
-	tables, err := scanSchemaColumns(rows, cfg.tableSet())
+	tables, err := scanSchemaColumns(rows, cfg.tableSet(), "postgres")
 	if err != nil {
 		return Schema{}, err
 	}
@@ -120,13 +120,13 @@ ORDER BY table_name, ordinal_position`, cfg.Schema, cfg.Schema)
 	if err != nil {
 		return Schema{}, err
 	}
-	tables, err := scanSchemaColumns(rows, cfg.tableSet())
+	tables, err := scanSchemaColumns(rows, cfg.tableSet(), "mysql")
 	if err != nil {
 		return Schema{}, err
 	}
 
 	indexRows, err := exec.QueryContext(ctx, `
-SELECT table_name, index_name, non_unique, seq_in_index, column_name
+SELECT table_name, index_name, non_unique, seq_in_index, column_name, sub_part, collation, index_type, is_visible
 FROM information_schema.statistics
 WHERE table_schema = IF(? = '', DATABASE(), ?)
 ORDER BY table_name, index_name, seq_in_index`, cfg.Schema, cfg.Schema)
@@ -158,7 +158,7 @@ func tableIncluded(table string, set map[string]struct{}) bool {
 	return ok
 }
 
-func scanSchemaColumns(rows *sql.Rows, allowed map[string]struct{}) (map[string]*TableSchema, error) {
+func scanSchemaColumns(rows *sql.Rows, allowed map[string]struct{}, dialect ...string) (map[string]*TableSchema, error) {
 	defer rows.Close()
 	tables := map[string]*TableSchema{}
 	for rows.Next() {
@@ -172,6 +172,19 @@ func scanSchemaColumns(rows *sql.Rows, allowed map[string]struct{}) (map[string]
 		}
 		table := ensureSchemaTable(tables, tableName)
 		defaultExpr := schemaString(defaultRaw)
+		state, source := DefaultUnknown, ""
+		if len(dialect) > 0 {
+			source = dialect[0] + ".information_schema.columns"
+		}
+		// PostgreSQL column_default is an SQL expression. MySQL catalog values
+		// are not SQL literals; preserve them without reconstructing quotation.
+		if len(dialect) > 0 && dialect[0] == "postgres" && defaultRaw != nil && defaultExpr != "" {
+			state = DefaultExpression
+		}
+		if len(dialect) > 0 && dialect[0] == "mysql" && mysqlIntegerType.MatchString(columnType) && mysqlIntegerDefault.MatchString(defaultExpr) {
+			state = DefaultExpression
+		}
+
 		table.Columns = append(table.Columns, ColumnSchema{
 			Name:              columnName,
 			Type:              columnType,
@@ -179,6 +192,7 @@ func scanSchemaColumns(rows *sql.Rows, allowed map[string]struct{}) (map[string]
 			NullableKnown:     strings.EqualFold(nullableText, "yes") || strings.EqualFold(nullableText, "no"),
 			HasDefault:        defaultRaw != nil,
 			DefaultExpression: defaultExpr,
+			DefaultState:      state, DefaultSource: source,
 		})
 	}
 	return tables, rows.Err()
@@ -197,9 +211,10 @@ func scanPostgresIndexes(rows *sql.Rows, tables map[string]*TableSchema, allowed
 		}
 		table := ensureSchemaTable(tables, tableName)
 		table.Indexes = append(table.Indexes, IndexSchema{
-			Name:    indexName,
-			Columns: parsePostgresIndexColumns(indexDef),
-			Unique:  unique,
+			Name:          indexName,
+			Columns:       parsePostgresIndexColumns(indexDef),
+			RawDefinition: indexDef, DefinitionUnknown: len(parsePostgresIndexColumns(indexDef)) == 0,
+			Unique: unique,
 		})
 	}
 	return rows.Err()
@@ -212,25 +227,32 @@ func scanMySQLIndexes(rows *sql.Rows, tables map[string]*TableSchema, allowed ma
 		name    string
 		unique  bool
 		columns []string
+		unknown bool
 	}
 	indexes := map[string]*pendingIndex{}
 	for rows.Next() {
-		var tableName, indexName, columnName string
+		var tableName, indexName string
+		var columnName, collation sql.NullString
+		var prefix sql.NullInt64
+		var indexType, visible string
 		var nonUnique int
 		var seq int
-		if err := rows.Scan(&tableName, &indexName, &nonUnique, &seq, &columnName); err != nil {
+		if err := rows.Scan(&tableName, &indexName, &nonUnique, &seq, &columnName, &prefix, &collation, &indexType, &visible); err != nil {
 			return err
 		}
 		if !tableIncluded(tableName, allowed) {
 			continue
 		}
-		key := tableKey(tableName) + "." + indexKey(indexName)
+		key := tableName + "\x00" + indexName
 		idx, ok := indexes[key]
 		if !ok {
 			idx = &pendingIndex{table: tableName, name: indexName, unique: nonUnique == 0}
 			indexes[key] = idx
 		}
-		idx.columns = append(idx.columns, columnName)
+		if !columnName.Valid || prefix.Valid || !collation.Valid || collation.String != "A" || indexType != "BTREE" || visible != "YES" || seq != len(idx.columns)+1 || idx.unique != (nonUnique == 0) {
+			idx.unknown = true
+		}
+		idx.columns = append(idx.columns, columnName.String)
 		ensureSchemaTable(tables, tableName)
 	}
 	if err := rows.Err(); err != nil {
@@ -244,13 +266,13 @@ func scanMySQLIndexes(rows *sql.Rows, tables map[string]*TableSchema, allowed ma
 	for _, key := range keys {
 		idx := indexes[key]
 		table := ensureSchemaTable(tables, idx.table)
-		table.Indexes = append(table.Indexes, IndexSchema{Name: idx.name, Columns: idx.columns, Unique: idx.unique})
+		table.Indexes = append(table.Indexes, IndexSchema{Name: idx.name, Columns: idx.columns, Unique: idx.unique, DefinitionUnknown: idx.unknown})
 	}
 	return nil
 }
 
 func ensureSchemaTable(tables map[string]*TableSchema, name string) *TableSchema {
-	key := tableKey(name)
+	key := name
 	if table, ok := tables[key]; ok {
 		return table
 	}
@@ -286,24 +308,16 @@ func schemaString(v any) string {
 	}
 }
 
-var postgresIndexColumnsRE = regexp.MustCompile(`\((.*)\)`)
+// Deliberately bounded: expressions, predicates, INCLUDE, ordering, opclasses,
+// quoted names and non-btree definitions remain unknown rather than truncated.
+var postgresIndexColumnsRE = regexp.MustCompile(`^CREATE (?:UNIQUE )?INDEX [a-z_][a-z0-9_]* ON (?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]* USING btree \(([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)\)$`)
 
 func parsePostgresIndexColumns(def string) []string {
-	matches := postgresIndexColumnsRE.FindStringSubmatch(def)
-	if len(matches) < 2 {
+	m := postgresIndexColumnsRE.FindStringSubmatch(def)
+	if len(m) != 2 {
 		return nil
 	}
-	parts := splitIndexColumnList(matches[1])
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		part = strings.Trim(part, `"`)
-		if part == "" {
-			continue
-		}
-		out = append(out, part)
-	}
-	return out
+	return strings.Split(m[1], ", ")
 }
 
 func splitIndexColumnList(s string) []string {
@@ -345,3 +359,8 @@ func splitIndexColumnList(s string) []string {
 	}
 	return out
 }
+
+// MySQL integer column defaults have an unquoted integer representation. Other
+// catalog values remain opaque; no quoting or SQL normalization is inferred.
+var mysqlIntegerType = regexp.MustCompile(`^(?:tinyint|smallint|mediumint|int|bigint)(?:\([0-9]+\))?(?: unsigned)?$`)
+var mysqlIntegerDefault = regexp.MustCompile(`^-?[0-9]+$`)

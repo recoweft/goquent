@@ -211,9 +211,9 @@ func TestReadSchemaMySQLFiltersTables(t *testing.T) {
 			AddRow("ignored", "id", "bigint", "NO", nil))
 	mock.ExpectQuery("information_schema\\.statistics").
 		WithArgs("app", "app").
-		WillReturnRows(sqlmock.NewRows([]string{"table_name", "index_name", "non_unique", "seq_in_index", "column_name"}).
-			AddRow("users", "users_email_idx", 0, 1, "email").
-			AddRow("ignored", "ignored_idx", 1, 1, "id"))
+		WillReturnRows(sqlmock.NewRows([]string{"table_name", "index_name", "non_unique", "seq_in_index", "column_name", "sub_part", "collation", "index_type", "is_visible"}).
+			AddRow("users", "users_email_idx", 0, 1, "email", nil, "A", "BTREE", "YES").
+			AddRow("ignored", "ignored_idx", 1, 1, "id", nil, "A", "BTREE", "YES"))
 
 	schema, err := ReadSchema(
 		context.Background(),

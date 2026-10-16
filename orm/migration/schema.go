@@ -24,9 +24,12 @@ type ColumnSchema struct {
 	Type     string `json:"type,omitempty"`
 	Nullable bool   `json:"nullable"`
 	// NullableKnown records an explicit declaration, not live evidence.
-	NullableKnown     bool   `json:"-"`
-	HasDefault        bool   `json:"has_default,omitempty"`
-	DefaultExpression string `json:"default_expression,omitempty"`
+	NullableKnown     bool         `json:"-"`
+	HasDefault        bool         `json:"has_default,omitempty"`
+	DefaultExpression string       `json:"default_expression,omitempty"`
+	DefaultState      DefaultState `json:"default_state,omitempty"`
+	// DefaultSource identifies catalog representation, not trusted evidence.
+	DefaultSource string `json:"default_source,omitempty"`
 }
 
 // IndexSchema describes an index in a schema diff.
@@ -35,6 +38,9 @@ type IndexSchema struct {
 	Columns    []string `json:"columns,omitempty"`
 	Unique     bool     `json:"unique,omitempty"`
 	Concurrent bool     `json:"concurrent,omitempty"`
+	// DefinitionUnknown prevents incomplete catalog definitions from comparing equal.
+	DefinitionUnknown bool   `json:"definition_unknown,omitempty"`
+	RawDefinition     string `json:"raw_definition,omitempty"`
 }
 
 // PlanSteps builds a MigrationPlan from structured steps.
@@ -57,10 +63,14 @@ func PlanSteps(steps []MigrationStep) *MigrationPlan {
 
 // DiffSchemas creates a migration plan that transforms current into desired.
 func DiffSchemas(current, desired Schema) *MigrationPlan {
+	current, desired, invalid := comparableSchemas(current, desired)
 	currentTables := tableMap(current.Tables)
 	desiredTables := tableMap(desired.Tables)
 
 	var steps []MigrationStep
+	if invalid {
+		steps = append(steps, comparisonUnknown("", "", ""))
+	}
 	for _, table := range desired.Tables {
 		if _, ok := currentTables[tableKey(table.Name)]; !ok {
 			steps = append(steps, MigrationStep{Type: AddTable, Table: table.Name})
@@ -74,21 +84,31 @@ func DiffSchemas(current, desired Schema) *MigrationPlan {
 		}
 	}
 
-	plan := PlanSteps(steps)
-	plan.Metadata["source"] = "schema_diff"
-	return plan
+	return schemaDiffPlan(steps)
 }
 
 func diffTable(current, desired TableSchema) []MigrationStep {
 	currentColumns := columnMap(current.Columns)
 	desiredColumns := columnMap(desired.Columns)
 	var steps []MigrationStep
+	badColumns := ambiguousColumns(current, desired)
+	if len(badColumns) > 0 {
+		steps = append(steps, comparisonUnknown(desired.Name, "", ""))
+	}
 
 	for _, column := range desired.Columns {
+		if badColumns[columnKey(column.Name)] {
+			continue
+		}
 		currentColumn, ok := currentColumns[columnKey(column.Name)]
 		if !ok {
 			nullable := column.Nullable
+			d := columnDefault(column)
+			if d.State == DefaultUnknown {
+				steps = append(steps, comparisonUnknown(desired.Name, column.Name, ""))
+			}
 			steps = append(steps, MigrationStep{
+				DesiredDefault:    &d,
 				Type:              AddColumn,
 				Table:             desired.Name,
 				Column:            column.Name,
@@ -99,6 +119,7 @@ func diffTable(current, desired TableSchema) []MigrationStep {
 			})
 			continue
 		}
+		steps = append(steps, diffDefault(desired.Name, currentColumn, column)...)
 		if normalizeType(currentColumn.Type) != normalizeType(column.Type) {
 			steps = append(steps, MigrationStep{
 				Type:    AlterColumnType,
@@ -130,6 +151,9 @@ func diffTable(current, desired TableSchema) []MigrationStep {
 		}
 	}
 	for _, column := range current.Columns {
+		if badColumns[columnKey(column.Name)] {
+			continue
+		}
 		if _, ok := desiredColumns[columnKey(column.Name)]; !ok {
 			steps = append(steps, MigrationStep{Type: DropColumn, Table: desired.Name, Column: column.Name})
 		}
@@ -138,20 +162,34 @@ func diffTable(current, desired TableSchema) []MigrationStep {
 	currentIndexes := indexMap(current.Indexes)
 	desiredIndexes := indexMap(desired.Indexes)
 	for _, index := range desired.Indexes {
-		if _, ok := currentIndexes[indexKey(index.Name)]; !ok {
-			steps = append(steps, MigrationStep{
-				Type:       AddIndex,
-				Table:      desired.Name,
-				Index:      index.Name,
-				Concurrent: index.Concurrent,
-			})
+		old, exists := currentIndexes[indexKey(index.Name)]
+		if !validIndex(index, desired) || (exists && !validIndex(old, current)) {
+			marker := comparisonUnknown(desired.Name, "", index.Name)
+			marker.DesiredIndex = copyIndex(index)
+			if exists {
+				marker.CurrentIndex = copyIndex(old)
+			}
+			steps = append(steps, marker)
+			continue
+		}
+		if !exists {
+			steps = append(steps, MigrationStep{Type: AddIndex, Table: desired.Name, Index: index.Name, Concurrent: index.Concurrent, DesiredIndex: copyIndex(index)})
+		} else if !equalIndex(old, index) {
+			steps = append(steps, MigrationStep{Type: AlterIndex, Table: desired.Name, Index: index.Name, Concurrent: index.Concurrent, CurrentIndex: copyIndex(old), DesiredIndex: copyIndex(index)})
 		}
 	}
 	for _, index := range current.Indexes {
-		if _, ok := desiredIndexes[indexKey(index.Name)]; !ok {
-			steps = append(steps, MigrationStep{Type: DropIndex, Table: desired.Name, Index: index.Name})
+		if _, exists := desiredIndexes[indexKey(index.Name)]; !exists {
+			if !validIndex(index, current) {
+				marker := comparisonUnknown(desired.Name, "", index.Name)
+				marker.CurrentIndex = copyIndex(index)
+				steps = append(steps, marker)
+				continue
+			}
+			steps = append(steps, MigrationStep{Type: DropIndex, Table: desired.Name, Index: index.Name, CurrentIndex: copyIndex(index)})
 		}
 	}
+
 	return steps
 }
 
