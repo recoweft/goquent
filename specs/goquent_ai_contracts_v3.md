@@ -480,3 +480,16 @@ identity, physical locations, paths and snippets. Git tracking is not assessed;
 no commit resolver or private SARIF artifact route is introduced. Existing
 PR1/2 type/precision/evidence and v1-default/v2-opt-in contracts remain in force.
 Whole-Issue acceptance and main integration require separate review.
+
+## GQ-AI-10 PR1 persistent command identity
+
+[Persistent command identity](../docs/command-identity.md) adds an application-only
+finite INSERT/UPDATE command path with a library-owned, explicitly deployed SQL
+ledger. Typed canonical input and trusted scope are compared on initial and race
+replays; reservation/business writes/result persistence share an owned transaction.
+Existing callback recipes and their Strict refusal remain unchanged. External
+transactions/custom executors refuse in the new path. Existing private planner,
+policy and public/source boundaries remain authoritative. PR2 shared optimistic
+writes/row expectations and PR3 audit/outbox integration are not implemented;
+whole-Issue acceptance remains open. See the linked contract for bounded input,
+schema trust, retention, error recovery, database count semantics and migration.
