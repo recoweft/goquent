@@ -216,3 +216,13 @@ The PR1-only boundaries above are retained as historical context.
 and expectation fields, shared checks, input-only v2 migration and old-reader
 refusal. Unextended commands retain the original v1 bytes and behavior. PR3 hooks
 remain unimplemented.
+
+
+## GQ-AI-10 PR3 finite command hooks
+
+[Command audit/outbox hooks](command-hooks.md) supersedes the historical PR3-pending
+statements above. Ordered finite INSERT hooks now share the owned command
+transaction, private gates and replay identity. Hook-bearing input uses v3;
+legacy v1/v2, ledger/scope/result v1 and opaque callback Strict refusal remain.
+See the linked recipe, rollout, tenant scope and evidence limits. Whole-Issue
+acceptance and merge remain separate.

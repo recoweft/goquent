@@ -58,6 +58,12 @@ func TestCommandIntegration(t *testing.T) {
 				t.Fatal(e)
 			}
 			defer raw.Exec("DROP TABLE gq10_items")
+			for _, table := range []string{"gq10_audit", "gq10_outbox"} {
+				if _, e = raw.Exec("CREATE TABLE " + table + " (tenant_id BIGINT NOT NULL, id BIGINT NOT NULL, score BIGINT, PRIMARY KEY(tenant_id,id))"); e != nil {
+					t.Fatal(e)
+				}
+				defer raw.Exec("DROP TABLE " + table)
+			}
 			makeDB := func(tenant int64) *DB {
 				c, _ := NewApplicationTenantContext(ExecutionContextInput{TenantPresent: true, CurrentTenant: tenant})
 				cols := []query.WriteKeyColumn{{Name: "tenant_id", DBType: "bigint", Bits: 64}, {Name: "id", DBType: "bigint", Bits: 64}, {Name: "score", DBType: "bigint", Bits: 64}, {Name: "version", DBType: "bigint", Bits: 64}}
@@ -66,12 +72,22 @@ func TestCommandIntegration(t *testing.T) {
 						cols[i].DBType = "BIGINT"
 					}
 				}
-				name := schema + ".gq10_items"
-				as, e := NewApplicationSchema(ApplicationSchemaInput{Database: "command-fixture", Dialect: dialect, Tables: []ApplicationTable{{Table: name, PlainTable: true, Columns: cols, CompleteUniqueConstraints: true, Constraints: []query.WriteKeyConstraint{{Kind: "primary", AllRows: true, Valid: true, NotDeferrable: true, Columns: cols[:2]}}}}})
+				var tables []ApplicationTable
+				var policyInputs []TablePolicy
+				for _, table := range []string{"gq10_items", "gq10_audit", "gq10_outbox"} {
+					name := schema + "." + table
+					tableCols := cols
+					if table != "gq10_items" {
+						tableCols = cols[:3]
+					}
+					tables = append(tables, ApplicationTable{Table: name, PlainTable: true, Columns: tableCols, CompleteUniqueConstraints: true, Constraints: []query.WriteKeyConstraint{{Kind: "primary", AllRows: true, Valid: true, NotDeferrable: true, Columns: cols[:2]}}})
+					policyInputs = append(policyInputs, TablePolicy{Table: name, TenantColumn: "tenant_id"})
+				}
+				as, e := NewApplicationSchema(ApplicationSchemaInput{Database: "command-fixture", Dialect: dialect, Tables: tables})
 				if e != nil {
 					t.Fatal(e)
 				}
-				policies, e := NewPolicySet(TablePolicy{Table: name, TenantColumn: "tenant_id"})
+				policies, e := NewPolicySet(policyInputs...)
 				if e != nil {
 					t.Fatal(e)
 				}
@@ -82,6 +98,7 @@ func TestCommandIntegration(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
+			t.Run("hooks", func(t *testing.T) { testCommandHooksIntegration(t, db, store, makeDB, schema, dialect) })
 			t.Run("atomic-results", func(t *testing.T) { testAtomicIntegration(t, db, store, schema, dialect) })
 			command := func(n int) Command {
 				return Command{ID: fmt.Sprintf("00000000-0000-4000-8000-%012d", n), Kind: "insert-score", Steps: []CommandStep{{Operation: "insert", Table: "gq10_items", Values: map[string]any{"id": int64(n), "score": int64(2)}}}}

@@ -118,7 +118,8 @@ func (s *CommandStore) valid() bool {
 }
 
 // Run validates every step before looking up a replay or reserving the ID. The
-// reservation, all business statements and the fixed result commit together.
+// reservation, all business statements, ordered finite hooks and the fixed result
+// commit together. Hooks require exactly one affected row each.
 // No automatic retries are performed, including after an ambiguous commit.
 func (s *CommandStore) Run(ctx context.Context, c Command) (CommandResult, error) {
 	var zero CommandResult

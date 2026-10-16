@@ -503,3 +503,13 @@ shared private expectations; external ownership refuses the new guarantee.
 Compatibility expectations alone still cannot roll back autocommit. Command input
 v2 is opt-in by condition presence; v1 scope/ledger/result and unextended input
 remain compatible. PR3 audit/outbox integration remains separate and unimplemented.
+
+
+## GQ-AI-10 PR3 finite command hooks
+
+[Command audit/outbox hooks](../docs/command-hooks.md) supersedes the historical PR3-pending
+statements above. Ordered finite INSERT hooks now share the owned command
+transaction, private gates and replay identity. Hook-bearing input uses v3;
+legacy v1/v2, ledger/scope/result v1 and opaque callback Strict refusal remain.
+See the linked recipe, rollout, tenant scope and evidence limits. Whole-Issue
+acceptance and merge remain separate.
