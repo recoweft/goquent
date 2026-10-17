@@ -124,3 +124,13 @@ FK/CHECK, complete schema identification and the capability matrix remain PR2.
 Migration phases, preflight evidence freshness and target binding remain PR3.
 "Complete" here only covers represented supported comparisons, not all database
 objects. The whole Issue's acceptance criteria remain unchecked.
+
+## PR2 superseding additions
+
+[Schema coverage and capabilities](schema-capabilities.md) now extends this
+historical PR1 subset. In particular, nil/empty legacy schema collections no
+longer imply a complete comparison, and incomplete inventories cannot establish
+an add/drop from absence alone. The old index catalog parser is retained
+only as a compatibility test helper; the live path now uses structured catalogs.
+PR1 default states, local ordered-index comparison, and structural alter refusal
+remain in effect.

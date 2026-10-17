@@ -68,6 +68,8 @@ import "github.com/recoweft/goquent/orm"
 - [type Approval](<#Approval>)
 - [type BoolScanPolicy](<#BoolScanPolicy>)
   - [func \(p BoolScanPolicy\) String\(\) string](<#BoolScanPolicy.String>)
+- [type CapabilityAssessment](<#CapabilityAssessment>)
+- [type CheckSchema](<#CheckSchema>)
 - [type ColumnRef](<#ColumnRef>)
 - [type ColumnSchema](<#ColumnSchema>)
 - [type Command](<#Command>)
@@ -79,6 +81,7 @@ import "github.com/recoweft/goquent/orm"
   - [func \(s \*CommandStore\) Run\(ctx context.Context, c Command\) \(CommandResult, error\)](<#CommandStore.Run>)
 - [type CommandSummary](<#CommandSummary>)
 - [type CommandVersion](<#CommandVersion>)
+- [type CoverageState](<#CoverageState>)
 - [type CursorColumn](<#CursorColumn>)
   - [func CursorAsc\(name string\) CursorColumn](<#CursorAsc>)
   - [func CursorAscAlias\(alias string\) CursorColumn](<#CursorAscAlias>)
@@ -135,10 +138,13 @@ import "github.com/recoweft/goquent/orm"
   - [func NewExecutionContext\(input ExecutionContextInput\) \(ExecutionContext, error\)](<#NewExecutionContext>)
 - [type ExecutionContextInput](<#ExecutionContextInput>)
 - [type Executor](<#Executor>)
+- [type ExpressionDefinition](<#ExpressionDefinition>)
 - [type FilterSpec](<#FilterSpec>)
+- [type ForeignKeySchema](<#ForeignKeySchema>)
 - [type IdempotentCommandResult](<#IdempotentCommandResult>)
   - [func RunIdempotentCommand\[T any\]\(ctx context.Context, db \*DB, spec IdempotentCommandSpec\[T\]\) \(IdempotentCommandResult\[T\], error\)](<#RunIdempotentCommand>)
 - [type IdempotentCommandSpec](<#IdempotentCommandSpec>)
+- [type IndexKey](<#IndexKey>)
 - [type IndexSchema](<#IndexSchema>)
 - [type JSONAggOption](<#JSONAggOption>)
   - [func JSONAggFilter\(predicate string\) JSONAggOption](<#JSONAggFilter>)
@@ -195,6 +201,8 @@ import "github.com/recoweft/goquent/orm"
   - [func \(n NumericString\) OrDefault\(def string\) string](<#NumericString.OrDefault>)
   - [func \(n \*NumericString\) Scan\(src any\) error](<#NumericString.Scan>)
   - [func \(n NumericString\) Value\(\) \(driver.Value, error\)](<#NumericString.Value>)
+- [type ObjectIdentity](<#ObjectIdentity>)
+- [type OperationCapability](<#OperationCapability>)
 - [type OperationOptions](<#OperationOptions>)
 - [type OperationSpec](<#OperationSpec>)
 - [type OperationType](<#OperationType>)
@@ -243,6 +251,8 @@ import "github.com/recoweft/goquent/orm"
 - [type RowsAffectedError](<#RowsAffectedError>)
 - [type ScanOptions](<#ScanOptions>)
 - [type Schema](<#Schema>)
+- [type SchemaContext](<#SchemaContext>)
+- [type SchemaCoverage](<#SchemaCoverage>)
 - [type Scope](<#Scope>)
   - [func ComposeScopes\(scopes ...Scope\) Scope](<#ComposeScopes>)
   - [func CursorAfter\(columns \[\]CursorColumn, values ...any\) Scope](<#CursorAfter>)
@@ -355,6 +365,24 @@ const (
     WarningMigrationSetNotNull            = migration.WarningMigrationSetNotNull
     WarningMigrationAddIndexNonConcurrent = migration.WarningMigrationAddIndexNonConcurrent
     WarningMigrationDropIndex             = migration.WarningMigrationDropIndex
+)
+```
+
+<a name="CoverageUnknown"></a>
+
+```go
+const (
+    CoverageUnknown          = migration.CoverageUnknown
+    CoverageComplete         = migration.CoverageComplete
+    CoveragePartial          = migration.CoveragePartial
+    CoverageUnsupported      = migration.CoverageUnsupported
+    AddForeignKey            = migration.AddForeignKey
+    DropForeignKey           = migration.DropForeignKey
+    AlterForeignKey          = migration.AlterForeignKey
+    AddCheck                 = migration.AddCheck
+    DropCheck                = migration.DropCheck
+    AlterCheck               = migration.AlterCheck
+    SchemaIdentityDifference = migration.SchemaIdentityDifference
 )
 ```
 
@@ -1085,6 +1113,24 @@ func (p BoolScanPolicy) String() string
 
 
 
+<a name="CapabilityAssessment"></a>
+## type CapabilityAssessment
+
+
+
+```go
+type CapabilityAssessment = migration.CapabilityAssessment
+```
+
+<a name="CheckSchema"></a>
+## type CheckSchema
+
+
+
+```go
+type CheckSchema = migration.CheckSchema
+```
+
 <a name="ColumnRef"></a>
 ## type ColumnRef
 
@@ -1209,6 +1255,15 @@ type CommandVersion struct {
     Column   string
     Expected int64
 }
+```
+
+<a name="CoverageState"></a>
+## type CoverageState
+
+
+
+```go
+type CoverageState = migration.CoverageState
 ```
 
 <a name="CursorColumn"></a>
@@ -1734,6 +1789,15 @@ type Executor interface {
 }
 ```
 
+<a name="ExpressionDefinition"></a>
+## type ExpressionDefinition
+
+
+
+```go
+type ExpressionDefinition = migration.ExpressionDefinition
+```
+
 <a name="FilterSpec"></a>
 ## type FilterSpec
 
@@ -1741,6 +1805,15 @@ type Executor interface {
 
 ```go
 type FilterSpec = operation.FilterSpec
+```
+
+<a name="ForeignKeySchema"></a>
+## type ForeignKeySchema
+
+
+
+```go
+type ForeignKeySchema = migration.ForeignKeySchema
 ```
 
 <a name="IdempotentCommandResult"></a>
@@ -1782,6 +1855,15 @@ type IdempotentCommandSpec[T any] struct {
     // detects a uniqueness or optimistic-concurrency conflict.
     LookupAfterConflict func(context.Context, *DB) (T, error)
 }
+```
+
+<a name="IndexKey"></a>
+## type IndexKey
+
+
+
+```go
+type IndexKey = migration.IndexKey
 ```
 
 <a name="IndexSchema"></a>
@@ -2342,6 +2424,24 @@ func (n NumericString) Value() (driver.Value, error)
 
 Value implements driver.Valuer.
 
+<a name="ObjectIdentity"></a>
+## type ObjectIdentity
+
+
+
+```go
+type ObjectIdentity = migration.ObjectIdentity
+```
+
+<a name="OperationCapability"></a>
+## type OperationCapability
+
+
+
+```go
+type OperationCapability = migration.OperationCapability
+```
+
 <a name="OperationOptions"></a>
 ## type OperationOptions
 
@@ -2798,6 +2898,24 @@ type ScanOptions struct {
 
 ```go
 type Schema = migration.Schema
+```
+
+<a name="SchemaContext"></a>
+## type SchemaContext
+
+
+
+```go
+type SchemaContext = migration.SchemaContext
+```
+
+<a name="SchemaCoverage"></a>
+## type SchemaCoverage
+
+
+
+```go
+type SchemaCoverage = migration.SchemaCoverage
 ```
 
 <a name="Scope"></a>
@@ -4568,16 +4686,27 @@ import "github.com/recoweft/goquent/orm/migration"
 - [func WriteStatusJSON\(w io.Writer, status Status\) error](<#WriteStatusJSON>)
 - [func WriteStatusPretty\(w io.Writer, status Status\) error](<#WriteStatusPretty>)
 - [type AppliedMigration](<#AppliedMigration>)
+- [type CapabilityAssessment](<#CapabilityAssessment>)
+- [type CheckSchema](<#CheckSchema>)
+  - [func \(v \*CheckSchema\) UnmarshalJSON\(b \[\]byte\) error](<#CheckSchema.UnmarshalJSON>)
 - [type ColumnSchema](<#ColumnSchema>)
   - [func \(c ColumnSchema\) MarshalJSON\(\) \(\[\]byte, error\)](<#ColumnSchema.MarshalJSON>)
   - [func \(c \*ColumnSchema\) UnmarshalJSON\(b \[\]byte\) error](<#ColumnSchema.UnmarshalJSON>)
+- [type CoverageState](<#CoverageState>)
 - [type DefaultDefinition](<#DefaultDefinition>)
 - [type DefaultState](<#DefaultState>)
 - [type DriftReport](<#DriftReport>)
   - [func CompareSchemaDrift\(desired, current Schema\) DriftReport](<#CompareSchemaDrift>)
   - [func \(s DriftReport\) PublicView\(\) publicoutput.SummaryView](<#DriftReport.PublicView>)
 - [type Executor](<#Executor>)
+- [type ExpressionDefinition](<#ExpressionDefinition>)
+  - [func \(v \*ExpressionDefinition\) UnmarshalJSON\(b \[\]byte\) error](<#ExpressionDefinition.UnmarshalJSON>)
+- [type ForeignKeySchema](<#ForeignKeySchema>)
+  - [func \(v \*ForeignKeySchema\) UnmarshalJSON\(b \[\]byte\) error](<#ForeignKeySchema.UnmarshalJSON>)
+- [type IndexKey](<#IndexKey>)
+  - [func \(v \*IndexKey\) UnmarshalJSON\(b \[\]byte\) error](<#IndexKey.UnmarshalJSON>)
 - [type IndexSchema](<#IndexSchema>)
+  - [func \(v \*IndexSchema\) UnmarshalJSON\(b \[\]byte\) error](<#IndexSchema.UnmarshalJSON>)
 - [type MigrationPlan](<#MigrationPlan>)
   - [func DiffSchemas\(current, desired Schema\) \*MigrationPlan](<#DiffSchemas>)
   - [func PlanSQL\(sqlText string\) \(\*MigrationPlan, error\)](<#PlanSQL>)
@@ -4603,10 +4732,18 @@ import "github.com/recoweft/goquent/orm/migration"
   - [func \(m \*Migrator\) Plan\(ctx context.Context\) \(\*MigrationPlan, error\)](<#Migrator.Plan>)
   - [func \(m \*Migrator\) RequireApproval\(reason string\) \*Migrator](<#Migrator.RequireApproval>)
   - [func \(m \*Migrator\) ReviewMode\(mode ReviewMode\) \*Migrator](<#Migrator.ReviewMode>)
+- [type ObjectIdentity](<#ObjectIdentity>)
+  - [func \(v \*ObjectIdentity\) UnmarshalJSON\(b \[\]byte\) error](<#ObjectIdentity.UnmarshalJSON>)
+- [type OperationCapability](<#OperationCapability>)
 - [type ReviewMode](<#ReviewMode>)
 - [type Schema](<#Schema>)
   - [func ReadSchema\(ctx context.Context, exec StatusExecutor, dialect driver.Dialect, opts ...SchemaReadOption\) \(Schema, error\)](<#ReadSchema>)
   - [func \(s Schema\) PublicView\(\) publicoutput.SummaryView](<#Schema.PublicView>)
+  - [func \(v \*Schema\) UnmarshalJSON\(b \[\]byte\) error](<#Schema.UnmarshalJSON>)
+- [type SchemaContext](<#SchemaContext>)
+  - [func \(v \*SchemaContext\) UnmarshalJSON\(b \[\]byte\) error](<#SchemaContext.UnmarshalJSON>)
+- [type SchemaCoverage](<#SchemaCoverage>)
+  - [func \(v \*SchemaCoverage\) UnmarshalJSON\(b \[\]byte\) error](<#SchemaCoverage.UnmarshalJSON>)
 - [type SchemaReadOption](<#SchemaReadOption>)
   - [func WithSchemaReadSchema\(schema string\) SchemaReadOption](<#WithSchemaReadSchema>)
   - [func WithSchemaReadTables\(tables ...string\) SchemaReadOption](<#WithSchemaReadTables>)
@@ -4626,6 +4763,7 @@ import "github.com/recoweft/goquent/orm/migration"
   - [func \(v StepView\) MarshalJSON\(\) \(\[\]byte, error\)](<#StepView.MarshalJSON>)
   - [func \(v StepView\) String\(\) string](<#StepView.String>)
 - [type TableSchema](<#TableSchema>)
+  - [func \(v \*TableSchema\) UnmarshalJSON\(b \[\]byte\) error](<#TableSchema.UnmarshalJSON>)
 
 
 ## Constants
@@ -4769,6 +4907,41 @@ type AppliedMigration struct {
 }
 ```
 
+<a name="CapabilityAssessment"></a>
+## type CapabilityAssessment
+
+CapabilityAssessment separates general syntax support from target conditions. No assessment authorizes execution or proves a lock\-free operation.
+
+```go
+type CapabilityAssessment = publicoutput.CapabilityAssessment
+```
+
+<a name="CheckSchema"></a>
+## type CheckSchema
+
+CheckSchema compares catalog SQL byte for byte, not SQL meaning.
+
+```go
+type CheckSchema struct {
+    Inheritance   string        `json:"inheritance,omitempty"`
+    Name          string        `json:"name"`
+    Expression    string        `json:"expression,omitempty"`
+    Validation    string        `json:"validation,omitempty"`
+    Enforcement   string        `json:"enforcement,omitempty"`
+    Definition    CoverageState `json:"definition,omitempty"`
+    RawDefinition string        `json:"raw_definition,omitempty"`
+}
+```
+
+<a name="CheckSchema.UnmarshalJSON"></a>
+### func \(\*CheckSchema\) UnmarshalJSON
+
+```go
+func (v *CheckSchema) UnmarshalJSON(b []byte) error
+```
+
+
+
 <a name="ColumnSchema"></a>
 ## type ColumnSchema
 
@@ -4806,6 +4979,26 @@ func (c *ColumnSchema) UnmarshalJSON(b []byte) error
 ```
 
 UnmarshalJSON preserves nullable presence and refuses ambiguous declarations.
+
+<a name="CoverageState"></a>
+## type CoverageState
+
+CoverageState describes supplied observations, never authority or freshness. The zero value and unrecognized values are unknown, not a known empty set.
+
+```go
+type CoverageState string
+```
+
+<a name="CoverageUnknown"></a>
+
+```go
+const (
+    CoverageUnknown     CoverageState = "unknown"
+    CoverageComplete    CoverageState = "complete"
+    CoveragePartial     CoverageState = "partial"
+    CoverageUnsupported CoverageState = "unsupported"
+)
+```
 
 <a name="DefaultDefinition"></a>
 ## type DefaultDefinition
@@ -4849,12 +5042,15 @@ DriftReport reports whether the current database schema differs from the desired
 
 ```go
 type DriftReport struct {
-    ComparisonIncomplete bool            `json:"comparison_incomplete"`
-    Drifted              bool            `json:"drifted"`
-    DesiredTables        int             `json:"desired_tables"`
-    CurrentTables        int             `json:"current_tables"`
-    RiskLevel            query.RiskLevel `json:"risk_level"`
-    Steps                []MigrationStep `json:"steps,omitempty"`
+    CurrentSchema        *Schema               `json:"current_schema,omitempty"`
+    DesiredSchema        *Schema               `json:"desired_schema,omitempty"`
+    Capabilities         []OperationCapability `json:"capabilities,omitempty"`
+    ComparisonIncomplete bool                  `json:"comparison_incomplete"`
+    Drifted              bool                  `json:"drifted"`
+    DesiredTables        int                   `json:"desired_tables"`
+    CurrentTables        int                   `json:"current_tables"`
+    RiskLevel            query.RiskLevel       `json:"risk_level"`
+    Steps                []MigrationStep       `json:"steps,omitempty"`
 }
 ```
 
@@ -4889,6 +5085,82 @@ type Executor interface {
 }
 ```
 
+<a name="ExpressionDefinition"></a>
+## type ExpressionDefinition
+
+ExpressionDefinition distinguishes absent SQL from an unobserved expression.
+
+```go
+type ExpressionDefinition struct {
+    State string `json:"state,omitempty"`
+    SQL   string `json:"sql,omitempty"`
+}
+```
+
+<a name="ExpressionDefinition.UnmarshalJSON"></a>
+### func \(\*ExpressionDefinition\) UnmarshalJSON
+
+```go
+func (v *ExpressionDefinition) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="ForeignKeySchema"></a>
+## type ForeignKeySchema
+
+ForeignKeySchema preserves ordered reference pairs and catalog declarations. Referenced objects outside the export scope have not been inspected.
+
+```go
+type ForeignKeySchema struct {
+    Name              string         `json:"name"`
+    Columns           []string       `json:"columns,omitempty"`
+    Reference         ObjectIdentity `json:"reference"`
+    ReferencedColumns []string       `json:"referenced_columns,omitempty"`
+    OnUpdate          string         `json:"on_update,omitempty"`
+    OnDelete          string         `json:"on_delete,omitempty"`
+    Match             string         `json:"match,omitempty"`
+    Validation        string         `json:"validation,omitempty"`
+    Enforcement       string         `json:"enforcement,omitempty"`
+    Deferrability     string         `json:"deferrability,omitempty"`
+    Definition        CoverageState  `json:"definition,omitempty"`
+    RawDefinition     string         `json:"raw_definition,omitempty"`
+}
+```
+
+<a name="ForeignKeySchema.UnmarshalJSON"></a>
+### func \(\*ForeignKeySchema\) UnmarshalJSON
+
+```go
+func (v *ForeignKeySchema) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="IndexKey"></a>
+## type IndexKey
+
+IndexKey is a finite column/expression union. Empty attributes are unknown.
+
+```go
+type IndexKey struct {
+    Column     string `json:"column,omitempty"`
+    Expression string `json:"expression,omitempty"`
+    Order      string `json:"order,omitempty"`
+    Nulls      string `json:"nulls,omitempty"`
+    Prefix     int    `json:"prefix,omitempty"`
+}
+```
+
+<a name="IndexKey.UnmarshalJSON"></a>
+### func \(\*IndexKey\) UnmarshalJSON
+
+```go
+func (v *IndexKey) UnmarshalJSON(b []byte) error
+```
+
+
+
 <a name="IndexSchema"></a>
 ## type IndexSchema
 
@@ -4896,15 +5168,30 @@ IndexSchema describes an index in a schema diff.
 
 ```go
 type IndexSchema struct {
-    Name       string   `json:"name"`
-    Columns    []string `json:"columns,omitempty"`
-    Unique     bool     `json:"unique,omitempty"`
-    Concurrent bool     `json:"concurrent,omitempty"`
+    Keys       []IndexKey           `json:"keys,omitempty"`
+    Predicate  ExpressionDefinition `json:"predicate,omitempty"`
+    Method     string               `json:"method,omitempty"`
+    Include    []string             `json:"include,omitempty"`
+    Visibility string               `json:"visibility,omitempty"`
+    Attributes CoverageState        `json:"attributes,omitempty"`
+    Name       string               `json:"name"`
+    Columns    []string             `json:"columns,omitempty"`
+    Unique     bool                 `json:"unique,omitempty"`
+    Concurrent bool                 `json:"concurrent,omitempty"`
     // DefinitionUnknown prevents incomplete catalog definitions from comparing equal.
     DefinitionUnknown bool   `json:"definition_unknown,omitempty"`
     RawDefinition     string `json:"raw_definition,omitempty"`
 }
 ```
+
+<a name="IndexSchema.UnmarshalJSON"></a>
+### func \(\*IndexSchema\) UnmarshalJSON
+
+```go
+func (v *IndexSchema) UnmarshalJSON(b []byte) error
+```
+
+
 
 <a name="MigrationPlan"></a>
 ## type MigrationPlan
@@ -4913,6 +5200,9 @@ MigrationPlan explains a schema migration before it is applied.
 
 ```go
 type MigrationPlan struct {
+    CurrentSchema        *Schema                 `json:"current_schema,omitempty"`
+    DesiredSchema        *Schema                 `json:"desired_schema,omitempty"`
+    Capabilities         []OperationCapability   `json:"capabilities,omitempty"`
     ComparisonIncomplete bool                    `json:"comparison_incomplete,omitempty"`
     SQL                  string                  `json:"sql"`
     Statements           []MigrationStatement    `json:"statements,omitempty"`
@@ -4997,19 +5287,20 @@ MigrationPlanView is detached display data, never an apply or approval input.
 
 ```go
 type MigrationPlanView struct {
-    ComparisonIncomplete bool                `json:"comparison_incomplete"`
-    Kind                 string              `json:"kind"`
-    Version              int                 `json:"version"`
-    Risk                 string              `json:"risk"`
-    Precision            string              `json:"precision"`
-    RequiredApproval     bool                `json:"required_approval"`
-    Blocked              bool                `json:"blocked"`
-    StepCount            int                 `json:"step_count"`
-    WarningCount         int                 `json:"warning_count"`
-    Steps                []StepView          `json:"steps"`
-    Warnings             []query.WarningView `json:"warnings"`
-    Truncated            bool                `json:"truncated"`
-    DetailsOmitted       bool                `json:"details_omitted"`
+    Capabilities         []OperationCapability `json:"capabilities,omitempty"`
+    ComparisonIncomplete bool                  `json:"comparison_incomplete"`
+    Kind                 string                `json:"kind"`
+    Version              int                   `json:"version"`
+    Risk                 string                `json:"risk"`
+    Precision            string                `json:"precision"`
+    RequiredApproval     bool                  `json:"required_approval"`
+    Blocked              bool                  `json:"blocked"`
+    StepCount            int                   `json:"step_count"`
+    WarningCount         int                   `json:"warning_count"`
+    Steps                []StepView            `json:"steps"`
+    Warnings             []query.WarningView   `json:"warnings"`
+    Truncated            bool                  `json:"truncated"`
+    DetailsOmitted       bool                  `json:"details_omitted"`
 }
 ```
 
@@ -5101,6 +5392,7 @@ type MigrationStep struct {
     FromName          string                  `json:"from_name,omitempty"`
     ToName            string                  `json:"to_name,omitempty"`
     Index             string                  `json:"index,omitempty"`
+    Constraint        string                  `json:"constraint,omitempty"`
     ColumnType        string                  `json:"column_type,omitempty"`
     OldType           string                  `json:"old_type,omitempty"`
     NewType           string                  `json:"new_type,omitempty"`
@@ -5126,22 +5418,29 @@ MigrationStepType classifies a structural schema migration step.
 type MigrationStepType string
 ```
 
-<a name="AddTable"></a>
+<a name="AddForeignKey"></a>
 
 ```go
 const (
-    AddTable           MigrationStepType = "add_table"
-    DropTable          MigrationStepType = "drop_table"
-    AddColumn          MigrationStepType = "add_column"
-    DropColumn         MigrationStepType = "drop_column"
-    RenameColumn       MigrationStepType = "rename_column"
-    AlterColumnType    MigrationStepType = "alter_column_type"
-    AlterNullability   MigrationStepType = "alter_nullability"
-    AlterIndex         MigrationStepType = "alter_index"
-    AlterColumnDefault MigrationStepType = "alter_column_default"
-    AddIndex           MigrationStepType = "add_index"
-    DropIndex          MigrationStepType = "drop_index"
-    UnsupportedStep    MigrationStepType = "unsupported"
+    AddForeignKey            MigrationStepType = "add_foreign_key"
+    DropForeignKey           MigrationStepType = "drop_foreign_key"
+    AlterForeignKey          MigrationStepType = "alter_foreign_key"
+    AddCheck                 MigrationStepType = "add_check"
+    DropCheck                MigrationStepType = "drop_check"
+    AlterCheck               MigrationStepType = "alter_check"
+    SchemaIdentityDifference MigrationStepType = "schema_identity_difference"
+    AddTable                 MigrationStepType = "add_table"
+    DropTable                MigrationStepType = "drop_table"
+    AddColumn                MigrationStepType = "add_column"
+    DropColumn               MigrationStepType = "drop_column"
+    RenameColumn             MigrationStepType = "rename_column"
+    AlterColumnType          MigrationStepType = "alter_column_type"
+    AlterNullability         MigrationStepType = "alter_nullability"
+    AlterIndex               MigrationStepType = "alter_index"
+    AlterColumnDefault       MigrationStepType = "alter_column_default"
+    AddIndex                 MigrationStepType = "add_index"
+    DropIndex                MigrationStepType = "drop_index"
+    UnsupportedStep          MigrationStepType = "unsupported"
 )
 ```
 
@@ -5210,6 +5509,38 @@ func (m *Migrator) ReviewMode(mode ReviewMode) *Migrator
 
 ReviewMode enables an additional migration review mode.
 
+<a name="ObjectIdentity"></a>
+## type ObjectIdentity
+
+ObjectIdentity retains namespace components without parsing qualified SQL. MySQL's catalog component is the literal "def" returned by information\_schema.
+
+```go
+type ObjectIdentity struct {
+    Catalog string        `json:"catalog,omitempty"`
+    Schema  string        `json:"schema,omitempty"`
+    Name    string        `json:"name,omitempty"`
+    State   CoverageState `json:"state,omitempty"`
+}
+```
+
+<a name="ObjectIdentity.UnmarshalJSON"></a>
+### func \(\*ObjectIdentity\) UnmarshalJSON
+
+```go
+func (v *ObjectIdentity) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="OperationCapability"></a>
+## type OperationCapability
+
+OperationCapability is a closed display classification, not execution evidence.
+
+```go
+type OperationCapability = publicoutput.CapabilityView
+```
+
 <a name="ReviewMode"></a>
 ## type ReviewMode
 
@@ -5235,7 +5566,8 @@ Schema is a minimal desired/current schema representation for diff planning.
 
 ```go
 type Schema struct {
-    Tables []TableSchema `json:"tables,omitempty"`
+    Context *SchemaContext `json:"context,omitempty"`
+    Tables  []TableSchema  `json:"tables,omitempty"`
 }
 ```
 
@@ -5253,6 +5585,70 @@ ReadSchema exports a minimal migration.Schema from database metadata.
 
 ```go
 func (s Schema) PublicView() publicoutput.SummaryView
+```
+
+
+
+<a name="Schema.UnmarshalJSON"></a>
+### func \(\*Schema\) UnmarshalJSON
+
+```go
+func (v *Schema) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="SchemaContext"></a>
+## type SchemaContext
+
+SchemaContext is sensitive source data. Reader labels and coverage declarations are not authenticated evidence, including after a source JSON roundtrip.
+
+```go
+type SchemaContext struct {
+    Dialect       string         `json:"dialect,omitempty"`
+    Catalog       string         `json:"catalog,omitempty"`
+    Schema        string         `json:"schema,omitempty"`
+    ServerVersion string         `json:"server_version,omitempty"`
+    VersionSource string         `json:"version_source,omitempty"`
+    Scope         string         `json:"scope,omitempty"`
+    Tables        []string       `json:"tables,omitempty"`
+    Visibility    string         `json:"visibility,omitempty"`
+    Coverage      SchemaCoverage `json:"coverage,omitempty"`
+    // contains filtered or unexported fields
+}
+```
+
+<a name="SchemaContext.UnmarshalJSON"></a>
+### func \(\*SchemaContext\) UnmarshalJSON
+
+```go
+func (v *SchemaContext) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="SchemaCoverage"></a>
+## type SchemaCoverage
+
+SchemaCoverage separates object definitions from collection completeness.
+
+```go
+type SchemaCoverage struct {
+    Tables      CoverageState `json:"tables,omitempty"`
+    Columns     CoverageState `json:"columns,omitempty"`
+    Indexes     CoverageState `json:"indexes,omitempty"`
+    ForeignKeys CoverageState `json:"foreign_keys,omitempty"`
+    Checks      CoverageState `json:"checks,omitempty"`
+    Identity    CoverageState `json:"identity,omitempty"`
+    Version     CoverageState `json:"version,omitempty"`
+}
+```
+
+<a name="SchemaCoverage.UnmarshalJSON"></a>
+### func \(\*SchemaCoverage\) UnmarshalJSON
+
+```go
+func (v *SchemaCoverage) UnmarshalJSON(b []byte) error
 ```
 
 
@@ -5454,11 +5850,24 @@ TableSchema describes a table in a schema diff.
 
 ```go
 type TableSchema struct {
-    Name    string         `json:"name"`
-    Columns []ColumnSchema `json:"columns,omitempty"`
-    Indexes []IndexSchema  `json:"indexes,omitempty"`
+    Identity    ObjectIdentity     `json:"identity,omitempty"`
+    Coverage    SchemaCoverage     `json:"coverage,omitempty"`
+    ForeignKeys []ForeignKeySchema `json:"foreign_keys,omitempty"`
+    Checks      []CheckSchema      `json:"checks,omitempty"`
+    Name        string             `json:"name"`
+    Columns     []ColumnSchema     `json:"columns,omitempty"`
+    Indexes     []IndexSchema      `json:"indexes,omitempty"`
 }
 ```
+
+<a name="TableSchema.UnmarshalJSON"></a>
+### func \(\*TableSchema\) UnmarshalJSON
+
+```go
+func (v *TableSchema) UnmarshalJSON(b []byte) error
+```
+
+
 
 # model
 
@@ -6145,6 +6554,15 @@ Package publicoutput provides detached display summaries and fixed public errors
 - [Variables](<#variables>)
 - [func Write\(w io.Writer, b \[\]byte\) error](<#Write>)
 - [func WriteSummary\(w io.Writer, v SummaryView\) error](<#WriteSummary>)
+- [type CapabilityAssessment](<#CapabilityAssessment>)
+  - [func \(a CapabilityAssessment\) Format\(s fmt.State, \_ rune\)](<#CapabilityAssessment.Format>)
+  - [func \(a CapabilityAssessment\) MarshalJSON\(\) \(\[\]byte, error\)](<#CapabilityAssessment.MarshalJSON>)
+  - [func \(a CapabilityAssessment\) String\(\) string](<#CapabilityAssessment.String>)
+- [type CapabilityView](<#CapabilityView>)
+  - [func \(v CapabilityView\) Format\(s fmt.State, \_ rune\)](<#CapabilityView.Format>)
+  - [func \(v CapabilityView\) MarshalJSON\(\) \(\[\]byte, error\)](<#CapabilityView.MarshalJSON>)
+  - [func \(v CapabilityView\) PublicView\(\) CapabilityView](<#CapabilityView.PublicView>)
+  - [func \(v CapabilityView\) String\(\) string](<#CapabilityView.String>)
 - [type Error](<#Error>)
   - [func \(Error\) Error\(\) string](<#Error.Error>)
 - [type ItemView](<#ItemView>)
@@ -6182,6 +6600,98 @@ Write writes library\-owned public bytes and discards sink error details.
 
 ```go
 func WriteSummary(w io.Writer, v SummaryView) error
+```
+
+
+
+<a name="CapabilityAssessment"></a>
+## type CapabilityAssessment
+
+CapabilityAssessment separates general support from supplied target conditions. Neither axis is authorization, freshness, or an execution guarantee.
+
+```go
+type CapabilityAssessment struct {
+    Support    string `json:"support"`
+    Conditions string `json:"conditions"`
+}
+```
+
+<a name="CapabilityAssessment.Format"></a>
+### func \(CapabilityAssessment\) Format
+
+```go
+func (a CapabilityAssessment) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="CapabilityAssessment.MarshalJSON"></a>
+### func \(CapabilityAssessment\) MarshalJSON
+
+```go
+func (a CapabilityAssessment) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="CapabilityAssessment.String"></a>
+### func \(CapabilityAssessment\) String
+
+```go
+func (a CapabilityAssessment) String() string
+```
+
+
+
+<a name="CapabilityView"></a>
+## type CapabilityView
+
+CapabilityView contains closed, non\-executable operation classifications.
+
+```go
+type CapabilityView struct {
+    Operation           string               `json:"operation"`
+    Source              string               `json:"source"`
+    LockFree            CapabilityAssessment `json:"lock_free"`
+    NoRebuild           CapabilityAssessment `json:"no_rebuild"`
+    Transactional       CapabilityAssessment `json:"transactional"`
+    Concurrent          CapabilityAssessment `json:"concurrent"`
+    ConcurrentRequested bool                 `json:"concurrent_requested"`
+}
+```
+
+<a name="CapabilityView.Format"></a>
+### func \(CapabilityView\) Format
+
+```go
+func (v CapabilityView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="CapabilityView.MarshalJSON"></a>
+### func \(CapabilityView\) MarshalJSON
+
+```go
+func (v CapabilityView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="CapabilityView.PublicView"></a>
+### func \(CapabilityView\) PublicView
+
+```go
+func (v CapabilityView) PublicView() CapabilityView
+```
+
+PublicView maps all arbitrary strings to closed vocabulary. The returned display claims cannot establish whether any observation actually occurred.
+
+<a name="CapabilityView.String"></a>
+### func \(CapabilityView\) String
+
+```go
+func (v CapabilityView) String() string
 ```
 
 
@@ -6256,21 +6766,22 @@ SummaryView is a bounded, non\-executable resource/status display. Counts and bo
 
 ```go
 type SummaryView struct {
-    Kind           string     `json:"kind"`
-    Version        int        `json:"version"`
-    Present        bool       `json:"present"`
-    Known          bool       `json:"known"`
-    Fresh          bool       `json:"fresh"`
-    Exists         bool       `json:"exists"`
-    Dirty          bool       `json:"dirty"`
-    Unknown        bool       `json:"unknown"`
-    Drifted        bool       `json:"drifted"`
-    Count          int        `json:"count"`
-    PendingCount   int        `json:"pending_count"`
-    WarningCount   int        `json:"warning_count"`
-    Items          []ItemView `json:"items"`
-    Truncated      bool       `json:"truncated"`
-    DetailsOmitted bool       `json:"details_omitted"`
+    Capabilities   []CapabilityView `json:"capabilities,omitempty"`
+    Kind           string           `json:"kind"`
+    Version        int              `json:"version"`
+    Present        bool             `json:"present"`
+    Known          bool             `json:"known"`
+    Fresh          bool             `json:"fresh"`
+    Exists         bool             `json:"exists"`
+    Dirty          bool             `json:"dirty"`
+    Unknown        bool             `json:"unknown"`
+    Drifted        bool             `json:"drifted"`
+    Count          int              `json:"count"`
+    PendingCount   int              `json:"pending_count"`
+    WarningCount   int              `json:"warning_count"`
+    Items          []ItemView       `json:"items"`
+    Truncated      bool             `json:"truncated"`
+    DetailsOmitted bool             `json:"details_omitted"`
 }
 ```
 
