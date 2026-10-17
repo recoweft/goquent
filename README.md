@@ -125,6 +125,8 @@ import "github.com/recoweft/goquent/orm"
   - [func \(db \*DB\) WithOptions\(opts ...Option\) \*DB](<#DB.WithOptions>)
   - [func \(db \*DB\) WrapExecutor\(exec Executor, opts ...Option\) \*DB](<#DB.WrapExecutor>)
   - [func \(db \*DB\) WrapTx\(tx \*sql.Tx, opts ...Option\) \*DB](<#DB.WrapTx>)
+- [type DefaultDefinition](<#DefaultDefinition>)
+- [type DefaultState](<#DefaultState>)
 - [type ErrBoolParse](<#ErrBoolParse>)
   - [func \(e ErrBoolParse\) Error\(\) string](<#ErrBoolParse.Error>)
 - [type Evidence](<#Evidence>)
@@ -320,20 +322,28 @@ const (
 )
 ```
 
-<a name="AddTable"></a>
+<a name="DefaultUnknown"></a>
 
 ```go
 const (
-    AddTable         = migration.AddTable
-    DropTable        = migration.DropTable
-    AddColumn        = migration.AddColumn
-    DropColumn       = migration.DropColumn
-    RenameColumn     = migration.RenameColumn
-    AlterColumnType  = migration.AlterColumnType
-    AlterNullability = migration.AlterNullability
-    AddIndex         = migration.AddIndex
-    DropIndex        = migration.DropIndex
-    UnsupportedStep  = migration.UnsupportedStep
+    DefaultUnknown                     = migration.DefaultUnknown
+    DefaultNone                        = migration.DefaultNone
+    DefaultExpression                  = migration.DefaultExpression
+    AlterIndex                         = migration.AlterIndex
+    AlterColumnDefault                 = migration.AlterColumnDefault
+    WarningSchemaComparisonUnknown     = migration.WarningSchemaComparisonUnknown
+    WarningMigrationAlterIndex         = migration.WarningMigrationAlterIndex
+    WarningMigrationAlterColumnDefault = migration.WarningMigrationAlterColumnDefault
+    AddTable                           = migration.AddTable
+    DropTable                          = migration.DropTable
+    AddColumn                          = migration.AddColumn
+    DropColumn                         = migration.DropColumn
+    RenameColumn                       = migration.RenameColumn
+    AlterColumnType                    = migration.AlterColumnType
+    AlterNullability                   = migration.AlterNullability
+    AddIndex                           = migration.AddIndex
+    DropIndex                          = migration.DropIndex
+    UnsupportedStep                    = migration.UnsupportedStep
 
     WarningMigrationUnsupported           = migration.WarningMigrationUnsupported
     WarningMigrationDropTable             = migration.WarningMigrationDropTable
@@ -1616,6 +1626,24 @@ func (db *DB) WrapTx(tx *sql.Tx, opts ...Option) *DB
 ```
 
 WrapTx returns a DB copy that executes through tx while preserving this DB's dialect, scan options, and raw\-SQL approval state.
+
+<a name="DefaultDefinition"></a>
+## type DefaultDefinition
+
+
+
+```go
+type DefaultDefinition = migration.DefaultDefinition
+```
+
+<a name="DefaultState"></a>
+## type DefaultState
+
+
+
+```go
+type DefaultState = migration.DefaultState
+```
 
 <a name="ErrBoolParse"></a>
 ## type ErrBoolParse
@@ -4543,6 +4571,8 @@ import "github.com/recoweft/goquent/orm/migration"
 - [type ColumnSchema](<#ColumnSchema>)
   - [func \(c ColumnSchema\) MarshalJSON\(\) \(\[\]byte, error\)](<#ColumnSchema.MarshalJSON>)
   - [func \(c \*ColumnSchema\) UnmarshalJSON\(b \[\]byte\) error](<#ColumnSchema.UnmarshalJSON>)
+- [type DefaultDefinition](<#DefaultDefinition>)
+- [type DefaultState](<#DefaultState>)
 - [type DriftReport](<#DriftReport>)
   - [func CompareSchemaDrift\(desired, current Schema\) DriftReport](<#CompareSchemaDrift>)
   - [func \(s DriftReport\) PublicView\(\) publicoutput.SummaryView](<#DriftReport.PublicView>)
@@ -4600,10 +4630,13 @@ import "github.com/recoweft/goquent/orm/migration"
 
 ## Constants
 
-<a name="WarningMigrationUnsupported"></a>
+<a name="WarningSchemaComparisonUnknown"></a>
 
 ```go
 const (
+    WarningSchemaComparisonUnknown        = "SCHEMA_COMPARISON_UNKNOWN"
+    WarningMigrationAlterIndex            = "MIGRATION_ALTER_INDEX"
+    WarningMigrationAlterColumnDefault    = "MIGRATION_ALTER_COLUMN_DEFAULT"
     WarningMigrationUnsupported           = "MIGRATION_UNSUPPORTED"
     WarningMigrationDropTable             = "MIGRATION_DROP_TABLE"
     WarningMigrationDropColumn            = "MIGRATION_DROP_COLUMN"
@@ -4747,9 +4780,12 @@ type ColumnSchema struct {
     Type     string `json:"type,omitempty"`
     Nullable bool   `json:"nullable"`
     // NullableKnown records an explicit declaration, not live evidence.
-    NullableKnown     bool   `json:"-"`
-    HasDefault        bool   `json:"has_default,omitempty"`
-    DefaultExpression string `json:"default_expression,omitempty"`
+    NullableKnown     bool         `json:"-"`
+    HasDefault        bool         `json:"has_default,omitempty"`
+    DefaultExpression string       `json:"default_expression,omitempty"`
+    DefaultState      DefaultState `json:"default_state,omitempty"`
+    // DefaultSource identifies catalog representation, not trusted evidence.
+    DefaultSource string `json:"default_source,omitempty"`
 }
 ```
 
@@ -4771,6 +4807,41 @@ func (c *ColumnSchema) UnmarshalJSON(b []byte) error
 
 UnmarshalJSON preserves nullable presence and refuses ambiguous declarations.
 
+<a name="DefaultDefinition"></a>
+## type DefaultDefinition
+
+DefaultDefinition retains sensitive source data. It is not a public view.
+
+```go
+type DefaultDefinition struct {
+    State DefaultState `json:"state"`
+    // DeclaredState and HasDefault retain the original, possibly contradictory input.
+    DeclaredState DefaultState `json:"declared_state,omitempty"`
+    HasDefault    bool         `json:"has_default"`
+    Expression    string       `json:"expression,omitempty"`
+    Source        string       `json:"source,omitempty"`
+}
+```
+
+<a name="DefaultState"></a>
+## type DefaultState
+
+DefaultState describes a declaration, never live verification or authorization.
+
+```go
+type DefaultState string
+```
+
+<a name="DefaultUnknown"></a>
+
+```go
+const (
+    DefaultUnknown    DefaultState = "unknown"
+    DefaultNone       DefaultState = "none"
+    DefaultExpression DefaultState = "expression"
+)
+```
+
 <a name="DriftReport"></a>
 ## type DriftReport
 
@@ -4778,11 +4849,12 @@ DriftReport reports whether the current database schema differs from the desired
 
 ```go
 type DriftReport struct {
-    Drifted       bool            `json:"drifted"`
-    DesiredTables int             `json:"desired_tables"`
-    CurrentTables int             `json:"current_tables"`
-    RiskLevel     query.RiskLevel `json:"risk_level"`
-    Steps         []MigrationStep `json:"steps,omitempty"`
+    ComparisonIncomplete bool            `json:"comparison_incomplete"`
+    Drifted              bool            `json:"drifted"`
+    DesiredTables        int             `json:"desired_tables"`
+    CurrentTables        int             `json:"current_tables"`
+    RiskLevel            query.RiskLevel `json:"risk_level"`
+    Steps                []MigrationStep `json:"steps,omitempty"`
 }
 ```
 
@@ -4828,6 +4900,9 @@ type IndexSchema struct {
     Columns    []string `json:"columns,omitempty"`
     Unique     bool     `json:"unique,omitempty"`
     Concurrent bool     `json:"concurrent,omitempty"`
+    // DefinitionUnknown prevents incomplete catalog definitions from comparing equal.
+    DefinitionUnknown bool   `json:"definition_unknown,omitempty"`
+    RawDefinition     string `json:"raw_definition,omitempty"`
 }
 ```
 
@@ -4838,16 +4913,17 @@ MigrationPlan explains a schema migration before it is applied.
 
 ```go
 type MigrationPlan struct {
-    SQL               string                  `json:"sql"`
-    Statements        []MigrationStatement    `json:"statements,omitempty"`
-    Steps             []MigrationStep         `json:"steps,omitempty"`
-    RiskLevel         query.RiskLevel         `json:"risk_level"`
-    Warnings          []query.Warning         `json:"warnings,omitempty"`
-    RequiredApproval  bool                    `json:"required_approval"`
-    Blocked           bool                    `json:"blocked,omitempty"`
-    Approval          *query.Approval         `json:"approval,omitempty"`
-    AnalysisPrecision query.AnalysisPrecision `json:"analysis_precision"`
-    Metadata          map[string]any          `json:"metadata,omitempty"`
+    ComparisonIncomplete bool                    `json:"comparison_incomplete,omitempty"`
+    SQL                  string                  `json:"sql"`
+    Statements           []MigrationStatement    `json:"statements,omitempty"`
+    Steps                []MigrationStep         `json:"steps,omitempty"`
+    RiskLevel            query.RiskLevel         `json:"risk_level"`
+    Warnings             []query.Warning         `json:"warnings,omitempty"`
+    RequiredApproval     bool                    `json:"required_approval"`
+    Blocked              bool                    `json:"blocked,omitempty"`
+    Approval             *query.Approval         `json:"approval,omitempty"`
+    AnalysisPrecision    query.AnalysisPrecision `json:"analysis_precision"`
+    Metadata             map[string]any          `json:"metadata,omitempty"`
 }
 ```
 
@@ -4921,18 +4997,19 @@ MigrationPlanView is detached display data, never an apply or approval input.
 
 ```go
 type MigrationPlanView struct {
-    Kind             string              `json:"kind"`
-    Version          int                 `json:"version"`
-    Risk             string              `json:"risk"`
-    Precision        string              `json:"precision"`
-    RequiredApproval bool                `json:"required_approval"`
-    Blocked          bool                `json:"blocked"`
-    StepCount        int                 `json:"step_count"`
-    WarningCount     int                 `json:"warning_count"`
-    Steps            []StepView          `json:"steps"`
-    Warnings         []query.WarningView `json:"warnings"`
-    Truncated        bool                `json:"truncated"`
-    DetailsOmitted   bool                `json:"details_omitted"`
+    ComparisonIncomplete bool                `json:"comparison_incomplete"`
+    Kind                 string              `json:"kind"`
+    Version              int                 `json:"version"`
+    Risk                 string              `json:"risk"`
+    Precision            string              `json:"precision"`
+    RequiredApproval     bool                `json:"required_approval"`
+    Blocked              bool                `json:"blocked"`
+    StepCount            int                 `json:"step_count"`
+    WarningCount         int                 `json:"warning_count"`
+    Steps                []StepView          `json:"steps"`
+    Warnings             []query.WarningView `json:"warnings"`
+    Truncated            bool                `json:"truncated"`
+    DetailsOmitted       bool                `json:"details_omitted"`
 }
 ```
 
@@ -5009,6 +5086,15 @@ MigrationStep describes one schema change extracted from migration SQL.
 
 ```go
 type MigrationStep struct {
+    // Table definitions are detached sensitive source records, never public views.
+    CurrentTable   *TableSchema       `json:"current_table,omitempty"`
+    DesiredTable   *TableSchema       `json:"desired_table,omitempty"`
+    CurrentIndex   *IndexSchema       `json:"current_index,omitempty"`
+    DesiredIndex   *IndexSchema       `json:"desired_index,omitempty"`
+    CurrentDefault *DefaultDefinition `json:"current_default,omitempty"`
+    DesiredDefault *DefaultDefinition `json:"desired_default,omitempty"`
+    // ComparisonUnknown is a diagnostic marker, not a detected schema change.
+    ComparisonUnknown bool                    `json:"comparison_unknown,omitempty"`
     Type              MigrationStepType       `json:"type"`
     Table             string                  `json:"table,omitempty"`
     Column            string                  `json:"column,omitempty"`
@@ -5044,16 +5130,18 @@ type MigrationStepType string
 
 ```go
 const (
-    AddTable         MigrationStepType = "add_table"
-    DropTable        MigrationStepType = "drop_table"
-    AddColumn        MigrationStepType = "add_column"
-    DropColumn       MigrationStepType = "drop_column"
-    RenameColumn     MigrationStepType = "rename_column"
-    AlterColumnType  MigrationStepType = "alter_column_type"
-    AlterNullability MigrationStepType = "alter_nullability"
-    AddIndex         MigrationStepType = "add_index"
-    DropIndex        MigrationStepType = "drop_index"
-    UnsupportedStep  MigrationStepType = "unsupported"
+    AddTable           MigrationStepType = "add_table"
+    DropTable          MigrationStepType = "drop_table"
+    AddColumn          MigrationStepType = "add_column"
+    DropColumn         MigrationStepType = "drop_column"
+    RenameColumn       MigrationStepType = "rename_column"
+    AlterColumnType    MigrationStepType = "alter_column_type"
+    AlterNullability   MigrationStepType = "alter_nullability"
+    AlterIndex         MigrationStepType = "alter_index"
+    AlterColumnDefault MigrationStepType = "alter_column_default"
+    AddIndex           MigrationStepType = "add_index"
+    DropIndex          MigrationStepType = "drop_index"
+    UnsupportedStep    MigrationStepType = "unsupported"
 )
 ```
 
