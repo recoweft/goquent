@@ -109,8 +109,14 @@ func TestSchemaDefinitionLiveExport(t *testing.T) {
 				mutate func(*migration.Schema)
 				kind   migration.MigrationStepType
 			}{
-				{"order", func(s *migration.Schema) { s.Tables[0].Indexes[0].Columns = []string{"b", "a"} }, migration.AlterIndex},
-				{"composition", func(s *migration.Schema) { s.Tables[0].Indexes[0].Columns = []string{"a"} }, migration.AlterIndex},
+				{"order", func(s *migration.Schema) {
+					s.Tables[0].Indexes[0].Columns = []string{"b", "a"}
+					s.Tables[0].Indexes[0].Keys[0], s.Tables[0].Indexes[0].Keys[1] = s.Tables[0].Indexes[0].Keys[1], s.Tables[0].Indexes[0].Keys[0]
+				}, migration.AlterIndex},
+				{"composition", func(s *migration.Schema) {
+					s.Tables[0].Indexes[0].Columns = []string{"a"}
+					s.Tables[0].Indexes[0].Keys = s.Tables[0].Indexes[0].Keys[:1]
+				}, migration.AlterIndex},
 				{"unique", func(s *migration.Schema) { s.Tables[0].Indexes[0].Unique = true }, migration.AlterIndex},
 				{"default", func(s *migration.Schema) { s.Tables[0].Columns[0].DefaultExpression = "3" }, migration.AlterColumnDefault},
 				{"remove default", func(s *migration.Schema) {
@@ -166,11 +172,11 @@ func TestSchemaDefinitionLiveExport(t *testing.T) {
 			foundUnknown := false
 			for _, idx := range unsupported.Tables[0].Indexes {
 				if idx.Name == "gq_ai_11_unsupported_idx" {
-					foundUnknown = idx.DefinitionUnknown
+					foundUnknown = !idx.DefinitionUnknown && (idx.Predicate.State == "expression" || (len(idx.Keys) == 1 && idx.Keys[0].Prefix == 4))
 				}
 			}
 			if !foundUnknown {
-				t.Fatal("unsupported index catalog shape promoted")
+				t.Fatal("extended index representation lost")
 			}
 			report := migration.CompareSchemaDrift(unsupported, unsupported)
 			if report.Drifted || !report.ComparisonIncomplete {

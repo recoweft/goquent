@@ -12,7 +12,8 @@ import (
 )
 
 func comparisonFixture() Schema {
-	return Schema{Tables: []TableSchema{{Name: "records", Columns: []ColumnSchema{{Name: "a", Type: "text", DefaultState: DefaultNone}, {Name: "b", Type: "text", DefaultState: DefaultNone}}, Indexes: []IndexSchema{{Name: "records_idx", Columns: []string{"a", "b"}}}}}}
+	s := Schema{Tables: []TableSchema{{Name: "records", Columns: []ColumnSchema{{Name: "a", Type: "text", DefaultState: DefaultNone}, {Name: "b", Type: "text", DefaultState: DefaultNone}}, Indexes: []IndexSchema{{Name: "records_idx", Columns: []string{"a", "b"}, Attributes: CoverageComplete, Method: "btree", Visibility: "visible", Predicate: ExpressionDefinition{State: "none"}}}}}}
+	return declaredFixture(s)
 }
 func TestDefaultStateComparison(t *testing.T) {
 	none := ColumnSchema{DefaultState: DefaultNone}
@@ -150,14 +151,14 @@ func TestAmbiguousSchemaAndKnownChanges(t *testing.T) {
 		a, b := comparisonFixture(), comparisonFixture()
 		mutate(&a)
 		mutate(&b)
-		b.Tables = append(b.Tables, TableSchema{Name: "added"})
+		b.Tables = append(b.Tables, TableSchema{Name: "added", Identity: ObjectIdentity{"testdb", "public", "added", CoverageComplete}, Coverage: completeFixtureCoverage()})
 		p := DiffSchemas(a, b)
 		if !p.ComparisonIncomplete || !hasStep(p.Steps, AddTable, "added") {
 			t.Fatal("unknown erased or known change lost")
 		}
 	}
-	if len(DiffSchemas(Schema{}, Schema{Tables: []TableSchema{}}).Steps) != 0 {
-		t.Fatal("empty differs from nil")
+	if !DiffSchemas(Schema{}, Schema{Tables: []TableSchema{}}).ComparisonIncomplete {
+		t.Fatal("legacy empty must remain unknown")
 	}
 }
 func TestComparisonPublicCanary(t *testing.T) {

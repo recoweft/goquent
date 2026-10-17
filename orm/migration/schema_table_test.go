@@ -47,13 +47,14 @@ func TestWholeTableComparison(t *testing.T) {
 					s := comparisonFixture()
 					tc.mutate(&s.Tables[0])
 					s.Tables[0].Indexes[0].RawDefinition = "private_canary"
-					a, b := Schema{}, s
+					a, b := declaredFixture(Schema{}), s
 					if drop {
 						a, b = b, a
 					}
 					if nonempty {
 						old, next := comparisonFixture().Tables[0], comparisonFixture().Tables[0]
 						old.Name, next.Name = "existing", "existing"
+						old.Identity.Name, next.Identity.Name = "existing", "existing"
 						next.Columns[0].Type = "integer"
 						a.Tables = append(a.Tables, old)
 						b.Tables = append(b.Tables, next)

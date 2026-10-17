@@ -8,14 +8,19 @@ import (
 
 // Schema is a minimal desired/current schema representation for diff planning.
 type Schema struct {
-	Tables []TableSchema `json:"tables,omitempty"`
+	Context *SchemaContext `json:"context,omitempty"`
+	Tables  []TableSchema  `json:"tables,omitempty"`
 }
 
 // TableSchema describes a table in a schema diff.
 type TableSchema struct {
-	Name    string         `json:"name"`
-	Columns []ColumnSchema `json:"columns,omitempty"`
-	Indexes []IndexSchema  `json:"indexes,omitempty"`
+	Identity    ObjectIdentity     `json:"identity,omitempty"`
+	Coverage    SchemaCoverage     `json:"coverage,omitempty"`
+	ForeignKeys []ForeignKeySchema `json:"foreign_keys,omitempty"`
+	Checks      []CheckSchema      `json:"checks,omitempty"`
+	Name        string             `json:"name"`
+	Columns     []ColumnSchema     `json:"columns,omitempty"`
+	Indexes     []IndexSchema      `json:"indexes,omitempty"`
 }
 
 // ColumnSchema describes a column in a schema diff.
@@ -34,10 +39,16 @@ type ColumnSchema struct {
 
 // IndexSchema describes an index in a schema diff.
 type IndexSchema struct {
-	Name       string   `json:"name"`
-	Columns    []string `json:"columns,omitempty"`
-	Unique     bool     `json:"unique,omitempty"`
-	Concurrent bool     `json:"concurrent,omitempty"`
+	Keys       []IndexKey           `json:"keys,omitempty"`
+	Predicate  ExpressionDefinition `json:"predicate,omitempty"`
+	Method     string               `json:"method,omitempty"`
+	Include    []string             `json:"include,omitempty"`
+	Visibility string               `json:"visibility,omitempty"`
+	Attributes CoverageState        `json:"attributes,omitempty"`
+	Name       string               `json:"name"`
+	Columns    []string             `json:"columns,omitempty"`
+	Unique     bool                 `json:"unique,omitempty"`
+	Concurrent bool                 `json:"concurrent,omitempty"`
 	// DefinitionUnknown prevents incomplete catalog definitions from comparing equal.
 	DefinitionUnknown bool   `json:"definition_unknown,omitempty"`
 	RawDefinition     string `json:"raw_definition,omitempty"`
@@ -63,30 +74,7 @@ func PlanSteps(steps []MigrationStep) *MigrationPlan {
 
 // DiffSchemas creates a migration plan that transforms current into desired.
 func DiffSchemas(current, desired Schema) *MigrationPlan {
-	current, desired, invalid := comparableSchemas(current, desired)
-	currentTables := tableMap(current.Tables)
-	desiredTables := tableMap(desired.Tables)
-
-	var steps []MigrationStep
-	if invalid {
-		steps = append(steps, comparisonUnknown("", "", ""))
-	}
-	for _, table := range desired.Tables {
-		if _, ok := currentTables[tableKey(table.Name)]; !ok {
-			steps = append(steps, MigrationStep{Type: AddTable, Table: table.Name, DesiredTable: copyTable(table)})
-			steps = append(steps, tableComparisonDiagnostics(table)...)
-			continue
-		}
-		steps = append(steps, diffTable(currentTables[tableKey(table.Name)], table)...)
-	}
-	for _, table := range current.Tables {
-		if _, ok := desiredTables[tableKey(table.Name)]; !ok {
-			steps = append(steps, MigrationStep{Type: DropTable, Table: table.Name, CurrentTable: copyTable(table)})
-			steps = append(steps, tableComparisonDiagnostics(table)...)
-		}
-	}
-
-	return schemaDiffPlan(steps)
+	return compareExtendedSchemas(current, desired)
 }
 
 func diffTable(current, desired TableSchema) []MigrationStep {
@@ -157,6 +145,9 @@ func diffTable(current, desired TableSchema) []MigrationStep {
 			continue
 		}
 		if _, ok := desiredColumns[columnKey(column.Name)]; !ok {
+			if columnDefault(column).State == DefaultUnknown {
+				steps = append(steps, comparisonUnknown(desired.Name, column.Name, ""))
+			}
 			steps = append(steps, MigrationStep{Type: DropColumn, Table: desired.Name, Column: column.Name})
 		}
 	}
@@ -172,12 +163,20 @@ func diffTable(current, desired TableSchema) []MigrationStep {
 				marker.CurrentIndex = copyIndex(old)
 			}
 			steps = append(steps, marker)
+			if !exists && uniqueIndexName(index, desired) {
+				steps = append(steps, MigrationStep{Type: AddIndex, Table: desired.Name, Index: index.Name, Concurrent: index.Concurrent, DesiredIndex: copyIndex(index)})
+			}
 			continue
 		}
 		if !exists {
 			steps = append(steps, MigrationStep{Type: AddIndex, Table: desired.Name, Index: index.Name, Concurrent: index.Concurrent, DesiredIndex: copyIndex(index)})
 		} else if !equalIndex(old, index) {
 			steps = append(steps, MigrationStep{Type: AlterIndex, Table: desired.Name, Index: index.Name, Concurrent: index.Concurrent, CurrentIndex: copyIndex(old), DesiredIndex: copyIndex(index)})
+		} else if old.RawDefinition != "" && index.RawDefinition != "" && old.RawDefinition != index.RawDefinition {
+			marker := comparisonUnknown(desired.Name, "", index.Name)
+			marker.CurrentIndex = copyIndex(old)
+			marker.DesiredIndex = copyIndex(index)
+			steps = append(steps, marker)
 		}
 	}
 	for _, index := range current.Indexes {
@@ -186,6 +185,9 @@ func diffTable(current, desired TableSchema) []MigrationStep {
 				marker := comparisonUnknown(desired.Name, "", index.Name)
 				marker.CurrentIndex = copyIndex(index)
 				steps = append(steps, marker)
+				if uniqueIndexName(index, current) {
+					steps = append(steps, MigrationStep{Type: DropIndex, Table: desired.Name, Index: index.Name, CurrentIndex: copyIndex(index)})
+				}
 				continue
 			}
 			steps = append(steps, MigrationStep{Type: DropIndex, Table: desired.Name, Index: index.Name, CurrentIndex: copyIndex(index)})
@@ -224,3 +226,16 @@ func columnKey(name string) string { return strings.ToLower(strings.TrimSpace(na
 func indexKey(name string) string  { return strings.ToLower(strings.TrimSpace(name)) }
 
 func boolPtr(v bool) *bool { return &v }
+
+func uniqueIndexName(i IndexSchema, t TableSchema) bool {
+	if !simpleSchemaName.MatchString(i.Name) {
+		return false
+	}
+	n := 0
+	for _, j := range t.Indexes {
+		if indexKey(j.Name) == i.Name {
+			n++
+		}
+	}
+	return n == 1
+}

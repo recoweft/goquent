@@ -23,7 +23,7 @@ func TestCompareSchemaDriftReportsSteps(t *testing.T) {
 		},
 	}}}
 
-	report := CompareSchemaDrift(desired, current)
+	report := CompareSchemaDrift(declaredFixture(desired), declaredFixture(current))
 	if !report.Drifted {
 		t.Fatalf("expected drift report, got %#v", report)
 	}
@@ -39,8 +39,8 @@ func TestCompareSchemaDriftReportsSteps(t *testing.T) {
 
 func TestWriteDriftPrettyAndJSON(t *testing.T) {
 	report := CompareSchemaDrift(
-		Schema{Tables: []TableSchema{{Name: "users", Columns: []ColumnSchema{{Name: "id", Type: "uuid", DefaultState: DefaultNone}}}}},
-		Schema{Tables: []TableSchema{{Name: "users", Columns: []ColumnSchema{{Name: "id", Type: "bigint", DefaultState: DefaultNone}}}}},
+		declaredFixture(Schema{Tables: []TableSchema{{Name: "users", Columns: []ColumnSchema{{Name: "id", Type: "uuid", DefaultState: DefaultNone}}}}}),
+		declaredFixture(Schema{Tables: []TableSchema{{Name: "users", Columns: []ColumnSchema{{Name: "id", Type: "bigint", DefaultState: DefaultNone}}}}}),
 	)
 
 	var pretty bytes.Buffer

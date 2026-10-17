@@ -115,14 +115,14 @@ func TestMigrateDriftCommand(t *testing.T) {
 	dir := t.TempDir()
 	desiredPath := filepath.Join(dir, "desired.json")
 	currentPath := filepath.Join(dir, "current.json")
-	writeJSON(t, desiredPath, migration.Schema{Tables: []migration.TableSchema{{
+	writeJSON(t, desiredPath, declaredCLISchema(migration.Schema{Tables: []migration.TableSchema{{
 		Name:    "users",
 		Columns: []migration.ColumnSchema{{Name: "id", Type: "uuid", DefaultState: migration.DefaultNone}},
-	}}})
-	writeJSON(t, currentPath, migration.Schema{Tables: []migration.TableSchema{{
+	}}}))
+	writeJSON(t, currentPath, declaredCLISchema(migration.Schema{Tables: []migration.TableSchema{{
 		Name:    "users",
 		Columns: []migration.ColumnSchema{{Name: "id", Type: "bigint", DefaultState: migration.DefaultNone}},
-	}}})
+	}}}))
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"migrate", "drift", "--desired-schema", desiredPath, "--database-schema", currentPath, "--format", "json"}, &stdout, &stderr)
@@ -212,11 +212,22 @@ func TestWholeTableUnknownCLI(t *testing.T) {
 		}
 		var out, errout bytes.Buffer
 		code := run([]string{"migrate", "drift", "--desired-schema", desired, "--database-schema", current, "--format", "json"}, &out, &errout)
-		if code != 2 || !bytes.Contains(out.Bytes(), []byte(`"unknown":true`)) || !bytes.Contains(out.Bytes(), []byte(`"known":false`)) || !bytes.Contains(out.Bytes(), []byte(`"drifted":true`)) {
+		if code != 2 || !bytes.Contains(out.Bytes(), []byte(`"unknown":true`)) || !bytes.Contains(out.Bytes(), []byte(`"known":false`)) || !bytes.Contains(out.Bytes(), []byte(`"drifted":false`)) {
 			t.Fatalf("unknown table reported complete: %d %s", code, out.String())
 		}
 		if bytes.Contains(out.Bytes(), []byte("private_")) || bytes.Contains(errout.Bytes(), []byte("private_")) {
 			t.Fatal("public leak")
 		}
 	}
+}
+
+// Positive CLI fixtures explicitly declare namespace and collection coverage.
+func declaredCLISchema(s migration.Schema) migration.Schema {
+	c := migration.SchemaCoverage{Tables: migration.CoverageComplete, Columns: migration.CoverageComplete, Indexes: migration.CoverageComplete, ForeignKeys: migration.CoverageComplete, Checks: migration.CoverageComplete, Identity: migration.CoverageComplete}
+	s.Context = &migration.SchemaContext{Dialect: "postgres", Catalog: "testdb", Schema: "public", Scope: "namespace", Visibility: "declared", Coverage: c}
+	for i := range s.Tables {
+		s.Tables[i].Coverage = c
+		s.Tables[i].Identity = migration.ObjectIdentity{Catalog: "testdb", Schema: "public", Name: s.Tables[i].Name, State: migration.CoverageComplete}
+	}
+	return s
 }

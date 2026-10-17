@@ -13,19 +13,20 @@ const MigrationPlanViewKind = "goquent.migration_plan_view"
 
 // MigrationPlanView is detached display data, never an apply or approval input.
 type MigrationPlanView struct {
-	ComparisonIncomplete bool                `json:"comparison_incomplete"`
-	Kind                 string              `json:"kind"`
-	Version              int                 `json:"version"`
-	Risk                 string              `json:"risk"`
-	Precision            string              `json:"precision"`
-	RequiredApproval     bool                `json:"required_approval"`
-	Blocked              bool                `json:"blocked"`
-	StepCount            int                 `json:"step_count"`
-	WarningCount         int                 `json:"warning_count"`
-	Steps                []StepView          `json:"steps"`
-	Warnings             []query.WarningView `json:"warnings"`
-	Truncated            bool                `json:"truncated"`
-	DetailsOmitted       bool                `json:"details_omitted"`
+	Capabilities         []OperationCapability `json:"capabilities,omitempty"`
+	ComparisonIncomplete bool                  `json:"comparison_incomplete"`
+	Kind                 string                `json:"kind"`
+	Version              int                   `json:"version"`
+	Risk                 string                `json:"risk"`
+	Precision            string                `json:"precision"`
+	RequiredApproval     bool                  `json:"required_approval"`
+	Blocked              bool                  `json:"blocked"`
+	StepCount            int                   `json:"step_count"`
+	WarningCount         int                   `json:"warning_count"`
+	Steps                []StepView            `json:"steps"`
+	Warnings             []query.WarningView   `json:"warnings"`
+	Truncated            bool                  `json:"truncated"`
+	DetailsOmitted       bool                  `json:"details_omitted"`
 }
 
 // StepView omits all executable statements, identifiers, preflight and defaults.
@@ -40,13 +41,8 @@ type StepView struct {
 	Truncated    bool                `json:"truncated"`
 }
 
-func stepType(s string) string {
-	switch MigrationStepType(s) {
-	case AddTable, DropTable, AddColumn, DropColumn, RenameColumn, AlterColumnType, AlterNullability, AlterIndex, AlterColumnDefault, AddIndex, DropIndex, UnsupportedStep:
-		return s
-	}
-	return "unknown"
-}
+func stepType(s string) string { return publicview.MigrationStep(s) }
+
 func warnings(src []query.Warning) []query.WarningView {
 	out := make([]query.WarningView, min(128, len(src)))
 	for i, w := range src[:len(out)] {
@@ -63,7 +59,14 @@ func (p *MigrationPlan) PublicView() (MigrationPlanView, error) {
 	if p == nil {
 		return MigrationPlanView{}, publicview.ErrSource
 	}
-	v := MigrationPlanView{ComparisonIncomplete: p.ComparisonIncomplete, Kind: MigrationPlanViewKind, Version: 1, Risk: string(p.RiskLevel), Precision: string(p.AnalysisPrecision), RequiredApproval: p.RequiredApproval, Blocked: p.Blocked, StepCount: len(p.Steps), WarningCount: len(p.Warnings), Warnings: warnings(p.Warnings), Truncated: len(p.Steps) > 128 || len(p.Warnings) > 128}
+	var context *SchemaContext
+	if p.CurrentSchema != nil {
+		context = p.CurrentSchema.Context
+	}
+	// Source capability labels are mutable declarations. Recompute display from
+	// the current input and any in-process reader observation, never JSON labels.
+	caps := capabilitiesFor(context, p.Steps)
+	v := MigrationPlanView{Capabilities: safeCapabilities(caps), ComparisonIncomplete: p.ComparisonIncomplete, Kind: MigrationPlanViewKind, Version: 1, Risk: string(p.RiskLevel), Precision: string(p.AnalysisPrecision), RequiredApproval: p.RequiredApproval, Blocked: p.Blocked, StepCount: len(p.Steps), WarningCount: len(p.Warnings), Warnings: warnings(p.Warnings), Truncated: len(p.Steps) > 128 || len(p.Warnings) > 128}
 	// Reserve root and every visible step before allocating warning lists.
 	n := min(128, len(p.Steps))
 	budget := 1024 - 1 - n - len(v.Warnings)
@@ -107,6 +110,8 @@ func (v MigrationPlanView) safe() (MigrationPlanView, error) {
 	}
 	v.Risk = publicview.Risk(v.Risk)
 	v.Precision = publicview.Precision(v.Precision)
+	v.Truncated = v.Truncated || len(v.Capabilities) > 128
+	v.Capabilities = safeCapabilities(v.Capabilities)
 	v.DetailsOmitted = true
 	v.StepCount = max(publicview.Nonnegative(v.StepCount), len(v.Steps))
 	v.WarningCount = max(publicview.Nonnegative(v.WarningCount), len(v.Warnings))
@@ -176,6 +181,8 @@ func WritePublicJSON(w io.Writer, v MigrationPlanView) error {
 
 func (s Schema) PublicView() publicoutput.SummaryView {
 	v := publicoutput.SummaryView{Kind: "goquent.schema_view", Version: 1, Present: true, Count: len(s.Tables), Truncated: len(s.Tables) > 128, DetailsOmitted: true}
+	v.Unknown = !schemaDefinitionComplete(s)
+	v.Known = !v.Unknown
 	for _, t := range s.Tables[:min(128, len(s.Tables))] {
 		v.Items = append(v.Items, publicoutput.ItemView{Ordinal: len(v.Items) + 1, Columns: len(t.Columns), Indexes: len(t.Indexes)})
 	}
@@ -185,5 +192,9 @@ func (s Status) PublicView() publicoutput.SummaryView {
 	return publicoutput.SummaryView{Kind: "goquent.migration_status_view", Version: 1, Present: true, Known: !s.Unknown, Exists: s.Exists, Dirty: s.Dirty, Unknown: s.Unknown, Count: len(s.Applied), PendingCount: len(s.Pending), WarningCount: len(s.Warnings), DetailsOmitted: true}
 }
 func (s DriftReport) PublicView() publicoutput.SummaryView {
-	return publicoutput.SummaryView{Kind: "goquent.drift_view", Version: 1, Present: true, Drifted: s.Drifted, Unknown: s.ComparisonIncomplete, Known: !s.ComparisonIncomplete, Count: len(s.Steps), DetailsOmitted: true}
+	var context *SchemaContext
+	if s.CurrentSchema != nil {
+		context = s.CurrentSchema.Context
+	}
+	return publicoutput.SummaryView{Capabilities: safeCapabilities(capabilitiesFor(context, s.Steps)), Kind: "goquent.drift_view", Version: 1, Present: true, Drifted: s.Drifted, Unknown: s.ComparisonIncomplete, Known: !s.ComparisonIncomplete, Count: len(s.Steps), DetailsOmitted: true}
 }

@@ -57,24 +57,8 @@ func ReadSchema(ctx context.Context, exec StatusExecutor, dialect driver.Dialect
 	}
 }
 
-func (o *SchemaReadOptions) normalize() {
-	o.Schema = strings.TrimSpace(o.Schema)
-	out := make([]string, 0, len(o.Tables))
-	seen := map[string]struct{}{}
-	for _, table := range o.Tables {
-		table = strings.TrimSpace(table)
-		if table == "" {
-			continue
-		}
-		key := tableKey(table)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, table)
-	}
-	o.Tables = out
-}
+// Selection preserves exact identifiers. Ambiguous names remain source unknowns.
+func (o *SchemaReadOptions) normalize() {}
 
 func readPostgresSchema(ctx context.Context, exec StatusExecutor, cfg SchemaReadOptions) (Schema, error) {
 	schemaName := cfg.Schema
@@ -94,21 +78,7 @@ ORDER BY table_name, ordinal_position`, schemaName)
 		return Schema{}, err
 	}
 
-	indexRows, err := exec.QueryContext(ctx, `
-SELECT t.relname AS table_name, i.relname AS index_name, ix.indisunique, pg_get_indexdef(ix.indexrelid)
-FROM pg_class t
-JOIN pg_index ix ON t.oid = ix.indrelid
-JOIN pg_class i ON i.oid = ix.indexrelid
-JOIN pg_namespace n ON n.oid = t.relnamespace
-WHERE n.nspname = $1
-ORDER BY t.relname, i.relname`, schemaName)
-	if err != nil {
-		return Schema{}, err
-	}
-	if err := scanPostgresIndexes(indexRows, tables, cfg.tableSet()); err != nil {
-		return Schema{}, err
-	}
-	return schemaFromTableMap(tables), nil
+	return readExtendedCatalog(ctx, exec, cfg, tables, "postgres")
 }
 
 func readMySQLSchema(ctx context.Context, exec StatusExecutor, cfg SchemaReadOptions) (Schema, error) {
@@ -125,18 +95,7 @@ ORDER BY table_name, ordinal_position`, cfg.Schema, cfg.Schema)
 		return Schema{}, err
 	}
 
-	indexRows, err := exec.QueryContext(ctx, `
-SELECT table_name, index_name, non_unique, seq_in_index, column_name, sub_part, collation, index_type, is_visible
-FROM information_schema.statistics
-WHERE table_schema = IF(? = '', DATABASE(), ?)
-ORDER BY table_name, index_name, seq_in_index`, cfg.Schema, cfg.Schema)
-	if err != nil {
-		return Schema{}, err
-	}
-	if err := scanMySQLIndexes(indexRows, tables, cfg.tableSet()); err != nil {
-		return Schema{}, err
-	}
-	return schemaFromTableMap(tables), nil
+	return readExtendedCatalog(ctx, exec, cfg, tables, "mysql")
 }
 
 func (o SchemaReadOptions) tableSet() map[string]struct{} {
@@ -145,7 +104,7 @@ func (o SchemaReadOptions) tableSet() map[string]struct{} {
 	}
 	out := make(map[string]struct{}, len(o.Tables))
 	for _, table := range o.Tables {
-		out[tableKey(table)] = struct{}{}
+		out[table] = struct{}{}
 	}
 	return out
 }
@@ -154,7 +113,7 @@ func tableIncluded(table string, set map[string]struct{}) bool {
 	if len(set) == 0 {
 		return true
 	}
-	_, ok := set[tableKey(table)]
+	_, ok := set[table]
 	return ok
 }
 

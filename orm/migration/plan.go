@@ -18,18 +18,25 @@ type MigrationStepType string
 type ReviewMode string
 
 const (
-	AddTable           MigrationStepType = "add_table"
-	DropTable          MigrationStepType = "drop_table"
-	AddColumn          MigrationStepType = "add_column"
-	DropColumn         MigrationStepType = "drop_column"
-	RenameColumn       MigrationStepType = "rename_column"
-	AlterColumnType    MigrationStepType = "alter_column_type"
-	AlterNullability   MigrationStepType = "alter_nullability"
-	AlterIndex         MigrationStepType = "alter_index"
-	AlterColumnDefault MigrationStepType = "alter_column_default"
-	AddIndex           MigrationStepType = "add_index"
-	DropIndex          MigrationStepType = "drop_index"
-	UnsupportedStep    MigrationStepType = "unsupported"
+	AddForeignKey            MigrationStepType = "add_foreign_key"
+	DropForeignKey           MigrationStepType = "drop_foreign_key"
+	AlterForeignKey          MigrationStepType = "alter_foreign_key"
+	AddCheck                 MigrationStepType = "add_check"
+	DropCheck                MigrationStepType = "drop_check"
+	AlterCheck               MigrationStepType = "alter_check"
+	SchemaIdentityDifference MigrationStepType = "schema_identity_difference"
+	AddTable                 MigrationStepType = "add_table"
+	DropTable                MigrationStepType = "drop_table"
+	AddColumn                MigrationStepType = "add_column"
+	DropColumn               MigrationStepType = "drop_column"
+	RenameColumn             MigrationStepType = "rename_column"
+	AlterColumnType          MigrationStepType = "alter_column_type"
+	AlterNullability         MigrationStepType = "alter_nullability"
+	AlterIndex               MigrationStepType = "alter_index"
+	AlterColumnDefault       MigrationStepType = "alter_column_default"
+	AddIndex                 MigrationStepType = "add_index"
+	DropIndex                MigrationStepType = "drop_index"
+	UnsupportedStep          MigrationStepType = "unsupported"
 )
 
 const (
@@ -77,6 +84,7 @@ type MigrationStep struct {
 	FromName          string                  `json:"from_name,omitempty"`
 	ToName            string                  `json:"to_name,omitempty"`
 	Index             string                  `json:"index,omitempty"`
+	Constraint        string                  `json:"constraint,omitempty"`
 	ColumnType        string                  `json:"column_type,omitempty"`
 	OldType           string                  `json:"old_type,omitempty"`
 	NewType           string                  `json:"new_type,omitempty"`
@@ -94,6 +102,9 @@ type MigrationStep struct {
 
 // MigrationPlan explains a schema migration before it is applied.
 type MigrationPlan struct {
+	CurrentSchema        *Schema                 `json:"current_schema,omitempty"`
+	DesiredSchema        *Schema                 `json:"desired_schema,omitempty"`
+	Capabilities         []OperationCapability   `json:"capabilities,omitempty"`
 	ComparisonIncomplete bool                    `json:"comparison_incomplete,omitempty"`
 	SQL                  string                  `json:"sql"`
 	Statements           []MigrationStatement    `json:"statements,omitempty"`
@@ -237,7 +248,7 @@ func EnsureExecutable(plan *MigrationPlan) error {
 		return nil
 	}
 	for _, step := range plan.Steps {
-		if step.Type == AlterIndex || step.Type == AlterColumnDefault || step.ComparisonUnknown {
+		if structuralOnly(step.Type) || step.ComparisonUnknown {
 			return query.ErrBlockedOperation
 		}
 	}
@@ -263,6 +274,9 @@ func finalizePlan(plan *MigrationPlan) {
 	if plan == nil {
 		return
 	}
+	if len(plan.Capabilities) == 0 {
+		plan.Capabilities = capabilitiesFor(nil, plan.Steps)
+	}
 	precision := query.AnalysisPrecise
 	for _, step := range plan.Steps {
 		plan.Warnings = append(plan.Warnings, step.Warnings...)
@@ -279,7 +293,7 @@ func finalizePlan(plan *MigrationPlan) {
 		if step.ComparisonUnknown {
 			plan.ComparisonIncomplete = true
 		}
-		if step.Type == AlterIndex || step.Type == AlterColumnDefault {
+		if structuralOnly(step.Type) {
 			plan.Blocked = true
 		}
 	}
@@ -344,4 +358,12 @@ func warningCodes(warnings []query.Warning) string {
 		codes = append(codes, warning.Code)
 	}
 	return strings.Join(codes, ", ")
+}
+
+func structuralOnly(t MigrationStepType) bool {
+	switch t {
+	case AlterIndex, AlterColumnDefault, AddForeignKey, DropForeignKey, AlterForeignKey, AddCheck, DropCheck, AlterCheck, SchemaIdentityDifference:
+		return true
+	}
+	return false
 }

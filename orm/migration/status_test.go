@@ -177,10 +177,9 @@ func TestReadSchemaPostgres(t *testing.T) {
 			AddRow("users", "id", "uuid", "NO", nil).
 			AddRow("users", "email", "text", "NO", nil).
 			AddRow("users", "created_at", "timestamp with time zone", "NO", "now()"))
-	mock.ExpectQuery("pg_index").
-		WithArgs("public").
-		WillReturnRows(sqlmock.NewRows([]string{"table_name", "index_name", "indisunique", "indexdef"}).
-			AddRow("users", "users_email_idx", true, "CREATE UNIQUE INDEX users_email_idx ON public.users USING btree (email)"))
+	mock.ExpectQuery("current_database").WithArgs("public").WillReturnRows(sqlmock.NewRows([]string{"catalog", "schema", "version"}).AddRow("testdb", "public", "16.10"))
+	mock.ExpectQuery("FROM pg_constraint").WithArgs("public").WillReturnRows(sqlmock.NewRows(pgConstraintColumns))
+	mock.ExpectQuery("JOIN pg_index").WithArgs("public").WillReturnRows(sqlmock.NewRows(pgIndexColumns).AddRow("users", "users_email_idx", true, "raw", "btree", "", 1, "email", "email", 1, 0, true, true, true, true, false, true, "r"))
 
 	schema, err := ReadSchema(context.Background(), db, driver.PostgresDialect{}, WithSchemaReadSchema("public"))
 	if err != nil {
@@ -209,11 +208,10 @@ func TestReadSchemaMySQLFiltersTables(t *testing.T) {
 			AddRow("users", "id", "bigint", "NO", nil).
 			AddRow("users", "email", "varchar(255)", "NO", nil).
 			AddRow("ignored", "id", "bigint", "NO", nil))
-	mock.ExpectQuery("information_schema\\.statistics").
-		WithArgs("app", "app").
-		WillReturnRows(sqlmock.NewRows([]string{"table_name", "index_name", "non_unique", "seq_in_index", "column_name", "sub_part", "collation", "index_type", "is_visible"}).
-			AddRow("users", "users_email_idx", 0, 1, "email", nil, "A", "BTREE", "YES").
-			AddRow("ignored", "ignored_idx", 1, 1, "id", nil, "A", "BTREE", "YES"))
+	mock.ExpectQuery("information_schema.schemata").WithArgs("app", "app").WillReturnRows(sqlmock.NewRows([]string{"catalog", "schema", "version"}).AddRow("def", "app", "8.4.6"))
+	mock.ExpectQuery("key_column_usage").WithArgs("app").WillReturnRows(sqlmock.NewRows(mysqlFKColumns))
+	mock.ExpectQuery("check_constraints").WithArgs("app").WillReturnRows(sqlmock.NewRows([]string{"table", "name", "expr", "enforced"}))
+	mock.ExpectQuery("information_schema.statistics").WithArgs("app").WillReturnRows(sqlmock.NewRows(mysqlIndexColumns).AddRow("users", "users_email_idx", 0, 1, "email", nil, "A", "BTREE", "YES", nil).AddRow("ignored", "ignored_idx", 1, 1, "id", nil, "A", "BTREE", "YES", nil))
 
 	schema, err := ReadSchema(
 		context.Background(),
