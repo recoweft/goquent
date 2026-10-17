@@ -12,6 +12,12 @@ import (
 )
 
 func TestPreflightCLISeparatedModes(t *testing.T) {
+	// Exercise local export under an explicit local environment, independently of
+	// the host CI runner. The production CI refusal is asserted again below.
+	for _, key := range []string{"CI", "GITHUB_ACTIONS", "GITLAB_CI", "TF_BUILD", "BUILDKITE", "CIRCLECI", "TRAVIS", "JENKINS_URL", "TEAMCITY_VERSION"} {
+		t.Setenv(key, "")
+	}
+
 	dir := t.TempDir()
 	source := filepath.Join(dir, "plan.json")
 	outFile := filepath.Join(dir, "evidence.json")
@@ -50,7 +56,14 @@ func TestPreflightCLISeparatedModes(t *testing.T) {
 			t.Fatal("mode isolation")
 		}
 	}
+	t.Setenv("CI", "true")
+	out.Reset()
+	errs.Reset()
+	if run([]string{"migrate", "preflight", "plan", "--plan-source", source, "--unsafe-local-output", filepath.Join(dir, "ci.json")}, &out, &errs) != 2 {
+		t.Fatal("CI export accepted")
+	}
 }
+
 func TestPreflightCLIRejectsAmbiguousSource(t *testing.T) {
 	for _, raw := range []string{`{"version":1,"version":1}`, `{"version":null}`, `{"Version":1}`, `{"version":1,"plan":{"steps":[{"definition":{"type":"add_index","type":"drop_table"}}]}}`} {
 		path := filepath.Join(t.TempDir(), "input.json")
