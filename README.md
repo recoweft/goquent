@@ -215,10 +215,16 @@ import "github.com/recoweft/goquent/orm"
   - [func WithTenantPolicy\(database string, schema ApplicationSchema, automatic bool\) Option](<#WithTenantPolicy>)
 - [type OrderSpec](<#OrderSpec>)
 - [type ParentChildProjection](<#ParentChildProjection>)
+- [type PhaseContract](<#PhaseContract>)
 - [type PolicyMode](<#PolicyMode>)
 - [type PolicySet](<#PolicySet>)
   - [func NewPolicySet\(policies ...TablePolicy\) \(PolicySet, error\)](<#NewPolicySet>)
 - [type PredicateRef](<#PredicateRef>)
+- [type Preflight](<#Preflight>)
+- [type PreflightCollector](<#PreflightCollector>)
+- [type PreflightOptions](<#PreflightOptions>)
+- [type PreflightPlan](<#PreflightPlan>)
+- [type PreflightView](<#PreflightView>)
 - [type ProjectionExpression](<#ProjectionExpression>)
   - [func JSONAggregateArray\(d ormdriver.Dialect, expr ProjectionExpression, opts ...JSONAggOption\) \(ProjectionExpression, error\)](<#JSONAggregateArray>)
   - [func JSONBuildObject\(d ormdriver.Dialect, fields map\[string\]string\) \(ProjectionExpression, error\)](<#JSONBuildObject>)
@@ -2559,6 +2565,15 @@ type ParentChildProjection[R any, P any, C any, K comparable] struct {
 }
 ```
 
+<a name="PhaseContract"></a>
+## type PhaseContract
+
+
+
+```go
+type PhaseContract = migration.PhaseContract
+```
+
 <a name="PolicyMode"></a>
 ## type PolicyMode
 
@@ -2593,6 +2608,51 @@ func NewPolicySet(policies ...TablePolicy) (PolicySet, error)
 
 ```go
 type PredicateRef = query.PredicateRef
+```
+
+<a name="Preflight"></a>
+## type Preflight
+
+Preflight source and views remain separate from migration execution APIs.
+
+```go
+type Preflight = migration.Preflight
+```
+
+<a name="PreflightCollector"></a>
+## type PreflightCollector
+
+
+
+```go
+type PreflightCollector = migration.Collector
+```
+
+<a name="PreflightOptions"></a>
+## type PreflightOptions
+
+
+
+```go
+type PreflightOptions = migration.PreflightOptions
+```
+
+<a name="PreflightPlan"></a>
+## type PreflightPlan
+
+
+
+```go
+type PreflightPlan = migration.PreflightPlan
+```
+
+<a name="PreflightView"></a>
+## type PreflightView
+
+
+
+```go
+type PreflightView = migration.PreflightView
 ```
 
 <a name="ProjectionExpression"></a>
@@ -4674,8 +4734,10 @@ import "github.com/recoweft/goquent/orm/migration"
 ## Index
 
 - [Constants](<#constants>)
+- [Variables](<#variables>)
 - [func ApplyReviewMode\(plan \*MigrationPlan, mode ReviewMode\) error](<#ApplyReviewMode>)
 - [func EnsureExecutable\(plan \*MigrationPlan\) error](<#EnsureExecutable>)
+- [func ValidatePreflightSource\(p \*Preflight\) error](<#ValidatePreflightSource>)
 - [func WriteDriftJSON\(w io.Writer, report DriftReport\) error](<#WriteDriftJSON>)
 - [func WriteDriftPretty\(w io.Writer, report DriftReport\) error](<#WriteDriftPretty>)
 - [func WriteJSON\(w io.Writer, plan \*MigrationPlan\) error](<#WriteJSON>)
@@ -4689,6 +4751,12 @@ import "github.com/recoweft/goquent/orm/migration"
 - [type CapabilityAssessment](<#CapabilityAssessment>)
 - [type CheckSchema](<#CheckSchema>)
   - [func \(v \*CheckSchema\) UnmarshalJSON\(b \[\]byte\) error](<#CheckSchema.UnmarshalJSON>)
+- [type Collector](<#Collector>)
+  - [func NewPreflightCollector\(ctx context.Context, db \*sql.DB, dialect driver.Dialect, opts CollectorOptions\) \(\*Collector, error\)](<#NewPreflightCollector>)
+  - [func \(c \*Collector\) Close\(\) error](<#Collector.Close>)
+  - [func \(c \*Collector\) Collect\(ctx context.Context, input \*Preflight\) \(\*Preflight, error\)](<#Collector.Collect>)
+  - [func \(c \*Collector\) Evaluate\(p \*Preflight, opts PreflightOptions\) \(PreflightView, error\)](<#Collector.Evaluate>)
+- [type CollectorOptions](<#CollectorOptions>)
 - [type ColumnSchema](<#ColumnSchema>)
   - [func \(c ColumnSchema\) MarshalJSON\(\) \(\[\]byte, error\)](<#ColumnSchema.MarshalJSON>)
   - [func \(c \*ColumnSchema\) UnmarshalJSON\(b \[\]byte\) error](<#ColumnSchema.UnmarshalJSON>)
@@ -4735,6 +4803,34 @@ import "github.com/recoweft/goquent/orm/migration"
 - [type ObjectIdentity](<#ObjectIdentity>)
   - [func \(v \*ObjectIdentity\) UnmarshalJSON\(b \[\]byte\) error](<#ObjectIdentity.UnmarshalJSON>)
 - [type OperationCapability](<#OperationCapability>)
+- [type PhaseContract](<#PhaseContract>)
+  - [func \(v \*PhaseContract\) UnmarshalJSON\(b \[\]byte\) error](<#PhaseContract.UnmarshalJSON>)
+- [type Preflight](<#Preflight>)
+  - [func PlanPreflight\(p \*MigrationPlan, phases \[\]PhaseContract, references \[\]Schema\) \(\*Preflight, error\)](<#PlanPreflight>)
+  - [func \(v \*Preflight\) UnmarshalJSON\(b \[\]byte\) error](<#Preflight.UnmarshalJSON>)
+- [type PreflightCheckView](<#PreflightCheckView>)
+  - [func \(v PreflightCheckView\) Format\(s fmt.State, \_ rune\)](<#PreflightCheckView.Format>)
+  - [func \(v PreflightCheckView\) MarshalJSON\(\) \(\[\]byte, error\)](<#PreflightCheckView.MarshalJSON>)
+  - [func \(v PreflightCheckView\) String\(\) string](<#PreflightCheckView.String>)
+  - [func \(v \*PreflightCheckView\) UnmarshalJSON\(b \[\]byte\) error](<#PreflightCheckView.UnmarshalJSON>)
+- [type PreflightCollection](<#PreflightCollection>)
+  - [func \(v \*PreflightCollection\) UnmarshalJSON\(b \[\]byte\) error](<#PreflightCollection.UnmarshalJSON>)
+- [type PreflightOptions](<#PreflightOptions>)
+- [type PreflightPlan](<#PreflightPlan>)
+  - [func \(v \*PreflightPlan\) UnmarshalJSON\(b \[\]byte\) error](<#PreflightPlan.UnmarshalJSON>)
+- [type PreflightRequirement](<#PreflightRequirement>)
+  - [func \(v \*PreflightRequirement\) UnmarshalJSON\(b \[\]byte\) error](<#PreflightRequirement.UnmarshalJSON>)
+- [type PreflightResult](<#PreflightResult>)
+  - [func \(v \*PreflightResult\) UnmarshalJSON\(b \[\]byte\) error](<#PreflightResult.UnmarshalJSON>)
+- [type PreflightStep](<#PreflightStep>)
+  - [func \(v \*PreflightStep\) UnmarshalJSON\(b \[\]byte\) error](<#PreflightStep.UnmarshalJSON>)
+- [type PreflightTargetObservation](<#PreflightTargetObservation>)
+- [type PreflightView](<#PreflightView>)
+  - [func EvaluatePreflight\(p \*Preflight, opts PreflightOptions\) \(PreflightView, error\)](<#EvaluatePreflight>)
+  - [func \(v PreflightView\) Format\(s fmt.State, \_ rune\)](<#PreflightView.Format>)
+  - [func \(v PreflightView\) MarshalJSON\(\) \(\[\]byte, error\)](<#PreflightView.MarshalJSON>)
+  - [func \(v PreflightView\) String\(\) string](<#PreflightView.String>)
+  - [func \(v \*PreflightView\) UnmarshalJSON\(b \[\]byte\) error](<#PreflightView.UnmarshalJSON>)
 - [type ReviewMode](<#ReviewMode>)
 - [type Schema](<#Schema>)
   - [func ReadSchema\(ctx context.Context, exec StatusExecutor, dialect driver.Dialect, opts ...SchemaReadOption\) \(Schema, error\)](<#ReadSchema>)
@@ -4795,6 +4891,26 @@ const (
 const MigrationPlanViewKind = "goquent.migration_plan_view"
 ```
 
+<a name="PreflightMaxAge"></a>
+
+```go
+const PreflightMaxAge = 5 * time.Minute
+```
+
+## Variables
+
+<a name="ErrPreflightInput"></a>
+
+```go
+var ErrPreflightInput = errors.New("goquent: invalid preflight input")
+```
+
+<a name="ErrPreflightRead"></a>
+
+```go
+var ErrPreflightRead = errors.New("goquent: preflight collection failed")
+```
+
 <a name="ApplyReviewMode"></a>
 ## func ApplyReviewMode
 
@@ -4812,6 +4928,15 @@ func EnsureExecutable(plan *MigrationPlan) error
 ```
 
 EnsureExecutable enforces migration approval requirements before execution.
+
+<a name="ValidatePreflightSource"></a>
+## func ValidatePreflightSource
+
+```go
+func ValidatePreflightSource(p *Preflight) error
+```
+
+ValidatePreflightSource checks recomputed bindings, not authenticity. It never reconstitutes a receipt and accepts no caller\-supplied requirements as authority.
 
 <a name="WriteDriftJSON"></a>
 ## func WriteDriftJSON
@@ -4941,6 +5066,65 @@ func (v *CheckSchema) UnmarshalJSON(b []byte) error
 ```
 
 
+
+<a name="Collector"></a>
+## type Collector
+
+Collector owns a dedicated connection. Closing it invalidates every receipt. Concurrent calls are serialized; neither exported labels nor arbitrary StatusExecutor implementations can create a collector receipt.
+
+```go
+type Collector struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewPreflightCollector"></a>
+### func NewPreflightCollector
+
+```go
+func NewPreflightCollector(ctx context.Context, db *sql.DB, dialect driver.Dialect, opts CollectorOptions) (*Collector, error)
+```
+
+
+
+<a name="Collector.Close"></a>
+### func \(\*Collector\) Close
+
+```go
+func (c *Collector) Close() error
+```
+
+
+
+<a name="Collector.Collect"></a>
+### func \(\*Collector\) Collect
+
+```go
+func (c *Collector) Collect(ctx context.Context, input *Preflight) (*Preflight, error)
+```
+
+Collect returns detached partial evidence on failure. Call Evaluate before Close to produce an observation\-bound summary. Returned source is sensitive.
+
+<a name="Collector.Evaluate"></a>
+### func \(\*Collector\) Evaluate
+
+```go
+func (c *Collector) Evaluate(p *Preflight, opts PreflightOptions) (PreflightView, error)
+```
+
+
+
+<a name="CollectorOptions"></a>
+## type CollectorOptions
+
+CollectorOptions may only reduce the built\-in time bounds. Zero means default.
+
+```go
+type CollectorOptions struct {
+    Clock                      func() time.Time
+    QueryTimeout, TotalTimeout time.Duration
+}
+```
 
 <a name="ColumnSchema"></a>
 ## type ColumnSchema
@@ -5540,6 +5724,331 @@ OperationCapability is a closed display classification, not execution evidence.
 ```go
 type OperationCapability = publicoutput.CapabilityView
 ```
+
+<a name="PhaseContract"></a>
+## type PhaseContract
+
+PhaseContract is a declaration, never evidence that an application rolled out. Dependencies are zero\-based earlier step ordinals. Missing compatibility is unknown.
+
+```go
+type PhaseContract struct {
+    Phase      string `json:"phase"`
+    DependsOn  []int  `json:"depends_on,omitempty"`
+    OldReaders string `json:"old_readers,omitempty"`
+    OldWriters string `json:"old_writers,omitempty"`
+}
+```
+
+<a name="PhaseContract.UnmarshalJSON"></a>
+### func \(\*PhaseContract\) UnmarshalJSON
+
+```go
+func (v *PhaseContract) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="Preflight"></a>
+## type Preflight
+
+Preflight is a sensitive, detached source artifact, not an execution recipe. Only a live Collector can authenticate its own observations while still open.
+
+```go
+type Preflight struct {
+    Version    int                  `json:"version"`
+    Plan       PreflightPlan        `json:"plan"`
+    Collection *PreflightCollection `json:"collection,omitempty"`
+    // contains filtered or unexported fields
+}
+```
+
+<a name="PlanPreflight"></a>
+### func PlanPreflight
+
+```go
+func PlanPreflight(p *MigrationPlan, phases []PhaseContract, references []Schema) (*Preflight, error)
+```
+
+PlanPreflight is disconnected. Current/desired must be supplied explicitly; references are explicit additional read scopes, including cross\-schema targets.
+
+<a name="Preflight.UnmarshalJSON"></a>
+### func \(\*Preflight\) UnmarshalJSON
+
+```go
+func (v *Preflight) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="PreflightCheckView"></a>
+## type PreflightCheckView
+
+
+
+```go
+type PreflightCheckView struct {
+    Status string `json:"status"`
+    Code   string `json:"code"`
+}
+```
+
+<a name="PreflightCheckView.Format"></a>
+### func \(PreflightCheckView\) Format
+
+```go
+func (v PreflightCheckView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="PreflightCheckView.MarshalJSON"></a>
+### func \(PreflightCheckView\) MarshalJSON
+
+```go
+func (v PreflightCheckView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="PreflightCheckView.String"></a>
+### func \(PreflightCheckView\) String
+
+```go
+func (v PreflightCheckView) String() string
+```
+
+
+
+<a name="PreflightCheckView.UnmarshalJSON"></a>
+### func \(\*PreflightCheckView\) UnmarshalJSON
+
+```go
+func (v *PreflightCheckView) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="PreflightCollection"></a>
+## type PreflightCollection
+
+
+
+```go
+type PreflightCollection struct {
+    PlanID            string            `json:"plan_id"`
+    SchemaFingerprint string            `json:"schema_fingerprint"`
+    FingerprintDomain string            `json:"fingerprint_domain"`
+    StartedAt         time.Time         `json:"started_at"`
+    FinishedAt        time.Time         `json:"finished_at"`
+    Method            string            `json:"method"`
+    IdentityBasis     string            `json:"identity_basis"`
+    Scope             string            `json:"scope"`
+    Completed         bool              `json:"completed"`
+    Code              string            `json:"code"`
+    Results           []PreflightResult `json:"results"`
+    Digest            string            `json:"digest"`
+}
+```
+
+<a name="PreflightCollection.UnmarshalJSON"></a>
+### func \(\*PreflightCollection\) UnmarshalJSON
+
+```go
+func (v *PreflightCollection) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="PreflightOptions"></a>
+## type PreflightOptions
+
+PreflightOptions requires an explicit clock. MaxAge must be positive and no greater than five minutes. The clock is caller configuration, not a trust root.
+
+```go
+type PreflightOptions struct {
+    Clock  func() time.Time
+    MaxAge time.Duration
+}
+```
+
+<a name="PreflightPlan"></a>
+## type PreflightPlan
+
+PreflightPlan retains the finite inputs used to derive every requirement.
+
+```go
+type PreflightPlan struct {
+    ComparisonIncomplete bool                   `json:"comparison_incomplete"`
+    MigrationBlocked     bool                   `json:"migration_blocked"`
+    ID                   string                 `json:"id"`
+    Current              Schema                 `json:"current"`
+    Desired              Schema                 `json:"desired"`
+    References           []Schema               `json:"references,omitempty"`
+    SQL                  string                 `json:"sql,omitempty"`
+    Statements           []MigrationStatement   `json:"statements,omitempty"`
+    Steps                []PreflightStep        `json:"steps"`
+    Requirements         []PreflightRequirement `json:"requirements"`
+}
+```
+
+<a name="PreflightPlan.UnmarshalJSON"></a>
+### func \(\*PreflightPlan\) UnmarshalJSON
+
+```go
+func (v *PreflightPlan) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="PreflightRequirement"></a>
+## type PreflightRequirement
+
+
+
+```go
+type PreflightRequirement struct {
+    ID                string         `json:"id"`
+    StepID            string         `json:"step_id"`
+    Kind              string         `json:"kind"`
+    Target            ObjectIdentity `json:"target"`
+    Columns           []string       `json:"columns,omitempty"`
+    Reference         ObjectIdentity `json:"reference"`
+    ReferencedColumns []string       `json:"referenced_columns,omitempty"`
+    Semantics         string         `json:"semantics"`
+    Status            string         `json:"status"`
+    Code              string         `json:"code"`
+}
+```
+
+<a name="PreflightRequirement.UnmarshalJSON"></a>
+### func \(\*PreflightRequirement\) UnmarshalJSON
+
+```go
+func (v *PreflightRequirement) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="PreflightResult"></a>
+## type PreflightResult
+
+
+
+```go
+type PreflightResult struct {
+    Targets       []PreflightTargetObservation `json:"targets,omitempty"`
+    RequirementID string                       `json:"requirement_id"`
+    Count         *int64                       `json:"count,omitempty"`
+    Completed     bool                         `json:"completed"`
+    Status        string                       `json:"status"`
+    Code          string                       `json:"code"`
+}
+```
+
+<a name="PreflightResult.UnmarshalJSON"></a>
+### func \(\*PreflightResult\) UnmarshalJSON
+
+```go
+func (v *PreflightResult) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="PreflightStep"></a>
+## type PreflightStep
+
+PreflightStep excludes approval and free\-form display metadata from identity.
+
+```go
+type PreflightStep struct {
+    ID         string        `json:"id"`
+    Definition MigrationStep `json:"definition"`
+    Phase      PhaseContract `json:"phase"`
+}
+```
+
+<a name="PreflightStep.UnmarshalJSON"></a>
+### func \(\*PreflightStep\) UnmarshalJSON
+
+```go
+func (v *PreflightStep) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="PreflightTargetObservation"></a>
+## type PreflightTargetObservation
+
+PreflightResult contains aggregate counts only; no row values are retained. PreflightTargetObservation records the finite per\-target read coverage separately from the original \(possibly partial\) catalog inventory.
+
+```go
+type PreflightTargetObservation struct {
+    Target   ObjectIdentity `json:"target"`
+    Columns  []string       `json:"columns"`
+    Types    []string       `json:"types,omitempty"`
+    Coverage string         `json:"coverage"`
+}
+```
+
+<a name="PreflightView"></a>
+## type PreflightView
+
+PreflightView is bounded, non\-reusable display data. Counts here count checks, never database rows. It omits timestamps, fingerprints, versions and names.
+
+```go
+type PreflightView struct {
+    Kind    string               `json:"kind"`
+    Version int                  `json:"version"`
+    Status  string               `json:"status"`
+    Code    string               `json:"code"`
+    Checks  []PreflightCheckView `json:"checks"`
+}
+```
+
+<a name="EvaluatePreflight"></a>
+### func EvaluatePreflight
+
+```go
+func EvaluatePreflight(p *Preflight, opts PreflightOptions) (PreflightView, error)
+```
+
+EvaluatePreflight evaluates necessary conditions, never migration permission. Without the originating open collector this is offline consistency inspection.
+
+<a name="PreflightView.Format"></a>
+### func \(PreflightView\) Format
+
+```go
+func (v PreflightView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="PreflightView.MarshalJSON"></a>
+### func \(PreflightView\) MarshalJSON
+
+```go
+func (v PreflightView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="PreflightView.String"></a>
+### func \(PreflightView\) String
+
+```go
+func (v PreflightView) String() string
+```
+
+
+
+<a name="PreflightView.UnmarshalJSON"></a>
+### func \(\*PreflightView\) UnmarshalJSON
+
+```go
+func (v *PreflightView) UnmarshalJSON(b []byte) error
+```
+
+
 
 <a name="ReviewMode"></a>
 ## type ReviewMode
