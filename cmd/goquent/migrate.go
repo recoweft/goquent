@@ -23,6 +23,8 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "preflight":
+		return runPreflight(args[1:], stdout, stderr)
 	case "plan":
 		return runMigrateCommand("plan", args[1:], stdout, stderr)
 	case "dry-run":

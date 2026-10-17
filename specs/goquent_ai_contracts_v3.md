@@ -531,3 +531,11 @@ migration, SELECT-only reader scope, and closed version/operation diagnostics.
 Structural records are refused by apply; declarations and catalog observations
 are not execution authorization or preflight freshness evidence. PR3 remains
 responsible for phase and evidence validation.
+
+## GQ-AI-11 PR3 migration preflight evidence
+
+[Migration preflight](../docs/migration-preflight.md) defines the independent v1
+source/public contracts, finite phase declarations, session-bound SELECT evidence,
+five-minute maximum age, explicit row-scope and visibility limits, and offline
+consistency-only verification. Existing apply and structural-only refusal remain
+unchanged. Source artifacts and compatibility declarations are not authorization.
