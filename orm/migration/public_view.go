@@ -13,18 +13,19 @@ const MigrationPlanViewKind = "goquent.migration_plan_view"
 
 // MigrationPlanView is detached display data, never an apply or approval input.
 type MigrationPlanView struct {
-	Kind             string              `json:"kind"`
-	Version          int                 `json:"version"`
-	Risk             string              `json:"risk"`
-	Precision        string              `json:"precision"`
-	RequiredApproval bool                `json:"required_approval"`
-	Blocked          bool                `json:"blocked"`
-	StepCount        int                 `json:"step_count"`
-	WarningCount     int                 `json:"warning_count"`
-	Steps            []StepView          `json:"steps"`
-	Warnings         []query.WarningView `json:"warnings"`
-	Truncated        bool                `json:"truncated"`
-	DetailsOmitted   bool                `json:"details_omitted"`
+	ComparisonIncomplete bool                `json:"comparison_incomplete"`
+	Kind                 string              `json:"kind"`
+	Version              int                 `json:"version"`
+	Risk                 string              `json:"risk"`
+	Precision            string              `json:"precision"`
+	RequiredApproval     bool                `json:"required_approval"`
+	Blocked              bool                `json:"blocked"`
+	StepCount            int                 `json:"step_count"`
+	WarningCount         int                 `json:"warning_count"`
+	Steps                []StepView          `json:"steps"`
+	Warnings             []query.WarningView `json:"warnings"`
+	Truncated            bool                `json:"truncated"`
+	DetailsOmitted       bool                `json:"details_omitted"`
 }
 
 // StepView omits all executable statements, identifiers, preflight and defaults.
@@ -41,7 +42,7 @@ type StepView struct {
 
 func stepType(s string) string {
 	switch MigrationStepType(s) {
-	case AddTable, DropTable, AddColumn, DropColumn, RenameColumn, AlterColumnType, AlterNullability, AddIndex, DropIndex, UnsupportedStep:
+	case AddTable, DropTable, AddColumn, DropColumn, RenameColumn, AlterColumnType, AlterNullability, AlterIndex, AlterColumnDefault, AddIndex, DropIndex, UnsupportedStep:
 		return s
 	}
 	return "unknown"
@@ -62,7 +63,7 @@ func (p *MigrationPlan) PublicView() (MigrationPlanView, error) {
 	if p == nil {
 		return MigrationPlanView{}, publicview.ErrSource
 	}
-	v := MigrationPlanView{Kind: MigrationPlanViewKind, Version: 1, Risk: string(p.RiskLevel), Precision: string(p.AnalysisPrecision), RequiredApproval: p.RequiredApproval, Blocked: p.Blocked, StepCount: len(p.Steps), WarningCount: len(p.Warnings), Warnings: warnings(p.Warnings), Truncated: len(p.Steps) > 128 || len(p.Warnings) > 128}
+	v := MigrationPlanView{ComparisonIncomplete: p.ComparisonIncomplete, Kind: MigrationPlanViewKind, Version: 1, Risk: string(p.RiskLevel), Precision: string(p.AnalysisPrecision), RequiredApproval: p.RequiredApproval, Blocked: p.Blocked, StepCount: len(p.Steps), WarningCount: len(p.Warnings), Warnings: warnings(p.Warnings), Truncated: len(p.Steps) > 128 || len(p.Warnings) > 128}
 	// Reserve root and every visible step before allocating warning lists.
 	n := min(128, len(p.Steps))
 	budget := 1024 - 1 - n - len(v.Warnings)
@@ -184,5 +185,5 @@ func (s Status) PublicView() publicoutput.SummaryView {
 	return publicoutput.SummaryView{Kind: "goquent.migration_status_view", Version: 1, Present: true, Known: !s.Unknown, Exists: s.Exists, Dirty: s.Dirty, Unknown: s.Unknown, Count: len(s.Applied), PendingCount: len(s.Pending), WarningCount: len(s.Warnings), DetailsOmitted: true}
 }
 func (s DriftReport) PublicView() publicoutput.SummaryView {
-	return publicoutput.SummaryView{Kind: "goquent.drift_view", Version: 1, Present: true, Drifted: s.Drifted, Count: len(s.Steps), DetailsOmitted: true}
+	return publicoutput.SummaryView{Kind: "goquent.drift_view", Version: 1, Present: true, Drifted: s.Drifted, Unknown: s.ComparisonIncomplete, Known: !s.ComparisonIncomplete, Count: len(s.Steps), DetailsOmitted: true}
 }

@@ -218,20 +218,20 @@ func TestDiffSchemasBuildsMigrationPlan(t *testing.T) {
 	current := Schema{Tables: []TableSchema{{
 		Name: "users",
 		Columns: []ColumnSchema{
-			{Name: "id", Type: "bigint", Nullable: false},
-			{Name: "legacy_id", Type: "text", Nullable: true},
-			{Name: "name", Type: "varchar(255)", Nullable: true},
+			{Name: "id", Type: "bigint", Nullable: false, DefaultState: DefaultNone},
+			{Name: "legacy_id", Type: "text", Nullable: true, DefaultState: DefaultNone},
+			{Name: "name", Type: "varchar(255)", Nullable: true, DefaultState: DefaultNone},
 		},
-		Indexes: []IndexSchema{{Name: "users_legacy_id_idx"}},
+		Indexes: []IndexSchema{{Name: "users_legacy_id_idx", Columns: []string{"legacy_id"}}},
 	}}}
 	desired := Schema{Tables: []TableSchema{{
 		Name: "users",
 		Columns: []ColumnSchema{
-			{Name: "id", Type: "bigint", Nullable: false},
-			{Name: "name", Type: "varchar(64)", Nullable: true},
-			{Name: "tenant_id", Type: "uuid", Nullable: false},
+			{Name: "id", Type: "bigint", Nullable: false, DefaultState: DefaultNone},
+			{Name: "name", Type: "varchar(64)", Nullable: true, DefaultState: DefaultNone},
+			{Name: "tenant_id", Type: "uuid", Nullable: false, DefaultState: DefaultNone},
 		},
-		Indexes: []IndexSchema{{Name: "users_tenant_id_idx", Concurrent: true}},
+		Indexes: []IndexSchema{{Name: "users_tenant_id_idx", Concurrent: true, Columns: []string{"tenant_id"}}},
 	}}}
 
 	plan := DiffSchemas(current, desired)
@@ -261,11 +261,11 @@ func TestDiffSchemasBuildsMigrationPlan(t *testing.T) {
 func TestDiffSchemasBuildsNullabilityStep(t *testing.T) {
 	current := Schema{Tables: []TableSchema{{
 		Name:    "users",
-		Columns: []ColumnSchema{{Name: "email", Type: "text", Nullable: true}},
+		Columns: []ColumnSchema{{Name: "email", Type: "text", Nullable: true, DefaultState: DefaultNone}},
 	}}}
 	desired := Schema{Tables: []TableSchema{{
 		Name:    "users",
-		Columns: []ColumnSchema{{Name: "email", Type: "text", Nullable: false}},
+		Columns: []ColumnSchema{{Name: "email", Type: "text", Nullable: false, DefaultState: DefaultNone}},
 	}}}
 
 	plan := DiffSchemas(current, desired)

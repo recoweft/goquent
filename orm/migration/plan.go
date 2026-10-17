@@ -18,16 +18,18 @@ type MigrationStepType string
 type ReviewMode string
 
 const (
-	AddTable         MigrationStepType = "add_table"
-	DropTable        MigrationStepType = "drop_table"
-	AddColumn        MigrationStepType = "add_column"
-	DropColumn       MigrationStepType = "drop_column"
-	RenameColumn     MigrationStepType = "rename_column"
-	AlterColumnType  MigrationStepType = "alter_column_type"
-	AlterNullability MigrationStepType = "alter_nullability"
-	AddIndex         MigrationStepType = "add_index"
-	DropIndex        MigrationStepType = "drop_index"
-	UnsupportedStep  MigrationStepType = "unsupported"
+	AddTable           MigrationStepType = "add_table"
+	DropTable          MigrationStepType = "drop_table"
+	AddColumn          MigrationStepType = "add_column"
+	DropColumn         MigrationStepType = "drop_column"
+	RenameColumn       MigrationStepType = "rename_column"
+	AlterColumnType    MigrationStepType = "alter_column_type"
+	AlterNullability   MigrationStepType = "alter_nullability"
+	AlterIndex         MigrationStepType = "alter_index"
+	AlterColumnDefault MigrationStepType = "alter_column_default"
+	AddIndex           MigrationStepType = "add_index"
+	DropIndex          MigrationStepType = "drop_index"
+	UnsupportedStep    MigrationStepType = "unsupported"
 )
 
 const (
@@ -36,6 +38,9 @@ const (
 )
 
 const (
+	WarningSchemaComparisonUnknown        = "SCHEMA_COMPARISON_UNKNOWN"
+	WarningMigrationAlterIndex            = "MIGRATION_ALTER_INDEX"
+	WarningMigrationAlterColumnDefault    = "MIGRATION_ALTER_COLUMN_DEFAULT"
 	WarningMigrationUnsupported           = "MIGRATION_UNSUPPORTED"
 	WarningMigrationDropTable             = "MIGRATION_DROP_TABLE"
 	WarningMigrationDropColumn            = "MIGRATION_DROP_COLUMN"
@@ -57,6 +62,15 @@ type MigrationStatement struct {
 
 // MigrationStep describes one schema change extracted from migration SQL.
 type MigrationStep struct {
+	// Table definitions are detached sensitive source records, never public views.
+	CurrentTable   *TableSchema       `json:"current_table,omitempty"`
+	DesiredTable   *TableSchema       `json:"desired_table,omitempty"`
+	CurrentIndex   *IndexSchema       `json:"current_index,omitempty"`
+	DesiredIndex   *IndexSchema       `json:"desired_index,omitempty"`
+	CurrentDefault *DefaultDefinition `json:"current_default,omitempty"`
+	DesiredDefault *DefaultDefinition `json:"desired_default,omitempty"`
+	// ComparisonUnknown is a diagnostic marker, not a detected schema change.
+	ComparisonUnknown bool                    `json:"comparison_unknown,omitempty"`
 	Type              MigrationStepType       `json:"type"`
 	Table             string                  `json:"table,omitempty"`
 	Column            string                  `json:"column,omitempty"`
@@ -80,16 +94,17 @@ type MigrationStep struct {
 
 // MigrationPlan explains a schema migration before it is applied.
 type MigrationPlan struct {
-	SQL               string                  `json:"sql"`
-	Statements        []MigrationStatement    `json:"statements,omitempty"`
-	Steps             []MigrationStep         `json:"steps,omitempty"`
-	RiskLevel         query.RiskLevel         `json:"risk_level"`
-	Warnings          []query.Warning         `json:"warnings,omitempty"`
-	RequiredApproval  bool                    `json:"required_approval"`
-	Blocked           bool                    `json:"blocked,omitempty"`
-	Approval          *query.Approval         `json:"approval,omitempty"`
-	AnalysisPrecision query.AnalysisPrecision `json:"analysis_precision"`
-	Metadata          map[string]any          `json:"metadata,omitempty"`
+	ComparisonIncomplete bool                    `json:"comparison_incomplete,omitempty"`
+	SQL                  string                  `json:"sql"`
+	Statements           []MigrationStatement    `json:"statements,omitempty"`
+	Steps                []MigrationStep         `json:"steps,omitempty"`
+	RiskLevel            query.RiskLevel         `json:"risk_level"`
+	Warnings             []query.Warning         `json:"warnings,omitempty"`
+	RequiredApproval     bool                    `json:"required_approval"`
+	Blocked              bool                    `json:"blocked,omitempty"`
+	Approval             *query.Approval         `json:"approval,omitempty"`
+	AnalysisPrecision    query.AnalysisPrecision `json:"analysis_precision"`
+	Metadata             map[string]any          `json:"metadata,omitempty"`
 }
 
 // ToJSON returns internal diagnostic data that can contain secrets.
@@ -221,6 +236,14 @@ func EnsureExecutable(plan *MigrationPlan) error {
 	if plan == nil {
 		return nil
 	}
+	for _, step := range plan.Steps {
+		if step.Type == AlterIndex || step.Type == AlterColumnDefault || step.ComparisonUnknown {
+			return query.ErrBlockedOperation
+		}
+	}
+	if plan.ComparisonIncomplete {
+		return query.ErrBlockedOperation
+	}
 	if plan.Blocked {
 		return fmt.Errorf("%w: %s", query.ErrBlockedOperation, warningCodes(plan.Warnings))
 	}
@@ -252,6 +275,14 @@ func finalizePlan(plan *MigrationPlan) {
 	plan.AnalysisPrecision = precision
 	plan.RiskLevel, plan.Blocked = aggregateWarnings(plan.Warnings)
 	plan.RequiredApproval = requiresApproval(plan.RiskLevel)
+	for _, step := range plan.Steps {
+		if step.ComparisonUnknown {
+			plan.ComparisonIncomplete = true
+		}
+		if step.Type == AlterIndex || step.Type == AlterColumnDefault {
+			plan.Blocked = true
+		}
+	}
 }
 
 func newWarning(code string, level query.RiskLevel, message, hint string, suppressible bool, line int) query.Warning {

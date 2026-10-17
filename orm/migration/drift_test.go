@@ -11,14 +11,14 @@ func TestCompareSchemaDriftReportsSteps(t *testing.T) {
 	desired := Schema{Tables: []TableSchema{{
 		Name: "users",
 		Columns: []ColumnSchema{
-			{Name: "id", Type: "uuid"},
+			{Name: "id", Type: "uuid", DefaultState: DefaultNone},
 			{Name: "email", Type: "text"},
 		},
 	}}}
 	current := Schema{Tables: []TableSchema{{
 		Name: "users",
 		Columns: []ColumnSchema{
-			{Name: "id", Type: "bigint"},
+			{Name: "id", Type: "bigint", DefaultState: DefaultNone},
 			{Name: "legacy_code", Type: "text"},
 		},
 	}}}
@@ -39,8 +39,8 @@ func TestCompareSchemaDriftReportsSteps(t *testing.T) {
 
 func TestWriteDriftPrettyAndJSON(t *testing.T) {
 	report := CompareSchemaDrift(
-		Schema{Tables: []TableSchema{{Name: "users", Columns: []ColumnSchema{{Name: "id", Type: "uuid"}}}}},
-		Schema{Tables: []TableSchema{{Name: "users", Columns: []ColumnSchema{{Name: "id", Type: "bigint"}}}}},
+		Schema{Tables: []TableSchema{{Name: "users", Columns: []ColumnSchema{{Name: "id", Type: "uuid", DefaultState: DefaultNone}}}}},
+		Schema{Tables: []TableSchema{{Name: "users", Columns: []ColumnSchema{{Name: "id", Type: "bigint", DefaultState: DefaultNone}}}}},
 	)
 
 	var pretty bytes.Buffer

@@ -513,3 +513,12 @@ transaction, private gates and replay identity. Hook-bearing input uses v3;
 legacy v1/v2, ledger/scope/result v1 and opaque callback Strict refusal remain.
 See the linked recipe, rollout, tenant scope and evidence limits. Whole-Issue
 acceptance and merge remain separate.
+
+## GQ-AI-11 PR1 schema definitions
+
+See [schema definition comparison](../docs/schema-definition-comparison.md) for
+additive default states, same-name ordered index comparison, source definition
+retention, incomplete drift diagnostics and the legacy unknown migration.
+`alter_index` and `alter_column_default` are blocked structural records, not DDL
+execution recipes. Public views omit source values and identifiers. Capability
+coverage and migration evidence remain assigned to PR2 and PR3 respectively.

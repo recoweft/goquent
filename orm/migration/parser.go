@@ -246,6 +246,12 @@ func classifyStep(step *MigrationStep) {
 	if step == nil {
 		return
 	}
+	if step.ComparisonUnknown || (step.Type == AddColumn && step.DesiredDefault != nil && step.DesiredDefault.State == DefaultUnknown) {
+		step.RiskLevel = query.RiskBlocked
+		step.AnalysisPrecision = query.AnalysisUnsupported
+		step.Warnings = append(step.Warnings, newWarning(WarningSchemaComparisonUnknown, query.RiskBlocked, "schema definition comparison is incomplete", "supply an unambiguous supported declaration; unknown does not mean absent", false, step.Line))
+		return
+	}
 	switch step.Type {
 	case AddTable:
 		step.RiskLevel = query.RiskLow
@@ -338,6 +344,14 @@ func classifyStep(step *MigrationStep) {
 			step.Line,
 		))
 		step.Preflight = setNotNullPreflight(step.Table, step.Column)
+	case AlterIndex, AlterColumnDefault:
+		step.RiskLevel = query.RiskHigh
+		step.AnalysisPrecision = query.AnalysisPartial
+		code := WarningMigrationAlterIndex
+		if step.Type == AlterColumnDefault {
+			code = WarningMigrationAlterColumnDefault
+		}
+		step.Warnings = append(step.Warnings, newWarning(code, query.RiskHigh, "structural definition changed; execution effects are unverified", "review replacement order, dependencies, data constraints and database behavior separately", false, step.Line))
 	case AddIndex:
 		if step.Concurrent {
 			step.RiskLevel = query.RiskLow
