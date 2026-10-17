@@ -85,7 +85,7 @@ func evaluatePreflight(p *Preflight, opts PreflightOptions, owner *Collector) (P
 		v.Code = "PREFLIGHT_EXPIRED"
 		return v, nil
 	}
-	if owner == nil || owner.closed || p.receipt == nil || p.receipt.owner != owner || p.receipt.digest != c.Digest || p.receipt.plan != p.Plan.ID {
+	if owner == nil || owner.closed || p.receipt == nil || p.receipt.owner != owner || p.receipt.generation != owner.generation || p.receipt.digest != c.Digest || p.receipt.plan != p.Plan.ID {
 		v.Code = "PREFLIGHT_ORIGIN"
 		return v, nil
 	}

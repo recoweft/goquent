@@ -15,6 +15,7 @@ import (
 // Concurrent calls are serialized; neither exported labels nor arbitrary
 // StatusExecutor implementations can create a collector receipt.
 type Collector struct {
+	generation   uint64
 	mu           sync.Mutex
 	conn         *sql.Conn
 	dialect      driver.Dialect
@@ -25,6 +26,7 @@ type Collector struct {
 	totalTimeout time.Duration
 }
 type preflightReceipt struct {
+	generation   uint64
 	owner        *Collector
 	digest, plan string
 }
@@ -106,6 +108,14 @@ func (c *Collector) Collect(ctx context.Context, input *Preflight) (*Preflight, 
 	if c.closed || input.Plan.Current.Context.Dialect != c.name {
 		return nil, ErrPreflightInput
 	}
+	// A new attempt supersedes all prior receipts, including if it fails. This
+	// prevents a known schema/read failure from leaving older evidence reusable.
+	c.generation++
+	if c.generation == 0 {
+		c.closed = true
+		_ = c.conn.Close()
+		return nil, ErrPreflightInput
+	}
 	out, err := detachPreflight(input)
 	if err != nil {
 		return nil, err
@@ -120,7 +130,7 @@ func (c *Collector) Collect(ctx context.Context, input *Preflight) (*Preflight, 
 		col.Completed = err == nil
 		col.FinishedAt = c.clock().UTC()
 		col.Digest = collectionDigest(*col)
-		out.receipt = &preflightReceipt{c, col.Digest, out.Plan.ID}
+		out.receipt = &preflightReceipt{generation: c.generation, owner: c, digest: col.Digest, plan: out.Plan.ID}
 		return out, err
 	}
 	before, err := c.observeSchemas(ctx, out.Plan)

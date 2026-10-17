@@ -122,6 +122,21 @@ func TestPreflightLive(t *testing.T) {
 				if e != nil || ov.Status == "satisfied" {
 					t.Fatal("different session accepted")
 				}
+				if want == "satisfied" {
+					fresh, err := c.Collect(context.Background(), p)
+					if err != nil {
+						t.Fatal(err)
+					}
+					stale, _ := c.Evaluate(out, opts)
+					if stale.Status == "satisfied" {
+						t.Fatal("superseded receipt reused")
+					}
+					out = fresh
+					current, err := c.Evaluate(out, opts)
+					if err != nil || current.Status != want {
+						t.Fatal("fresh receipt invalid")
+					}
+				}
 				if e = c.Close(); e != nil {
 					t.Fatal(e)
 				}

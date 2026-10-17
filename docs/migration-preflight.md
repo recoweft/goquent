@@ -79,6 +79,9 @@ source labels, schema names, caller IDs and fingerprints do not create trust.
 collector. `Collector.Evaluate` checks the current content against that receipt.
 Changing counts, completion, time, plan, target or fingerprint fails even if an
 external caller recomputes the public digest. JSON never contains the receipt.
+Each valid collection request supersedes earlier receipts before reading, including
+when the new acquisition fails;
+known schema/read failures cannot leave previous success reusable.
 Detached JSON copies, other sessions, other processes, reconnection and closed
 collectors cannot adopt the evidence; re-collection is required. A Go shallow
 copy can still reference the same receipt, but cannot rebind or modify its content.

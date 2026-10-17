@@ -32,7 +32,7 @@ func fixtureEvidence(t *testing.T) (*Preflight, *Collector) {
 	n := int64(0)
 	p.Collection = &PreflightCollection{PlanID: p.Plan.ID, SchemaFingerprint: schemaFingerprint(p.Plan), FingerprintDomain: "goquent.preflight.schema.v1", StartedAt: preflightNow.Add(-time.Minute), FinishedAt: preflightNow, Method: "bounded_select", IdentityBasis: "dedicated_connection_session", Scope: "explicit_target_rows", Completed: true, Code: "PREFLIGHT_OK", Results: []PreflightResult{{RequirementID: p.Plan.Requirements[0].ID, Count: &n, Completed: true, Status: "satisfied", Code: "PREFLIGHT_OK"}}}
 	p.Collection.Digest = collectionDigest(*p.Collection)
-	p.receipt = &preflightReceipt{c, p.Collection.Digest, p.Plan.ID}
+	p.receipt = &preflightReceipt{owner: c, digest: p.Collection.Digest, plan: p.Plan.ID, generation: c.generation}
 	return p, c
 }
 func fixedPreflightOptions() PreflightOptions {
@@ -44,7 +44,7 @@ func TestPreflightReceiptAndFreshness(t *testing.T) {
 	if e != nil || v.Status != "satisfied" {
 		t.Fatalf("%v %v", v, e)
 	}
-	for _, name := range []string{"external", "closed", "other_session", "count", "completed", "start", "target", "fingerprint", "plan", "kind", "missing_count", "unknown_result", "partial", "negative", "future", "expired", "reversed", "boundary", "bad_options"} {
+	for _, name := range []string{"external", "closed", "other_session", "superseded", "count", "completed", "start", "target", "fingerprint", "plan", "kind", "missing_count", "unknown_result", "partial", "negative", "future", "expired", "reversed", "boundary", "bad_options"} {
 		t.Run(name, func(t *testing.T) {
 			p, c := fixtureEvidence(t)
 			owner := c
@@ -57,6 +57,8 @@ func TestPreflightReceiptAndFreshness(t *testing.T) {
 				c.closed = true
 			case "other_session":
 				owner = &Collector{}
+			case "superseded":
+				c.generation++
 			case "count":
 				*p.Collection.Results[0].Count = 1
 			case "completed":
