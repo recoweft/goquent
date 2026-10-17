@@ -65,3 +65,28 @@ func PlanMigrationSteps(steps []MigrationStep) *MigrationPlan {
 func DiffSchemas(current, desired Schema) *MigrationPlan {
 	return migration.DiffSchemas(current, desired)
 }
+
+type CoverageState = migration.CoverageState
+type SchemaCoverage = migration.SchemaCoverage
+type SchemaContext = migration.SchemaContext
+type ObjectIdentity = migration.ObjectIdentity
+type ExpressionDefinition = migration.ExpressionDefinition
+type IndexKey = migration.IndexKey
+type ForeignKeySchema = migration.ForeignKeySchema
+type CheckSchema = migration.CheckSchema
+type CapabilityAssessment = migration.CapabilityAssessment
+type OperationCapability = migration.OperationCapability
+
+const (
+	CoverageUnknown          = migration.CoverageUnknown
+	CoverageComplete         = migration.CoverageComplete
+	CoveragePartial          = migration.CoveragePartial
+	CoverageUnsupported      = migration.CoverageUnsupported
+	AddForeignKey            = migration.AddForeignKey
+	DropForeignKey           = migration.DropForeignKey
+	AlterForeignKey          = migration.AlterForeignKey
+	AddCheck                 = migration.AddCheck
+	DropCheck                = migration.DropCheck
+	AlterCheck               = migration.AlterCheck
+	SchemaIdentityDifference = migration.SchemaIdentityDifference
+)

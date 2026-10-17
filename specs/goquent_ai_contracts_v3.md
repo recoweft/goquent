@@ -522,3 +522,12 @@ retention, incomplete drift diagnostics and the legacy unknown migration.
 `alter_index` and `alter_column_default` are blocked structural records, not DDL
 execution recipes. Public views omit source values and identifiers. Capability
 coverage and migration evidence remain assigned to PR2 and PR3 respectively.
+
+## GQ-AI-11 PR2 schema coverage and capabilities
+
+[Schema coverage and capabilities](../docs/schema-capabilities.md) defines the
+additive namespace/coverage/FK/CHECK/index source contract, conservative legacy
+migration, SELECT-only reader scope, and closed version/operation diagnostics.
+Structural records are refused by apply; declarations and catalog observations
+are not execution authorization or preflight freshness evidence. PR3 remains
+responsible for phase and evidence validation.

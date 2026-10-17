@@ -88,6 +88,9 @@ func validSchemaNames(s Schema) bool {
 	return true
 }
 func validIndex(i IndexSchema, t TableSchema) bool {
+	if len(i.Keys) > 0 || i.Attributes != "" || i.Method != "" || i.Predicate.State != "" || i.Predicate.SQL != "" || i.Visibility != "" || len(i.Include) > 0 {
+		return validExtendedIndex(i, t)
+	}
 	if !simpleSchemaName.MatchString(i.Name) || i.DefinitionUnknown || len(i.Columns) == 0 {
 		return false
 	}
@@ -123,9 +126,14 @@ func validIndex(i IndexSchema, t TableSchema) bool {
 	return true
 }
 func equalIndex(a, b IndexSchema) bool {
-	return a.Unique == b.Unique && slices.Equal(a.Columns, b.Columns)
+	return a.Unique == b.Unique && slices.Equal(a.Columns, b.Columns) && slices.Equal(a.Keys, b.Keys) && a.Predicate == b.Predicate && a.Method == b.Method && slices.Equal(a.Include, b.Include) && a.Visibility == b.Visibility && a.Attributes == b.Attributes
 }
-func copyIndex(i IndexSchema) *IndexSchema { i.Columns = slices.Clone(i.Columns); return &i }
+func copyIndex(i IndexSchema) *IndexSchema {
+	i.Columns = slices.Clone(i.Columns)
+	i.Keys = slices.Clone(i.Keys)
+	i.Include = slices.Clone(i.Include)
+	return &i
+}
 
 // Remove only tables with ambiguous identities, preserving other known changes.
 func comparableSchemas(a, b Schema) (Schema, Schema, bool) {
@@ -141,7 +149,8 @@ func comparableSchemas(a, b Schema) (Schema, Schema, bool) {
 		}
 	}
 	filter := func(s Schema) Schema {
-		out := Schema{}
+		out := s
+		out.Tables = nil
 		for _, t := range s.Tables {
 			if !bad[tableKey(t.Name)] {
 				out.Tables = append(out.Tables, t)
@@ -188,10 +197,55 @@ func tableComparisonDiagnostics(t TableSchema) []MigrationStep {
 }
 
 func copyTable(t TableSchema) *TableSchema {
+	t.ForeignKeys = slices.Clone(t.ForeignKeys)
+	for j := range t.ForeignKeys {
+		t.ForeignKeys[j].Columns = slices.Clone(t.ForeignKeys[j].Columns)
+		t.ForeignKeys[j].ReferencedColumns = slices.Clone(t.ForeignKeys[j].ReferencedColumns)
+	}
+	t.Checks = slices.Clone(t.Checks)
 	t.Columns = slices.Clone(t.Columns)
 	t.Indexes = slices.Clone(t.Indexes)
 	for j := range t.Indexes {
 		t.Indexes[j] = *copyIndex(t.Indexes[j])
 	}
 	return &t
+}
+
+func validExtendedIndex(i IndexSchema, t TableSchema) bool {
+	if !simpleSchemaName.MatchString(i.Name) || i.DefinitionUnknown || i.Attributes != CoverageComplete || (len(i.Keys) == 0 && len(i.Columns) == 0) || i.Method != "btree" || !expressionKnown(i.Predicate) || (i.Visibility != "visible" && i.Visibility != "invisible") {
+		return false
+	}
+	count := 0
+	for _, v := range t.Indexes {
+		if v.Name == i.Name {
+			count++
+		}
+	}
+	if count != 1 {
+		return false
+	}
+	if len(i.Keys) == 0 {
+		return knownColumns(i.Columns, t) && len(i.Include) == 0
+	}
+	cols := []string{}
+	for _, k := range i.Keys {
+		if (k.Column == "") == (k.Expression == "") || k.Prefix < 0 || (k.Order != "asc" && k.Order != "desc") || (k.Nulls != "first" && k.Nulls != "last" && k.Nulls != "engine_default") {
+			return false
+		}
+		if k.Column != "" {
+			if !knownColumns([]string{k.Column}, t) {
+				return false
+			}
+			cols = append(cols, k.Column)
+		} else if k.Prefix != 0 {
+			return false
+		}
+	}
+	if len(i.Columns) > 0 && (len(cols) != len(i.Keys) || !slices.Equal(cols, i.Columns)) {
+		return false
+	}
+	if len(i.Include) > 0 && !knownColumns(i.Include, t) {
+		return false
+	}
+	return true
 }

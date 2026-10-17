@@ -24,21 +24,22 @@ func Write(w io.Writer, b []byte) error { return publicview.Write(w, b) }
 // SummaryView is a bounded, non-executable resource/status display. Counts and
 // booleans are supplied snapshot claims, never authorization or live evidence.
 type SummaryView struct {
-	Kind           string     `json:"kind"`
-	Version        int        `json:"version"`
-	Present        bool       `json:"present"`
-	Known          bool       `json:"known"`
-	Fresh          bool       `json:"fresh"`
-	Exists         bool       `json:"exists"`
-	Dirty          bool       `json:"dirty"`
-	Unknown        bool       `json:"unknown"`
-	Drifted        bool       `json:"drifted"`
-	Count          int        `json:"count"`
-	PendingCount   int        `json:"pending_count"`
-	WarningCount   int        `json:"warning_count"`
-	Items          []ItemView `json:"items"`
-	Truncated      bool       `json:"truncated"`
-	DetailsOmitted bool       `json:"details_omitted"`
+	Capabilities   []CapabilityView `json:"capabilities,omitempty"`
+	Kind           string           `json:"kind"`
+	Version        int              `json:"version"`
+	Present        bool             `json:"present"`
+	Known          bool             `json:"known"`
+	Fresh          bool             `json:"fresh"`
+	Exists         bool             `json:"exists"`
+	Dirty          bool             `json:"dirty"`
+	Unknown        bool             `json:"unknown"`
+	Drifted        bool             `json:"drifted"`
+	Count          int              `json:"count"`
+	PendingCount   int              `json:"pending_count"`
+	WarningCount   int              `json:"warning_count"`
+	Items          []ItemView       `json:"items"`
+	Truncated      bool             `json:"truncated"`
+	DetailsOmitted bool             `json:"details_omitted"`
 }
 
 // ItemView contains structural counts and fixed check vocabulary only.
@@ -97,6 +98,12 @@ func (v SummaryView) safe() (SummaryView, error) {
 		items[i].Ordinal = i + 1
 	}
 	v.Items = items
+	v.Truncated = v.Truncated || len(v.Capabilities) > 128
+	caps := make([]CapabilityView, min(128, len(v.Capabilities)))
+	for i := range caps {
+		caps[i] = v.Capabilities[i].PublicView()
+	}
+	v.Capabilities = caps
 	return v, nil
 }
 func (v SummaryView) MarshalJSON() ([]byte, error) {

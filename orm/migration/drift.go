@@ -5,12 +5,15 @@ import "github.com/recoweft/goquent/orm/query"
 // DriftReport reports whether the current database schema differs from the
 // desired schema representation.
 type DriftReport struct {
-	ComparisonIncomplete bool            `json:"comparison_incomplete"`
-	Drifted              bool            `json:"drifted"`
-	DesiredTables        int             `json:"desired_tables"`
-	CurrentTables        int             `json:"current_tables"`
-	RiskLevel            query.RiskLevel `json:"risk_level"`
-	Steps                []MigrationStep `json:"steps,omitempty"`
+	CurrentSchema        *Schema               `json:"current_schema,omitempty"`
+	DesiredSchema        *Schema               `json:"desired_schema,omitempty"`
+	Capabilities         []OperationCapability `json:"capabilities,omitempty"`
+	ComparisonIncomplete bool                  `json:"comparison_incomplete"`
+	Drifted              bool                  `json:"drifted"`
+	DesiredTables        int                   `json:"desired_tables"`
+	CurrentTables        int                   `json:"current_tables"`
+	RiskLevel            query.RiskLevel       `json:"risk_level"`
+	Steps                []MigrationStep       `json:"steps,omitempty"`
 }
 
 // CompareSchemaDrift compares current database schema against desired schema.
@@ -26,6 +29,9 @@ func CompareSchemaDrift(desired, current Schema) DriftReport {
 		RiskLevel:     query.RiskLow,
 	}
 	if plan != nil {
+		report.CurrentSchema = plan.CurrentSchema
+		report.DesiredSchema = plan.DesiredSchema
+		report.Capabilities = plan.Capabilities
 		report.ComparisonIncomplete = plan.ComparisonIncomplete
 		report.RiskLevel = plan.RiskLevel
 		report.Steps = append([]MigrationStep(nil), plan.Steps...)

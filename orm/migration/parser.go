@@ -252,6 +252,12 @@ func classifyStep(step *MigrationStep) {
 		step.Warnings = append(step.Warnings, newWarning(WarningSchemaComparisonUnknown, query.RiskBlocked, "schema definition comparison is incomplete", "supply an unambiguous supported declaration; unknown does not mean absent", false, step.Line))
 		return
 	}
+	if structuralOnly(step.Type) && step.Type != AlterIndex && step.Type != AlterColumnDefault {
+		step.RiskLevel = query.RiskHigh
+		step.AnalysisPrecision = query.AnalysisPartial
+		step.Warnings = append(step.Warnings, newWarning(WarningMigrationUnsupported, query.RiskHigh, "structural definition change has no execution recipe", "review manually", false, step.Line))
+		return
+	}
 	switch step.Type {
 	case AddTable:
 		step.RiskLevel = query.RiskLow

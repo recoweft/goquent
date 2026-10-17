@@ -234,6 +234,18 @@ func TestDiffSchemasBuildsMigrationPlan(t *testing.T) {
 		Indexes: []IndexSchema{{Name: "users_tenant_id_idx", Concurrent: true, Columns: []string{"tenant_id"}}},
 	}}}
 
+	current, desired = declaredFixture(current), declaredFixture(desired)
+	for _, s := range []*Schema{&current, &desired} {
+		for ti := range s.Tables {
+			for ii := range s.Tables[ti].Indexes {
+				i := &s.Tables[ti].Indexes[ii]
+				i.Attributes = CoverageComplete
+				i.Method = "btree"
+				i.Visibility = "visible"
+				i.Predicate = ExpressionDefinition{State: "none"}
+			}
+		}
+	}
 	plan := DiffSchemas(current, desired)
 	if plan.Metadata["source"] != "schema_diff" {
 		t.Fatalf("expected schema_diff metadata, got %#v", plan.Metadata)
@@ -268,6 +280,18 @@ func TestDiffSchemasBuildsNullabilityStep(t *testing.T) {
 		Columns: []ColumnSchema{{Name: "email", Type: "text", Nullable: false, DefaultState: DefaultNone}},
 	}}}
 
+	current, desired = declaredFixture(current), declaredFixture(desired)
+	for _, s := range []*Schema{&current, &desired} {
+		for ti := range s.Tables {
+			for ii := range s.Tables[ti].Indexes {
+				i := &s.Tables[ti].Indexes[ii]
+				i.Attributes = CoverageComplete
+				i.Method = "btree"
+				i.Visibility = "visible"
+				i.Predicate = ExpressionDefinition{State: "none"}
+			}
+		}
+	}
 	plan := DiffSchemas(current, desired)
 	if len(plan.Steps) != 1 {
 		t.Fatalf("expected one step, got %#v", plan.Steps)
