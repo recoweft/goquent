@@ -233,3 +233,10 @@ server intentionally exposes migration review only, not migration apply.
 Default migration output is a redacted view, not source schema/SQL. The explicit
 local export above is sensitive, requires a new file and is refused in CI. See
 [output migration](redacted-output.md).
+
+## Structured preflight evidence
+
+See [migration preflight evidence](migration-preflight.md) for the separate,
+non-executable phase and evidence inspector. Legacy review-mode guidance is not
+measurement. Explicit SELECT collection and offline artifact consistency checks
+have separate APIs and commands; neither extends migration apply.

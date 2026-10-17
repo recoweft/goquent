@@ -90,3 +90,11 @@ const (
 	AlterCheck               = migration.AlterCheck
 	SchemaIdentityDifference = migration.SchemaIdentityDifference
 )
+
+// Preflight source and views remain separate from migration execution APIs.
+type Preflight = migration.Preflight
+type PreflightPlan = migration.PreflightPlan
+type PhaseContract = migration.PhaseContract
+type PreflightOptions = migration.PreflightOptions
+type PreflightView = migration.PreflightView
+type PreflightCollector = migration.Collector
