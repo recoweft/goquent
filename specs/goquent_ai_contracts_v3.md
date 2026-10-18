@@ -539,3 +539,13 @@ source/public contracts, finite phase declarations, session-bound SELECT evidenc
 five-minute maximum age, explicit row-scope and visibility limits, and offline
 consistency-only verification. Existing apply and structural-only refusal remain
 unchanged. Source artifacts and compatibility declarations are not authorization.
+
+## GQ-AI-12 PR1 explicit performance acquisition
+
+See [performance plans](../docs/performance-plans.md) for the separate
+Query.ExplainPerformance terminal, finite structural/catalog domain, native
+PostgreSQL 16/MySQL 8.4 acquisition, source/view v1 and sensitive-source boundary.
+Ordinary Plan and CRUD do not acquire EXPLAIN. External Tx/custom executors remain
+supported by existing APIs but are refused by this new terminal. Estimates are
+not execution results, authorization, safety or performance improvement evidence.
+PR2 observation hooks/budgets/benchmarks remain separate.
