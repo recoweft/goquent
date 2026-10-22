@@ -15,7 +15,7 @@ else
     printf '%s\n' 'CI_REPOSITORIES_FAILED: source comparison failed; details omitted'
     exit "$result"
 fi
-if { go test ./... -count=1 >"$log_file" 2>&1; } 2>/dev/null; then
+if { go test -p 1 ./... -count=1 >"$log_file" 2>&1; } 2>/dev/null; then
     printf '%s\n' 'CI_TESTS_PASSED: test command succeeded; detailed diagnostics omitted'
 else
     result=$?
