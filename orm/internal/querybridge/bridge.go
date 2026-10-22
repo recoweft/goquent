@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"github.com/recoweft/goquent/orm/internal/writeinput"
 )
@@ -37,14 +38,16 @@ type Request struct {
 }
 
 type Planned struct {
-	ScanCount  func(func(*sql.Rows) (int64, error)) error
-	Diagnostic any
-	InsertRows []map[string]any // Detached final INSERT candidates; never public verdicts.
-	Check      func() error
-	Rows       func() (*sql.Rows, error)
-	Row        func() (*sql.Row, error)
-	Exec       func() (sql.Result, error)
-	Scan       func(func(*sql.Rows) error) error
+	ObservedRows func() (*observe.Rows, error)
+	ObservedRow  func() (*observe.Row, error)
+	ScanCount    func(func(observe.Reader) (int64, error)) error
+	Diagnostic   any
+	InsertRows   []map[string]any // Detached final INSERT candidates; never public verdicts.
+	Check        func() error
+	Rows         func() (*sql.Rows, error)
+	Row          func() (*sql.Row, error)
+	Exec         func() (sql.Result, error)
+	Scan         func(func(observe.Reader) error) error
 }
 
 // Prepare is installed once by query initialization. The facade imports query,

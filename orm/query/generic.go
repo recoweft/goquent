@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"strings"
 
@@ -109,8 +110,8 @@ func prepareGeneric(r querybridge.Request) (querybridge.Planned, error) {
 	out.Check = func() error { return q.checkExecution(p) }
 	out.Diagnostic = p
 	out.Exec = func() (sql.Result, error) { return q.executeResult(p) }
-	out.ScanCount = func(scan func(*sql.Rows) (int64, error)) error { return q.executeCountedRows(p, scan) }
-	out.Scan = func(scan func(*sql.Rows) error) error { return q.executeRows(p, scan) }
+	out.ScanCount = func(scan func(observe.Reader) (int64, error)) error { return q.executeCountedRows(p, scan) }
+	out.Scan = func(scan func(observe.Reader) error) error { return q.executeRows(p, scan) }
 	return out, nil
 }
 
@@ -274,5 +275,5 @@ func sealedSelect(base, diagnostic any) (querybridge.Planned, error) {
 	if !ok || q == nil || !valid || p == nil || p.Operation != OperationSelect || p.execution == nil || p.execution.owner != q {
 		return querybridge.Planned{}, ErrBlockedOperation
 	}
-	return querybridge.Planned{Diagnostic: p, Check: func() error { return q.checkExecution(p) }, Scan: func(scan func(*sql.Rows) error) error { return q.executeRows(p, scan) }}, nil
+	return querybridge.Planned{Diagnostic: p, Check: func() error { return q.checkExecution(p) }, Scan: func(scan func(observe.Reader) error) error { return q.executeRows(p, scan) }}, nil
 }

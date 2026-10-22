@@ -4,21 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"reflect"
 )
 
 // SelectOne runs the query and scans the first row into T.
 func SelectOne[T any](ctx context.Context, db *DB, q string, args ...any) (T, error) {
-	var zero T
-	rows, err := db.QueryContext(ctx, q, args...)
+	var out T
+	p, err := db.prepareRaw(ctx, q, args...)
 	if err != nil {
-		return zero, err
+		observe.Reject(ctx, err)
+		return out, err
 	}
-	defer rows.Close()
-	return scanRowsOne[T](db, rows)
+	err = p.Scan(func(rows observe.Reader) error { var e error; out, e = scanRowsOne[T](db, rows); return e })
+	return out, err
 }
 
-func scanRowsOne[T any](db *DB, rows *sql.Rows) (T, error) {
+func scanRowsOne[T any](db *DB, rows observe.Reader) (T, error) {
 	var zero T
 	var t T
 	typ := reflect.TypeOf(t)
@@ -134,15 +136,17 @@ func scanRowsOne[T any](db *DB, rows *sql.Rows) (T, error) {
 
 // SelectAll runs the query and scans all rows into []T.
 func SelectAll[T any](ctx context.Context, db *DB, q string, args ...any) ([]T, error) {
-	rows, err := db.QueryContext(ctx, q, args...)
+	var out []T
+	p, err := db.prepareRaw(ctx, q, args...)
 	if err != nil {
+		observe.Reject(ctx, err)
 		return nil, err
 	}
-	defer rows.Close()
-	return scanRowsAll[T](db, rows)
+	err = p.Scan(func(rows observe.Reader) error { var e error; out, e = scanRowsAll[T](db, rows); return e })
+	return out, err
 }
 
-func scanRowsAll[T any](db *DB, rows *sql.Rows) ([]T, error) {
+func scanRowsAll[T any](db *DB, rows observe.Reader) ([]T, error) {
 	var t T
 	typ := reflect.TypeOf(t)
 	switch {

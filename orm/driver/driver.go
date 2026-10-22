@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"log"
 	"strings"
 	"time"
@@ -124,22 +125,32 @@ func (d *Driver) Begin() (Tx, error) {
 
 // TransactionContext executes fn within a transaction using ctx.
 func (d *Driver) TransactionContext(ctx context.Context, fn func(Tx) error) error {
+	start := observe.Clock(ctx)
 	tx, err := d.DB.BeginTx(ctx, nil)
+	observe.Tx(ctx, "begin", err, observe.Elapsed(start))
 	if err != nil {
 		return err
 	}
 	if err = fn(Tx{tx}); err != nil {
-		if rbErr := tx.Rollback(); rbErr != nil {
+		start = observe.Clock(ctx)
+		rbErr := tx.Rollback()
+		observe.Tx(ctx, "rollback", rbErr, observe.Elapsed(start))
+		if rbErr != nil {
 			return fmt.Errorf("transaction error: %w, rollback error: %v", err, rbErr)
 		}
 		return err
 	}
-	return tx.Commit()
+	start = observe.Clock(ctx)
+	err = tx.Commit()
+	observe.Tx(ctx, "commit", err, observe.Elapsed(start))
+	return err
 }
 
 // BeginTx starts a transaction with ctx and returns the Tx.
 func (d *Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error) {
+	start := observe.Clock(ctx)
 	tx, err := d.DB.BeginTx(ctx, opts)
+	observe.Tx(ctx, "begin", err, observe.Elapsed(start))
 	if err != nil {
 		return Tx{}, err
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"strings"
 
 	"github.com/recoweft/goquent/orm/internal/querybridge"
@@ -87,7 +88,7 @@ func execPreparedWrite(p querybridge.Planned, returning bool, o *writeOptions) (
 		res, err = p.Exec()
 	} else {
 		var count int64
-		err = p.ScanCount(func(rows *sql.Rows) (int64, error) {
+		err = p.ScanCount(func(rows observe.Reader) (int64, error) {
 			cols, err := rows.Columns()
 			if err != nil {
 				return count, err
@@ -126,7 +127,7 @@ func queryWriteAll[T any](ctx context.Context, db *DB, r querybridge.Request, op
 	if err != nil {
 		return nil, err
 	}
-	err = p.ScanCount(func(rows *sql.Rows) (int64, error) {
+	err = p.ScanCount(func(rows observe.Reader) (int64, error) {
 		out, err = scanRowsAll[T](db, rows)
 		return int64(len(out)), err
 	})
@@ -139,7 +140,7 @@ func queryWriteOneWithOptions[T any](ctx context.Context, db *DB, r querybridge.
 		return out, err
 	}
 	var missing bool
-	err = p.ScanCount(func(rows *sql.Rows) (int64, error) {
+	err = p.ScanCount(func(rows observe.Reader) (int64, error) {
 		var count int64
 		for {
 			row, e := scanRowsOne[T](db, rows)

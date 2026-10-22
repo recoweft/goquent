@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"sync/atomic"
 	"time"
@@ -16,22 +17,23 @@ import (
 // diagnostics are never read back as SQL, arguments or permission to execute.
 // This is an in-process lifecycle, not a serialized plan or external permit.
 type plannedExecution struct {
-	results        writecheck.Options
-	writeOwner     *sql.DB
-	managedTx      bool
-	bindingExpires *time.Time
-	identity       *planidentity.Snapshot
-	identityErr    error
-	owner          *Query
-	ctx            context.Context
-	executor       executor
-	sql            string
-	args           []any
-	inspection     *QueryPlan
-	insertRows     []map[string]any
-	gate           error
-	expires        *time.Time
-	used           atomic.Bool
+	observationShape string
+	results          writecheck.Options
+	writeOwner       *sql.DB
+	managedTx        bool
+	bindingExpires   *time.Time
+	identity         *planidentity.Snapshot
+	identityErr      error
+	owner            *Query
+	ctx              context.Context
+	executor         executor
+	sql              string
+	args             []any
+	inspection       *QueryPlan
+	insertRows       []map[string]any
+	gate             error
+	expires          *time.Time
+	used             atomic.Bool
 }
 
 func (q *Query) sealExecution(p *QueryPlan) {
@@ -133,38 +135,78 @@ const (
 
 // This file owns Query and facade Raw executor dispatch. All result modes bind
 // the private plan and reject before any executor call, including QueryRow.
-func (q *Query) execute(p *QueryPlan, mode executionMode, scan func(*sql.Rows) error, dest ...any) (sql.Result, error) {
+func (q *Query) execute(p *QueryPlan, mode executionMode, scan func(observe.Reader) error, dest ...any) (sql.Result, error) {
 	switch mode {
 	case executionResult:
 		return q.runWrite(p, func(e *plannedExecution) (sql.Result, error) {
+			t, err := e.observe("exec")
+			if err != nil {
+				return nil, err
+			}
 			var res sql.Result
-			var err error
 			if e.ctx != nil {
 				res, err = e.executor.ExecContext(e.ctx, e.sql, valuecopy.Slice(e.args)...)
 			} else {
 				res, err = e.executor.Exec(e.sql, valuecopy.Slice(e.args)...)
 			}
-			if err != nil {
-				return nil, err
+			t.Dispatch()
+			phase := "dispatch"
+			if err == nil {
+				phase = "result"
+				var n int64
+				var known bool
+				n, known, err = e.results.ResultCount(res)
+				t.Affected(n, known)
 			}
-			if err = e.results.Result(res); err != nil {
+			out := "success"
+			if err != nil {
+				out = "error"
+			}
+			t.End(out, observe.Classify(err, phase), observe.Metric{}, observe.Metric{}, observe.Metric{})
+			if err != nil {
 				return nil, err
 			}
 			return res, nil
 		})
 	case executionRow:
-		row, err := q.executeOpenRow(p)
+		if p != nil && p.execution != nil && p.execution.results.Active() {
+			return nil, writecheck.ErrOptions
+		}
+		e, err := q.bindExecution(p)
+		if err != nil {
+			observe.Reject(q.ctx, err)
+			return nil, err
+		}
+		row, t, err := e.openRow()
 		if err != nil {
 			return nil, err
 		}
-		return nil, row.Scan(dest...)
+		if t == nil {
+			return nil, row.Scan(dest...)
+		}
+		return nil, observe.WrapRow(row, nil, t).Scan(dest...)
 	case executionRows:
-		rows, err := q.executeOpenRows(p)
+		if p != nil && p.execution != nil && p.execution.results.Active() {
+			return nil, writecheck.ErrOptions
+		}
+		e, err := q.bindExecution(p)
+		if err != nil {
+			observe.Reject(q.ctx, err)
+			return nil, err
+		}
+		raw, t, err := e.openRows()
 		if err != nil {
 			return nil, err
 		}
+		if t == nil {
+			defer raw.Close()
+			return nil, scan(raw)
+		}
+		rows := observe.Wrap(raw, t)
 		defer rows.Close()
-		return nil, scan(rows)
+		err = scan(rows)
+		observe.Result(rows, err)
+		return nil, err
 	default:
 		return nil, fmt.Errorf("%w: unsupported execution mode", ErrBlockedOperation)
 	}
@@ -176,12 +218,14 @@ func (q *Query) executeOpenRows(p *QueryPlan) (*sql.Rows, error) {
 	}
 	e, err := q.bindExecution(p)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
-	if e.ctx != nil {
-		return e.executor.QueryContext(e.ctx, e.sql, valuecopy.Slice(e.args)...)
+	rows, t, err := e.openRows()
+	if err == nil {
+		t.End("handoff", "unknown", observe.Metric{}, observe.Metric{}, observe.Metric{})
 	}
-	return e.executor.Query(e.sql, valuecopy.Slice(e.args)...)
+	return rows, err
 }
 func (q *Query) executeOpenRow(p *QueryPlan) (*sql.Row, error) {
 	if p != nil && p.execution != nil && p.execution.results.Active() {
@@ -189,18 +233,20 @@ func (q *Query) executeOpenRow(p *QueryPlan) (*sql.Row, error) {
 	}
 	e, err := q.bindExecution(p)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
-	if e.ctx != nil {
-		return e.executor.QueryRowContext(e.ctx, e.sql, valuecopy.Slice(e.args)...), nil
+	row, t, err := e.openRow()
+	if err == nil {
+		t.End("handoff", "unknown", observe.Metric{}, observe.Metric{}, observe.Metric{})
 	}
-	return e.executor.QueryRow(e.sql, valuecopy.Slice(e.args)...), nil
+	return row, err
 }
 
 func (q *Query) executeResult(p *QueryPlan) (sql.Result, error) {
 	return q.execute(p, executionResult, nil)
 }
-func (q *Query) executeRows(p *QueryPlan, scan func(*sql.Rows) error) error {
+func (q *Query) executeRows(p *QueryPlan, scan func(observe.Reader) error) error {
 	_, err := q.execute(p, executionRows, scan)
 	return err
 }

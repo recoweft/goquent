@@ -2,7 +2,7 @@ package orm
 
 import (
 	"context"
-	"database/sql"
+	"github.com/recoweft/goquent/orm/internal/observe"
 
 	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"github.com/recoweft/goquent/orm/operation"
@@ -106,6 +106,6 @@ func SelectOperationBy[T any](ctx context.Context, db *DB, spec OperationSpec, o
 	if err != nil {
 		return nil, err
 	}
-	err = prepared.Scan(func(rows *sql.Rows) error { out, err = scanRowsAll[T](db, rows); return err })
+	err = prepared.Scan(func(rows observe.Reader) error { out, err = scanRowsAll[T](db, rows); return err })
 	return out, err
 }

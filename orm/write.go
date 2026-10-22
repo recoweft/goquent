@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"reflect"
 	"sort"
@@ -1060,7 +1061,7 @@ func InsertOnceReturning[T any, V any](ctx context.Context, db *DB, v V, opts ..
 		return zero, false, err
 	}
 	var out T
-	scan := func(rows *sql.Rows) error { var e error; out, e = scanRowsOne[T](db, rows); return e }
+	scan := func(rows observe.Reader) error { var e error; out, e = scanRowsOne[T](db, rows); return e }
 	err = parent.steps[0].plan.Scan(scan)
 	if err == nil {
 		return out, true, nil

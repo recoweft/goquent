@@ -159,3 +159,12 @@ registry inputs without writing files or publishing source. Keep the CI capture
 wrapper and existing local-artifact restrictions. Typed v2/current fixtures and
 preserved v1 compatibility fixtures serve different tests. Compile success and
 supplied snapshot agreement are not write authorization or live DB evidence.
+
+## GQ-AI-12 PR2 query observation
+
+See [context observation](docs/query-observation.md) for the opt-in context scope,
+fixed public event/summary v1, bounded Drain delivery, dispatch-budget semantics,
+and finite Rows/Row/Tx/internal-command coverage. Recording capabilities stay in
+orm/internal/observe; public consumers cannot inject execution evidence. Preserve
+concrete Executor/scanner signatures and the explicit incomplete handoff boundary.
+No automatic EXPLAIN or additional diagnostic SQL belongs in ordinary execution.

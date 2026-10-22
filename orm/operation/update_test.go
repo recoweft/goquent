@@ -1,9 +1,9 @@
 package operation
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"reflect"
 	"regexp"
 	"strings"
@@ -192,7 +192,7 @@ func TestUpdatePrivateSealAndReturning(t *testing.T) {
 		d.Blocked = false
 		if returning {
 			mock.ExpectQuery(regexp.QuoteMeta(text)).WithArgs(int32(0), int64(7)).WillReturnRows(sqlmock.NewRows([]string{"v"}).AddRow(0))
-			e = p.Scan(func(rows *sql.Rows) error {
+			e = p.Scan(func(rows observe.Reader) error {
 				if !rows.Next() {
 					t.Fatal("missing row")
 				}

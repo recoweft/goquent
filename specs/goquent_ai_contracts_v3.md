@@ -549,3 +549,16 @@ Ordinary Plan and CRUD do not acquire EXPLAIN. External Tx/custom executors rema
 supported by existing APIs but are refused by this new terminal. Estimates are
 not execution results, authorization, safety or performance improvement evidence.
 PR2 observation hooks/budgets/benchmarks remain separate.
+
+## GQ-AI-12 PR2 context observations
+
+[Context query observation](../docs/query-observation.md) adds an opt-in context
+collector, bounded explicit Drain hooks, dispatch budgets and repeated-shape
+suspicions. Existing concrete Rows/Row handoffs retain unknown consumption;
+QueryObservedContext and owned scanners track result boundaries. Internal command
+and atomic-storage SQL consume the same budget; direct executor, migration and
+explicit EXPLAIN paths remain outside its finite coverage. Public event/summary
+v1 contain no SQL, values, identifiers, arbitrary causes or shape keys. SQL success
+is distinct from transaction commit; Finish does not reset budgets or operate on
+rows/transactions. Benchmarks compare the same mock workload to main and measure
+local native latency separately. Whole-Issue acceptance remains separate.
