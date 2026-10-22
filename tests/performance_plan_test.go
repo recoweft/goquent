@@ -48,12 +48,15 @@ func TestPerformancePlanNative(t *testing.T) {
 			if !p.Native() || len(p.Raw) == 0 || p.CapturedAt.IsZero() || p.ServerVersion == "" || len(p.Nodes) == 0 {
 				t.Fatal("missing native evidence")
 			}
+			if p.Unknown || p.PublicView().Unknown {
+				t.Fatal("supported native metadata was not fully classified")
+			}
 			source, err := p.ToJSON()
 			if err != nil {
 				t.Fatal("native source serialization")
 			}
 			var decoded query.PerformancePlan
-			if json.Unmarshal(source, &decoded) != nil || decoded.Native() {
+			if json.Unmarshal(source, &decoded) != nil || decoded.Native() || decoded.Unknown || decoded.PublicView().Unknown {
 				t.Fatal("native source roundtrip")
 			}
 			for _, unsafeQuery := range []*query.Query{

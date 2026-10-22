@@ -108,6 +108,29 @@ nodes or omitted metrics remain unknown; partially interpreted results are not
 complete evidence. Costs use each engine's own units, not comparable elapsed times. PostgreSQL rows/total cost and MySQL
 rows_examined_per_scan/prefix_cost retain their distinct meanings; raw source
 also preserves other server-provided metrics.
+
+The parser classifies keys and types at every supported JSON level: the PostgreSQL
+root wrapper, plan nodes and child arrays, and the MySQL root, query blocks,
+operation wrappers, tables and separate query/table/sort cost objects. Unknown
+fields, nodes and extension subtrees propagate to the source and public aggregate
+`unknown`; known estimates can remain as partial evidence. Unknown subtrees are
+not recursively interpreted as supported plan nodes. The complete JSON still
+passes duplicate-key, numeric-finiteness, depth, node-count and byte checks.
+Present known fields with incorrect types (including null), invalid metrics or
+out-of-range values return `PERFORMANCE_RESULT`, rather than becoming complete
+evidence. Absent metrics remain unknown.
+
+Recognized metadata is typed, not a blanket exemption: PostgreSQL boolean flags,
+integer width/row estimates, finite costs, string relation/index/predicate fields,
+string arrays and finite direction/parent classifications; MySQL integer row/ID
+fields, boolean flags, string identifiers/conditions, string arrays, numeric cost
+and key-length strings, bounded filtering percentages and unit-bearing data-size
+strings. Identifier and expression text stays sensitive and is not evaluated or
+used to prove SQL semantics. Free-form messages, unsupported operations and
+unclassified auxiliary objects remain unknown. These classifications describe
+the [PostgreSQL estimates](https://www.postgresql.org/docs/16/using-explain.html)
+and [MySQL JSON metadata](https://dev.mysql.com/doc/refman/8.4/en/explain-output.html);
+they do not expand the supported SELECT/catalog/version/driver domain.
 No performance improvement, returned-row guarantee, fast/safe verdict or
 application authorization follows from these estimates.
 

@@ -103,7 +103,7 @@ var performanceNumericLexeme = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?
 
 func performanceMetric(m map[string]any, key string) (*float64, error) {
 	x, ok := m[key]
-	if !ok || x == nil {
+	if !ok {
 		return nil, nil
 	}
 	s := ""
@@ -133,7 +133,10 @@ func parsePerformance(dialect string, b []byte) ([]PerformanceNode, bool, error)
 		return nil, true, e
 	}
 	nodes := []PerformanceNode{}
-	unknown := false
+	unknown, e := performanceStructure(dialect, root)
+	if e != nil {
+		return nil, true, e
+	}
 	if dialect == "postgres" {
 		a, ok := root.([]any)
 		if !ok || len(a) != 1 {
@@ -150,13 +153,6 @@ func parsePerformance(dialect string, b []byte) ([]PerformanceNode, bool, error)
 		var walk func(map[string]any) error
 		walk = func(m map[string]any) error {
 			n := PerformanceNode{Scan: "unknown"}
-			for key := range m {
-				switch key {
-				case "Node Type", "Parent Relationship", "Parallel Aware", "Async Capable", "Startup Cost", "Total Cost", "Plan Rows", "Plan Width", "Relation Name", "Alias", "Schema", "Index Name", "Scan Direction", "Index Cond", "Filter", "Recheck Cond", "Sort Key", "Presorted Key", "Plans", "Output":
-				default:
-					unknown = true
-				}
-			}
 			typ, _ := m["Node Type"].(string)
 			switch typ {
 			case "Seq Scan":
@@ -294,8 +290,6 @@ func parsePerformance(dialect string, b []byte) ([]PerformanceNode, bool, error)
 						}
 					}
 				case "table", "cost_info", "select_id", "using_filesort", "message":
-				default:
-					unknown = true
 				}
 			}
 			return nil
