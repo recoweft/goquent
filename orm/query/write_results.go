@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/valuecopy"
 	"strings"
 
@@ -46,6 +47,7 @@ func (q *Query) OptimisticVersion(column string, expected int64) *Query {
 
 func (q *Query) runWrite(p *QueryPlan, run func(*plannedExecution) (sql.Result, error)) (sql.Result, error) {
 	if err := q.checkExecution(p); err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
 	e := p.execution
@@ -96,13 +98,18 @@ func (q *Query) runWrite(p *QueryPlan, run func(*plannedExecution) (sql.Result, 
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	started := observe.Clock(ctx)
 	tx, err := e.writeOwner.BeginTx(ctx, nil)
+	observe.Tx(ctx, "begin", err, observe.Elapsed(started))
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 	rollback := func(cause error) (sql.Result, error) {
-		if re := tx.Rollback(); re != nil {
+		started = observe.Clock(ctx)
+		re := tx.Rollback()
+		observe.Tx(ctx, "rollback", re, observe.Elapsed(started))
+		if re != nil {
 			return nil, errors.Join(writecheck.ErrOutcomeUnknown, cause, re)
 		}
 		return nil, cause
@@ -129,26 +136,28 @@ func (q *Query) runWrite(p *QueryPlan, run func(*plannedExecution) (sql.Result, 
 	if err != nil {
 		return rollback(err)
 	}
-	if err = tx.Commit(); err != nil {
+	started = observe.Clock(ctx)
+	err = tx.Commit()
+	observe.Tx(ctx, "commit", err, observe.Elapsed(started))
+	if err != nil {
 		return nil, errors.Join(writecheck.ErrOutcomeUnknown, err)
 	}
 	return res, nil
 }
 
-func (q *Query) executeCountedRows(p *QueryPlan, scan func(*sql.Rows) (int64, error)) error {
+func (q *Query) executeCountedRows(p *QueryPlan, scan func(observe.Reader) (int64, error)) error {
 	_, err := q.runWrite(p, func(e *plannedExecution) (sql.Result, error) {
-		var rows *sql.Rows
-		var err error
-		if e.ctx != nil {
-			rows, err = e.executor.QueryContext(e.ctx, e.sql, e.args...)
-		} else {
-			rows, err = e.executor.Query(e.sql, e.args...)
-		}
+		raw, t, err := e.openRows()
 		if err != nil {
 			return nil, err
 		}
+		var rows observe.Reader = raw
+		if t != nil {
+			rows = observe.Wrap(raw, t)
+		}
 		defer rows.Close()
 		count, err := scan(rows)
+		observe.Result(rows, err)
 		if err == sql.ErrNoRows {
 			if checkErr := e.results.Check(count); checkErr != nil {
 				return nil, checkErr
@@ -160,10 +169,12 @@ func (q *Query) executeCountedRows(p *QueryPlan, scan func(*sql.Rows) (int64, er
 		if err = rows.Err(); err != nil {
 			return nil, err
 		}
+		checkErr := e.results.Check(count)
+		observe.Result(rows, checkErr)
 		if err = rows.Close(); err != nil {
 			return nil, err
 		}
-		return nil, e.results.Check(count)
+		return nil, checkErr
 	})
 	return err
 }
@@ -192,7 +203,7 @@ func (q *Query) checkAtomicStorage(ctx context.Context, tx *sql.Tx, p *QueryPlan
 				schema = parts[0]
 			}
 			var engine string
-			err := tx.QueryRowContext(ctx, "SELECT ENGINE FROM information_schema.tables WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ? AND table_type = 'BASE TABLE'", schema, name).Scan(&engine)
+			err := observe.InternalRow(ctx, tx, "SELECT ENGINE FROM information_schema.tables WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ? AND table_type = 'BASE TABLE'", schema, name).Scan(&engine)
 			if err != nil {
 				return err
 			}
@@ -200,7 +211,7 @@ func (q *Query) checkAtomicStorage(ctx context.Context, tx *sql.Tx, p *QueryPlan
 				return writecheck.ErrOptions
 			}
 			var triggers int
-			err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.triggers WHERE event_object_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND event_object_table = ?", schema, name).Scan(&triggers)
+			err = observe.InternalRow(ctx, tx, "SELECT COUNT(*) FROM information_schema.triggers WHERE event_object_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND event_object_table = ?", schema, name).Scan(&triggers)
 			if err != nil {
 				return err
 			}

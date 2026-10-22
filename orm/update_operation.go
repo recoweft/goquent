@@ -3,6 +3,7 @@ package orm
 import (
 	"context"
 	"database/sql"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"github.com/recoweft/goquent/orm/operation"
 )
@@ -53,7 +54,7 @@ func UpdateOperationReturningBy[T any](ctx context.Context, db *DB, s operation.
 		return out, err
 	}
 	var count int64
-	err = p.ScanCount(func(rows *sql.Rows) (int64, error) {
+	err = p.ScanCount(func(rows observe.Reader) (int64, error) {
 		for {
 			row, e := scanRowsOne[T](db, rows)
 			if e == sql.ErrNoRows {

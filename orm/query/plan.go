@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"encoding/json"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"sort"
 	"strings"
@@ -339,6 +340,9 @@ func (q *Query) planSelectBuilder(ctx context.Context, builder *qbapi.SelectQuer
 	plan := newQueryPlan(OperationSelect, sqlStr, args)
 	appendSelectSnapshotMetadata(plan, snapshot)
 	q.finalizePlan(plan)
+	if observe.Repeated(q.ctx) && plan.execution != nil {
+		plan.execution.observationShape = builder.ObservationShape()
+	}
 	return plan, nil
 }
 

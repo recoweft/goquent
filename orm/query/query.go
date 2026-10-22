@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"strings"
@@ -14,8 +15,8 @@ import (
 	qbapi "github.com/recoweft/goquent/orm/internal/querybuilder/api"
 	qbmysql "github.com/recoweft/goquent/orm/internal/querybuilder/database/mysql"
 	qbpostgres "github.com/recoweft/goquent/orm/internal/querybuilder/database/postgres"
+	scanner "github.com/recoweft/goquent/orm/internal/rowscan"
 	"github.com/recoweft/goquent/orm/internal/writeinput"
-	"github.com/recoweft/goquent/orm/scanner"
 )
 
 // Query wraps goquent QueryBuilder and the Driver.
@@ -385,18 +386,20 @@ func (q *Query) cursorColumnSQL(column CursorColumn) string {
 func (q *Query) First(dest any) error {
 	p, err := q.Plan(q.ctx)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return err
 	}
-	return q.executeRows(p, func(rows *sql.Rows) error { return scanner.Struct(dest, rows) })
+	return q.executeRows(p, func(rows observe.Reader) error { return scanner.Struct(dest, rows) })
 }
 
 // FirstMap scans first row into map.
 func (q *Query) FirstMap(dest *map[string]any) error {
 	p, err := q.Plan(q.ctx)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return err
 	}
-	return q.executeRows(p, func(rows *sql.Rows) error {
+	return q.executeRows(p, func(rows observe.Reader) error {
 		m, err := scanner.Map(rows)
 		if err == nil {
 			*dest = m
@@ -409,9 +412,10 @@ func (q *Query) FirstMap(dest *map[string]any) error {
 func (q *Query) GetMaps(dest *[]map[string]any) error {
 	p, err := q.Plan(q.ctx)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return err
 	}
-	return q.executeRows(p, func(rows *sql.Rows) error {
+	return q.executeRows(p, func(rows observe.Reader) error {
 		m, err := scanner.Maps(rows)
 		if err == nil {
 			*dest = m
@@ -424,9 +428,10 @@ func (q *Query) GetMaps(dest *[]map[string]any) error {
 func (q *Query) Get(dest any) error {
 	p, err := q.Plan(q.ctx)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return err
 	}
-	return q.executeRows(p, func(rows *sql.Rows) error { return scanner.Structs(dest, rows) })
+	return q.executeRows(p, func(rows observe.Reader) error { return scanner.Structs(dest, rows) })
 }
 
 // Limit sets a limit.
@@ -470,6 +475,7 @@ func (q *Query) Count(cols ...string) (int64, error) {
 
 	plan, err := q.planSelectBuilder(q.ctx, b)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return 0, err
 	}
 	var c int64
@@ -1476,6 +1482,7 @@ func dataToMap(data any) (map[string]any, error) {
 func (q *Query) Insert(data any) (sql.Result, error) {
 	plan, err := q.PlanInsert(q.ctx, data)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
 	return q.executeResult(plan)
@@ -1537,6 +1544,7 @@ func (q *Query) InsertGetId(data any) (int64, error) {
 func (q *Query) InsertBatch(data []map[string]any) (sql.Result, error) {
 	plan, err := q.PlanInsertBatch(q.ctx, data)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
 	return q.executeResult(plan)
@@ -1551,6 +1559,7 @@ func (q *Query) PlanInsertBatch(ctx context.Context, data []map[string]any) (*Qu
 func (q *Query) InsertOrIgnore(data []map[string]any) (sql.Result, error) {
 	plan, err := q.planInsertOrIgnore(q.ctx, data)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
 	return q.executeResult(plan)
@@ -1564,6 +1573,7 @@ func (q *Query) planInsertOrIgnore(ctx context.Context, data []map[string]any) (
 func (q *Query) Upsert(data []map[string]any, unique []string, updateCols []string) (sql.Result, error) {
 	plan, err := q.planUpsert(q.ctx, data, unique, updateCols)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
 	return q.executeResult(plan)
@@ -1577,6 +1587,7 @@ func (q *Query) planUpsert(ctx context.Context, data []map[string]any, unique []
 func (q *Query) UpdateOrInsert(cond map[string]any, values map[string]any) (sql.Result, error) {
 	plan, err := q.planUpdateOrInsert(q.ctx, cond, values)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
 	return q.executeResult(plan)
@@ -1618,6 +1629,7 @@ func (q *Query) planUpdateOrInsert(ctx context.Context, cond map[string]any, val
 func (q *Query) InsertUsing(columns []string, sub *Query) (sql.Result, error) {
 	plan, err := q.planInsertUsing(q.ctx, columns, sub)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
 	return q.executeResult(plan)
@@ -1652,6 +1664,7 @@ func (q *Query) planInsertUsing(ctx context.Context, columns []string, sub *Quer
 func (q *Query) Update(data any) (sql.Result, error) {
 	plan, err := q.PlanUpdate(q.ctx, data)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
 	return q.executeResult(plan)
@@ -1676,6 +1689,7 @@ func (q *Query) PlanUpdate(ctx context.Context, data any) (*QueryPlan, error) {
 func (q *Query) Delete() (sql.Result, error) {
 	plan, err := q.PlanDelete(q.ctx)
 	if err != nil {
+		observe.Reject(q.ctx, err)
 		return nil, err
 	}
 	return q.executeResult(plan)

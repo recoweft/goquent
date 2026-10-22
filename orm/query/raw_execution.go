@@ -3,6 +3,7 @@ package query
 import (
 	"database/sql"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/querybridge"
 )
 
@@ -30,6 +31,9 @@ func prepareRaw(r querybridge.RawRequest) (querybridge.Planned, error) {
 		p.Tables = append(p.Tables, TableRef{Name: t})
 	}
 	q.sealExecution(p)
+	out.ObservedRows = func() (*observe.Rows, error) { return q.executeTrackedRows(p) }
+	out.ObservedRow = func() (*observe.Row, error) { return q.executeTrackedRow(p) }
+	out.Scan = func(scan func(observe.Reader) error) error { return q.executeRows(p, scan) }
 	out.Diagnostic = p
 	out.Check = func() error { return q.checkExecution(p) }
 	out.Exec = func() (sql.Result, error) { return q.executeResult(p) }

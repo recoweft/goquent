@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/recoweft/goquent/orm/observation"
 	"github.com/recoweft/goquent/orm/query"
 )
 
@@ -94,9 +95,14 @@ func TestCommandIntegration(t *testing.T) {
 				return db.WithOptions(WithSettings(NewSettings(policies, query.RiskConfig{}, c).WithTenantPolicy("command-fixture", as, true)))
 			}
 			trusted := makeDB(7)
-			store, e := NewCommandStore(t.Context(), trusted, "gq10-fixture")
+			startupCtx, startupScope, _ := observation.Start(t.Context(), observation.Options{})
+			store, e := NewCommandStore(startupCtx, trusted, "gq10-fixture")
 			if e != nil {
 				t.Fatal(e)
+			}
+			startup := startupScope.Finish()
+			if startup.Dispatched == 0 || startup.InFlight != 0 || startup.Incomplete != 0 {
+				t.Fatal("catalog observation missing")
 			}
 			t.Run("hooks", func(t *testing.T) { testCommandHooksIntegration(t, db, store, makeDB, schema, dialect) })
 			t.Run("atomic-results", func(t *testing.T) { testAtomicIntegration(t, db, store, schema, dialect) })
@@ -110,6 +116,40 @@ func TestCommandIntegration(t *testing.T) {
 				}
 				return v
 			}
+			t.Run("observation-budget", func(t *testing.T) {
+				ctx, scope, _ := observation.Start(t.Context(), observation.Options{})
+				r, e := store.Run(ctx, command(900001))
+				if e != nil || !r.Applied {
+					t.Fatal("observed command failed")
+				}
+				v := scope.Finish()
+				if v.Dispatched < 4 || v.TxBoundaries != 2 || v.Incomplete != 0 {
+					t.Fatal(v)
+				}
+				var internal, business int64
+				_, _, _ = scope.Drain(func(e observation.Event) {
+					if e.Class == "internal" {
+						internal++
+					}
+					if e.Class == "query" {
+						business++
+					}
+				})
+				if internal < 3 || business != 1 {
+					t.Fatal("command coverage")
+				}
+				// Allow catalog/lookup and reservation, then refuse the business statement.
+				limit := v.Dispatched - 2
+				limited, ls, _ := observation.Start(t.Context(), observation.Options{QueryLimit: &limit})
+				r, e = store.Run(limited, command(900002))
+				if !errors.Is(e, observation.ErrQueryBudgetExceeded) || r.Applied {
+					t.Fatal("command budget refusal")
+				}
+				lv := ls.Finish()
+				if lv.Dispatched != limit || lv.Rejected != 1 || count(900002) != 0 {
+					t.Fatal("command atomicity")
+				}
+			})
 			t.Run("concurrent-first-and-restart", func(t *testing.T) {
 				c := command(1)
 				start := make(chan struct{})

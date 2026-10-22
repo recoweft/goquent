@@ -2,6 +2,7 @@ package orm
 
 import (
 	"context"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"strings"
 )
 
@@ -10,7 +11,7 @@ import (
 func (s *CommandStore) validatePlainTable(ctx context.Context, table string) error {
 	if s.dialect == MySQL {
 		var kind, engine string
-		err := s.db.exec.QueryRowContext(ctx, "SELECT TABLE_TYPE, COALESCE(ENGINE,'') FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?", s.schema, table).Scan(&kind, &engine)
+		err := observe.InternalRow(ctx, s.db.exec, "SELECT TABLE_TYPE, COALESCE(ENGINE,'') FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?", s.schema, table).Scan(&kind, &engine)
 		if err != nil {
 			return err
 		}
@@ -20,7 +21,7 @@ func (s *CommandStore) validatePlainTable(ctx context.Context, table string) err
 	} else {
 		var kind, persistence string
 		var rls, partition bool
-		err := s.db.exec.QueryRowContext(ctx, "SELECT c.relkind::text, c.relpersistence::text, c.relrowsecurity, c.relispartition FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2", s.schema, table).Scan(&kind, &persistence, &rls, &partition)
+		err := observe.InternalRow(ctx, s.db.exec, "SELECT c.relkind::text, c.relpersistence::text, c.relrowsecurity, c.relispartition FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2", s.schema, table).Scan(&kind, &persistence, &rls, &partition)
 		if err != nil {
 			return err
 		}
@@ -28,7 +29,7 @@ func (s *CommandStore) validatePlainTable(ctx context.Context, table string) err
 			return ErrCommandStore
 		}
 		var inherited int
-		if err = s.db.exec.QueryRowContext(ctx, "SELECT count(*) FROM pg_catalog.pg_inherits i JOIN pg_catalog.pg_class c ON c.oid=i.inhparent OR c.oid=i.inhrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2", s.schema, table).Scan(&inherited); err != nil {
+		if err = observe.InternalRow(ctx, s.db.exec, "SELECT count(*) FROM pg_catalog.pg_inherits i JOIN pg_catalog.pg_class c ON c.oid=i.inhparent OR c.oid=i.inhrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2", s.schema, table).Scan(&inherited); err != nil {
 			return err
 		}
 		if inherited != 0 {
@@ -40,7 +41,7 @@ func (s *CommandStore) validatePlainTable(ctx context.Context, table string) err
 	if s.dialect == Postgres {
 		q = "SELECT count(*) FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=? AND c.relname=? AND NOT t.tgisinternal"
 	}
-	if err := s.db.exec.QueryRowContext(ctx, s.sql(q), s.schema, table).Scan(&triggers); err != nil {
+	if err := observe.InternalRow(ctx, s.db.exec, s.sql(q), s.schema, table).Scan(&triggers); err != nil {
 		return err
 	}
 	if triggers != 0 {
@@ -49,7 +50,7 @@ func (s *CommandStore) validatePlainTable(ctx context.Context, table string) err
 	// Rules can rewrite a base table write into a different target.
 	if s.dialect == Postgres {
 		var rules int
-		if err := s.db.exec.QueryRowContext(ctx, "SELECT count(*) FROM pg_catalog.pg_rules WHERE schemaname=$1 AND tablename=$2", s.schema, table).Scan(&rules); err != nil {
+		if err := observe.InternalRow(ctx, s.db.exec, "SELECT count(*) FROM pg_catalog.pg_rules WHERE schemaname=$1 AND tablename=$2", s.schema, table).Scan(&rules); err != nil {
 			return err
 		}
 		if rules != 0 {
@@ -76,7 +77,7 @@ func (s *CommandStore) validateLedger(ctx context.Context) error {
 		expected["status"] = "integer"
 	}
 	q := "SELECT COLUMN_NAME, " + typeColumn + ", IS_NULLABLE, " + extra + " FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?"
-	rows, err := s.db.exec.QueryContext(ctx, s.sql(q), s.schema, commandTable)
+	rows, err := observe.InternalQuery(ctx, s.db.exec, s.sql(q), s.schema, commandTable)
 	if err != nil {
 		return err
 	}
@@ -105,7 +106,7 @@ func (s *CommandStore) validateLedger(ctx context.Context) error {
 	// Exactly one unique index, with the full ordered scope/ID key. No secondary
 	// uniqueness is allowed to masquerade as reservation contention.
 	if s.dialect == MySQL {
-		rows, err = s.db.exec.QueryContext(ctx, "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COALESCE(SUB_PART,0) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND NON_UNIQUE=0 ORDER BY INDEX_NAME,SEQ_IN_INDEX", s.schema, commandTable)
+		rows, err = observe.InternalQuery(ctx, s.db.exec, "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COALESCE(SUB_PART,0) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND NON_UNIQUE=0 ORDER BY INDEX_NAME,SEQ_IN_INDEX", s.schema, commandTable)
 		if err != nil {
 			return err
 		}
@@ -137,7 +138,7 @@ func (s *CommandStore) validateLedger(ctx context.Context) error {
 		}
 	} else {
 		q := `SELECT i.relname, x.indisprimary, x.indisvalid, x.indimmediate, x.indpred IS NULL, x.indexprs IS NULL, x.indnkeyatts, x.indnatts, pg_get_indexdef(x.indexrelid,1,true), pg_get_indexdef(x.indexrelid,2,true) FROM pg_catalog.pg_index x JOIN pg_catalog.pg_class t ON t.oid=x.indrelid JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace JOIN pg_catalog.pg_class i ON i.oid=x.indexrelid WHERE n.nspname=$1 AND t.relname=$2 AND x.indisunique`
-		rows, err = s.db.exec.QueryContext(ctx, q, s.schema, commandTable)
+		rows, err = observe.InternalQuery(ctx, s.db.exec, q, s.schema, commandTable)
 		if err != nil {
 			return err
 		}
@@ -166,7 +167,7 @@ func (s *CommandStore) validateLedger(ctx context.Context) error {
 		}
 	}
 	var foreignKeys int
-	if err = s.db.exec.QueryRowContext(ctx, s.sql("SELECT count(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND CONSTRAINT_TYPE='FOREIGN KEY'"), s.schema, commandTable).Scan(&foreignKeys); err != nil {
+	if err = observe.InternalRow(ctx, s.db.exec, s.sql("SELECT count(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND CONSTRAINT_TYPE='FOREIGN KEY'"), s.schema, commandTable).Scan(&foreignKeys); err != nil {
 		return err
 	}
 	if foreignKeys != 0 {

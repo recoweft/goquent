@@ -70,16 +70,19 @@ func (o Options) Check(n int64) error {
 	}
 	return nil
 }
-func (o Options) Result(r sql.Result) error {
+func (o Options) Result(r sql.Result) error { _, _, e := o.ResultCount(r); return e }
+
+// ResultCount reuses the expectation's existing RowsAffected call, never adds one.
+func (o Options) ResultCount(r sql.Result) (int64, bool, error) {
 	if !o.Active() {
-		return nil
+		return 0, false, nil
 	}
 	if r == nil {
-		return ErrOptions
+		return 0, false, ErrOptions
 	}
 	n, e := r.RowsAffected()
 	if e != nil {
-		return e
+		return 0, false, e
 	}
-	return o.Check(n)
+	return n, n >= 0, o.Check(n)
 }

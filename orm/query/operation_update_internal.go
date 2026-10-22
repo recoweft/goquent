@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"database/sql"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"github.com/recoweft/goquent/orm/internal/writecheck"
 	"github.com/recoweft/goquent/orm/internal/writeinput"
@@ -49,5 +50,5 @@ func planOperationUpdate(ctx context.Context, base any, values map[string]any, r
 	if p.execution == nil || p.execution.owner != q || p.Operation != OperationUpdate {
 		return querybridge.Planned{}, ErrBlockedOperation
 	}
-	return querybridge.Planned{ScanCount: func(scan func(*sql.Rows) (int64, error)) error { return q.executeCountedRows(p, scan) }, Diagnostic: p, Check: func() error { return q.checkExecution(p) }, Exec: func() (sql.Result, error) { return q.executeResult(p) }, Scan: func(scan func(*sql.Rows) error) error { return q.executeRows(p, scan) }}, nil
+	return querybridge.Planned{ScanCount: func(scan func(observe.Reader) (int64, error)) error { return q.executeCountedRows(p, scan) }, Diagnostic: p, Check: func() error { return q.checkExecution(p) }, Exec: func() (sql.Result, error) { return q.executeResult(p) }, Scan: func(scan func(observe.Reader) error) error { return q.executeRows(p, scan) }}, nil
 }

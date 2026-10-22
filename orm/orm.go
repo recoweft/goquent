@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"github.com/recoweft/goquent/orm/model"
 	"github.com/recoweft/goquent/orm/query"
@@ -32,13 +33,14 @@ type Executor interface {
 
 // DB provides main ORM interface.
 type DB struct {
-	settings    query.Settings
-	drv         *driver.Driver
-	exec        Executor
-	scanOpts    ScanOptions
-	rawApproval *query.Approval
-	rawTables   []string
-	rawErr      error
+	txObservation *transactionObservation
+	settings      query.Settings
+	drv           *driver.Driver
+	exec          Executor
+	scanOpts      ScanOptions
+	rawApproval   *query.Approval
+	rawTables     []string
+	rawErr        error
 }
 
 // Option configures DB at creation.
@@ -201,6 +203,7 @@ func (db *DB) Close() error {
 func (db *DB) newTransactionDB(tx *sql.Tx) *DB {
 	next := db.Clone()
 	next.exec = tx
+	next.txObservation = nil
 	return next
 }
 
@@ -253,6 +256,9 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error) {
 		return Tx{}, err
 	}
 	txDB := db.newTransactionDB(t.Tx)
+	if observe.Enabled(ctx) {
+		txDB.txObservation = &transactionObservation{ctx: ctx}
+	}
 	return Tx{DB: txDB, Tx: t}, nil
 }
 
@@ -304,6 +310,7 @@ func (db *DB) Query(q string, args ...any) (*sql.Rows, error) {
 func (db *DB) QueryContext(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
 	p, err := db.prepareRaw(ctx, q, args...)
 	if err != nil {
+		observe.Reject(ctx, err)
 		return nil, err
 	}
 	return p.Rows()
@@ -316,6 +323,7 @@ func (db *DB) Exec(q string, args ...any) (sql.Result, error) { return db.ExecCo
 func (db *DB) ExecContext(ctx context.Context, q string, args ...any) (sql.Result, error) {
 	p, err := db.prepareRaw(ctx, q, args...)
 	if err != nil {
+		observe.Reject(ctx, err)
 		return nil, err
 	}
 	return p.Exec()
@@ -327,14 +335,24 @@ func (db *DB) QueryRow(q string, args ...any) *Row { return db.QueryRowContext(n
 
 // QueryRowContext returns a Row that carries inspection errors without executor calls.
 func (db *DB) QueryRowContext(ctx context.Context, q string, args ...any) *Row {
-	row, err := db.QueryRowE(ctx, q, args...)
-	return &Row{row: row, err: err}
+	if !observe.Enabled(ctx) {
+		row, err := db.QueryRowE(ctx, q, args...)
+		return &Row{row: row, err: err}
+	}
+	p, err := db.prepareRaw(ctx, q, args...)
+	if err != nil {
+		observe.Reject(ctx, err)
+		return &Row{err: err}
+	}
+	row, err := p.ObservedRow()
+	return &Row{observed: row, err: err}
 }
 
 // QueryRowE validates raw SQL policy before dispatch and returns *sql.Row.
 func (db *DB) QueryRowE(ctx context.Context, q string, args ...any) (*sql.Row, error) {
 	p, err := db.prepareRaw(ctx, q, args...)
 	if err != nil {
+		observe.Reject(ctx, err)
 		return nil, err
 	}
 	return p.Row()

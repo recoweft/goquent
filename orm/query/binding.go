@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"reflect"
 	"sync/atomic"
 	"time"
@@ -14,8 +15,8 @@ import (
 	"github.com/recoweft/goquent/orm/driver"
 	"github.com/recoweft/goquent/orm/internal/planidentity"
 	"github.com/recoweft/goquent/orm/internal/planversion"
+	scanner "github.com/recoweft/goquent/orm/internal/rowscan"
 	"github.com/recoweft/goquent/orm/predicate"
-	"github.com/recoweft/goquent/orm/scanner"
 )
 
 var (
@@ -419,7 +420,7 @@ func (q *Query) ExecuteValidatedSelect(ctx context.Context, c BindingCurrent, h 
 	if err != nil {
 		return err
 	}
-	return q.executeRows(p, func(rows *sql.Rows) error { return scanner.Structs(dest, rows) })
+	return q.executeRows(p, func(rows observe.Reader) error { return scanner.Structs(dest, rows) })
 }
 
 // ExecuteValidatedCount attempts a handle once with current COUNT columns.

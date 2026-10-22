@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"strings"
 
 	"github.com/go-sql-driver/mysql"
@@ -68,7 +69,7 @@ func NewCommandStore(ctx context.Context, db *DB, namespace string) (*CommandSto
 	if dialect == Postgres {
 		q = "SELECT current_schema()"
 	}
-	if err = s.db.exec.QueryRowContext(ctx, q).Scan(&s.schema); err != nil {
+	if err = observe.InternalRow(ctx, s.db.exec, q).Scan(&s.schema); err != nil {
 		return nil, err
 	}
 	if !commandIdent.MatchString(s.schema) {
@@ -187,7 +188,7 @@ func (s *CommandStore) apply(ctx context.Context, id string, input []byte, finge
 		return rollback(err)
 	}
 	reservation := s.sql("INSERT INTO " + s.table + " (scope_hash, operation_id, format_version, canonical_scope, command_input, fingerprint, status, result) VALUES (?, ?, 1, ?, ?, ?, 0, ?)")
-	res, err := tx.DB.exec.ExecContext(ctx, reservation, s.scopeHash[:], []byte(id), s.scope, input, fingerprint[:], []byte{})
+	res, err := observe.InternalExec(ctx, tx.DB.exec, reservation, s.scopeHash[:], []byte(id), s.scope, input, fingerprint[:], []byte{})
 	if err != nil {
 		_, re := rollback(err)
 		if errors.Is(re, ErrCommandOutcomeUnknown) {
@@ -224,7 +225,7 @@ func (s *CommandStore) apply(ctx context.Context, id string, input []byte, finge
 	if err != nil || len(encoded) > CommandMaxBytes {
 		return rollback(ErrCommandCorrupt)
 	}
-	res, err = tx.DB.exec.ExecContext(ctx, s.sql("UPDATE "+s.table+" SET result = ?, status = 1 WHERE scope_hash = ? AND operation_id = ? AND status = 0"), encoded, s.scopeHash[:], []byte(id))
+	res, err = observe.InternalExec(ctx, tx.DB.exec, s.sql("UPDATE "+s.table+" SET result = ?, status = 1 WHERE scope_hash = ? AND operation_id = ? AND status = 0"), encoded, s.scopeHash[:], []byte(id))
 	if err != nil {
 		return rollback(err)
 	}
@@ -266,7 +267,7 @@ func (s *CommandStore) lookup(ctx context.Context, id string, input []byte, fp [
 	var scope, stored, hash, result []byte
 	limit := fmt.Sprint(CommandMaxBytes + 1)
 	q := "SELECT format_version, status, substring(canonical_scope,1," + limit + "), substring(command_input,1," + limit + "), substring(fingerprint,1,33), substring(result,1," + limit + ") FROM " + s.table + " WHERE scope_hash = ? AND operation_id = ?"
-	err := s.db.exec.QueryRowContext(ctx, s.sql(q), s.scopeHash[:], []byte(id)).Scan(&version, &status, &scope, &stored, &hash, &result)
+	err := observe.InternalRow(ctx, s.db.exec, s.sql(q), s.scopeHash[:], []byte(id)).Scan(&version, &status, &scope, &stored, &hash, &result)
 	if err != nil {
 		return zero, err
 	}

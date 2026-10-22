@@ -2,9 +2,9 @@ package orm
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"github.com/recoweft/goquent/orm/driver"
+	"github.com/recoweft/goquent/orm/internal/observe"
 	"github.com/recoweft/goquent/orm/internal/querybridge"
 	"strings"
 )
@@ -220,7 +220,7 @@ func executeNested[P any, C any, G any](ctx context.Context, db *DB, spec Nested
 		var id int64
 		if p.postgres {
 			var rows []map[string]any
-			err := s.plan.Scan(func(r *sql.Rows) error { var e error; rows, e = scanRowsAll[map[string]any](db, r); return e })
+			err := s.plan.Scan(func(r observe.Reader) error { var e error; rows, e = scanRowsAll[map[string]any](db, r); return e })
 			if err != nil {
 				return result, err
 			}
