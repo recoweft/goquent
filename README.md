@@ -7401,6 +7401,32 @@ import "github.com/recoweft/goquent/orm/query"
 - [type JoinRef](<#JoinRef>)
 - [type OperationType](<#OperationType>)
 - [type OutputError](<#OutputError>)
+- [type PerformanceError](<#PerformanceError>)
+  - [func \(e PerformanceError\) Error\(\) string](<#PerformanceError.Error>)
+  - [func \(e PerformanceError\) Format\(s fmt.State, \_ rune\)](<#PerformanceError.Format>)
+- [type PerformanceNode](<#PerformanceNode>)
+  - [func \(n PerformanceNode\) Format\(s fmt.State, \_ rune\)](<#PerformanceNode.Format>)
+  - [func \(n PerformanceNode\) String\(\) string](<#PerformanceNode.String>)
+- [type PerformanceNodeView](<#PerformanceNodeView>)
+  - [func \(n PerformanceNodeView\) Format\(s fmt.State, \_ rune\)](<#PerformanceNodeView.Format>)
+  - [func \(n PerformanceNodeView\) MarshalJSON\(\) \(\[\]byte, error\)](<#PerformanceNodeView.MarshalJSON>)
+  - [func \(n PerformanceNodeView\) String\(\) string](<#PerformanceNodeView.String>)
+- [type PerformanceOptions](<#PerformanceOptions>)
+- [type PerformancePlan](<#PerformancePlan>)
+  - [func \(p PerformancePlan\) Format\(s fmt.State, \_ rune\)](<#PerformancePlan.Format>)
+  - [func \(p PerformancePlan\) MarshalJSON\(\) \(\[\]byte, error\)](<#PerformancePlan.MarshalJSON>)
+  - [func \(p \*PerformancePlan\) Native\(\) bool](<#PerformancePlan.Native>)
+  - [func \(p PerformancePlan\) PublicView\(\) PerformancePlanView](<#PerformancePlan.PublicView>)
+  - [func \(p PerformancePlan\) String\(\) string](<#PerformancePlan.String>)
+  - [func \(p \*PerformancePlan\) ToJSON\(\) \(\[\]byte, error\)](<#PerformancePlan.ToJSON>)
+  - [func \(p \*PerformancePlan\) UnmarshalJSON\(b \[\]byte\) error](<#PerformancePlan.UnmarshalJSON>)
+- [type PerformancePlanView](<#PerformancePlanView>)
+  - [func DecodePerformancePlanView\(b \[\]byte\) \(PerformancePlanView, error\)](<#DecodePerformancePlanView>)
+  - [func \(v PerformancePlanView\) Format\(s fmt.State, \_ rune\)](<#PerformancePlanView.Format>)
+  - [func \(v PerformancePlanView\) MarshalJSON\(\) \(\[\]byte, error\)](<#PerformancePlanView.MarshalJSON>)
+  - [func \(v PerformancePlanView\) String\(\) string](<#PerformancePlanView.String>)
+  - [func \(v PerformancePlanView\) ToJSON\(\) \(\[\]byte, error\)](<#PerformancePlanView.ToJSON>)
+  - [func \(v \*PerformancePlanView\) UnmarshalJSON\(b \[\]byte\) error](<#PerformancePlanView.UnmarshalJSON>)
 - [type PlanView](<#PlanView>)
   - [func DecodePlanView\(b \[\]byte\) \(PlanView, error\)](<#DecodePlanView>)
   - [func \(v PlanView\) Format\(s fmt.State, \_ rune\)](<#PlanView.Format>)
@@ -7434,6 +7460,7 @@ import "github.com/recoweft/goquent/orm/query"
   - [func \(q \*Query\) ExecuteValidatedSelect\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan, dest any\) error](<#Query.ExecuteValidatedSelect>)
   - [func \(q \*Query\) ExecuteValidatedUpdate\(ctx context.Context, c BindingCurrent, h \*ValidatedPlan, data any\) \(sql.Result, error\)](<#Query.ExecuteValidatedUpdate>)
   - [func \(q \*Query\) ExpectAffected\(n int64\) \*Query](<#Query.ExpectAffected>)
+  - [func \(q \*Query\) ExplainPerformance\(ctx context.Context, o PerformanceOptions\) \(\*PerformancePlan, error\)](<#Query.ExplainPerformance>)
   - [func \(q \*Query\) First\(dest any\) error](<#Query.First>)
   - [func \(q \*Query\) FirstMap\(dest \*map\[string\]any\) error](<#Query.FirstMap>)
   - [func \(q \*Query\) Get\(dest any\) error](<#Query.Get>)
@@ -7692,6 +7719,18 @@ const MetadataRequiredPredicates = "required_predicates"
 
 ```go
 const MetadataTableRisk = "table_risk_metadata"
+```
+
+<a name="PerformancePlanKind"></a>
+
+```go
+const PerformancePlanKind = "goquent.performance_plan"
+```
+
+<a name="PerformancePlanViewKind"></a>
+
+```go
+const PerformancePlanViewKind = "goquent.performance_plan_view"
 ```
 
 <a name="PlanViewKind"></a>
@@ -8254,6 +8293,290 @@ OutputError distinguishes display preflight failures from custom marshaler error
 type OutputError = valueguard.Error
 ```
 
+<a name="PerformanceError"></a>
+## type PerformanceError
+
+PerformanceError is a closed public error without a retained driver cause.
+
+```go
+type PerformanceError string
+```
+
+<a name="ErrPerformanceUnsupported"></a>
+
+```go
+const (
+    ErrPerformanceUnsupported PerformanceError = "PERFORMANCE_UNSUPPORTED"
+    ErrPerformanceBlocked     PerformanceError = "PERFORMANCE_BLOCKED"
+    ErrPerformanceConnection  PerformanceError = "PERFORMANCE_CONNECTION"
+    ErrPerformanceQuery       PerformanceError = "PERFORMANCE_QUERY"
+    ErrPerformanceResult      PerformanceError = "PERFORMANCE_RESULT"
+    ErrPerformanceLimit       PerformanceError = "PERFORMANCE_LIMIT"
+    ErrPerformanceCanceled    PerformanceError = "PERFORMANCE_CANCELED"
+    ErrPerformanceTimeout     PerformanceError = "PERFORMANCE_TIMEOUT"
+    ErrPerformanceCleanup     PerformanceError = "PERFORMANCE_CLEANUP"
+)
+```
+
+<a name="PerformanceError.Error"></a>
+### func \(PerformanceError\) Error
+
+```go
+func (e PerformanceError) Error() string
+```
+
+
+
+<a name="PerformanceError.Format"></a>
+### func \(PerformanceError\) Format
+
+```go
+func (e PerformanceError) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="PerformanceNode"></a>
+## type PerformanceNode
+
+PerformanceNode is sensitive source data. Rows and costs are database estimates, not execution results, portable units, authorization, or resource bounds.
+
+```go
+type PerformanceNode struct {
+    Scan    string   `json:"scan"`
+    Index   string   `json:"index,omitempty"`
+    Rows    *float64 `json:"rows,omitempty"`
+    Cost    *float64 `json:"cost,omitempty"`
+    Unknown bool     `json:"unknown"`
+}
+```
+
+<a name="PerformanceNode.Format"></a>
+### func \(PerformanceNode\) Format
+
+```go
+func (n PerformanceNode) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="PerformanceNode.String"></a>
+### func \(PerformanceNode\) String
+
+```go
+func (n PerformanceNode) String() string
+```
+
+
+
+<a name="PerformanceNodeView"></a>
+## type PerformanceNodeView
+
+
+
+```go
+type PerformanceNodeView struct {
+    Scan      string  `json:"scan"`
+    Indexed   bool    `json:"indexed"`
+    RowsKnown bool    `json:"rows_known"`
+    Rows      float64 `json:"rows"`
+    CostKnown bool    `json:"cost_known"`
+    Cost      float64 `json:"cost"`
+    Unknown   bool    `json:"unknown"`
+}
+```
+
+<a name="PerformanceNodeView.Format"></a>
+### func \(PerformanceNodeView\) Format
+
+```go
+func (n PerformanceNodeView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="PerformanceNodeView.MarshalJSON"></a>
+### func \(PerformanceNodeView\) MarshalJSON
+
+```go
+func (n PerformanceNodeView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="PerformanceNodeView.String"></a>
+### func \(PerformanceNodeView\) String
+
+```go
+func (n PerformanceNodeView) String() string
+```
+
+
+
+<a name="PerformanceOptions"></a>
+## type PerformanceOptions
+
+PerformanceOptions may shorten, but never extend, the five second total budget.
+
+```go
+type PerformanceOptions struct{ Timeout time.Duration }
+```
+
+<a name="PerformancePlan"></a>
+## type PerformancePlan
+
+PerformancePlan is a separate diagnostic source contract. Explicit JSON contains SQL, values and database identifiers. Use PublicView for publication.
+
+```go
+type PerformancePlan struct {
+    Kind          string            `json:"kind"`
+    Version       int               `json:"version"`
+    Dialect       string            `json:"dialect"`
+    ServerVersion string            `json:"server_version"`
+    CapturedAt    time.Time         `json:"captured_at"`
+    Database      string            `json:"database"`
+    Target        *QueryPlan        `json:"target"`
+    Raw           json.RawMessage   `json:"raw"`
+    Nodes         []PerformanceNode `json:"nodes"`
+    Unknown       bool              `json:"unknown"`
+    // contains filtered or unexported fields
+}
+```
+
+<a name="PerformancePlan.Format"></a>
+### func \(PerformancePlan\) Format
+
+```go
+func (p PerformancePlan) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="PerformancePlan.MarshalJSON"></a>
+### func \(PerformancePlan\) MarshalJSON
+
+```go
+func (p PerformancePlan) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="PerformancePlan.Native"></a>
+### func \(\*PerformancePlan\) Native
+
+```go
+func (p *PerformancePlan) Native() bool
+```
+
+Native reports only this process's acquisition provenance, never a JSON claim.
+
+<a name="PerformancePlan.PublicView"></a>
+### func \(PerformancePlan\) PublicView
+
+```go
+func (p PerformancePlan) PublicView() PerformancePlanView
+```
+
+
+
+<a name="PerformancePlan.String"></a>
+### func \(PerformancePlan\) String
+
+```go
+func (p PerformancePlan) String() string
+```
+
+
+
+<a name="PerformancePlan.ToJSON"></a>
+### func \(\*PerformancePlan\) ToJSON
+
+```go
+func (p *PerformancePlan) ToJSON() ([]byte, error)
+```
+
+
+
+<a name="PerformancePlan.UnmarshalJSON"></a>
+### func \(\*PerformancePlan\) UnmarshalJSON
+
+```go
+func (p *PerformancePlan) UnmarshalJSON(b []byte) error
+```
+
+
+
+<a name="PerformancePlanView"></a>
+## type PerformancePlanView
+
+PerformancePlanView excludes SQL, parameters, identifiers and server text. Numeric estimates are bounded display data, not a complete decision input.
+
+```go
+type PerformancePlanView struct {
+    Kind       string                `json:"kind"`
+    Version    int                   `json:"version"`
+    Dialect    string                `json:"dialect"`
+    Provenance string                `json:"provenance"`
+    Unknown    bool                  `json:"unknown"`
+    Truncated  bool                  `json:"truncated"`
+    Nodes      []PerformanceNodeView `json:"nodes"`
+}
+```
+
+<a name="DecodePerformancePlanView"></a>
+### func DecodePerformancePlanView
+
+```go
+func DecodePerformancePlanView(b []byte) (PerformancePlanView, error)
+```
+
+
+
+<a name="PerformancePlanView.Format"></a>
+### func \(PerformancePlanView\) Format
+
+```go
+func (v PerformancePlanView) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="PerformancePlanView.MarshalJSON"></a>
+### func \(PerformancePlanView\) MarshalJSON
+
+```go
+func (v PerformancePlanView) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="PerformancePlanView.String"></a>
+### func \(PerformancePlanView\) String
+
+```go
+func (v PerformancePlanView) String() string
+```
+
+
+
+<a name="PerformancePlanView.ToJSON"></a>
+### func \(PerformancePlanView\) ToJSON
+
+```go
+func (v PerformancePlanView) ToJSON() ([]byte, error)
+```
+
+
+
+<a name="PerformancePlanView.UnmarshalJSON"></a>
+### func \(\*PerformancePlanView\) UnmarshalJSON
+
+```go
+func (v *PerformancePlanView) UnmarshalJSON(b []byte) error
+```
+
+
+
 <a name="PlanView"></a>
 ## type PlanView
 
@@ -8593,6 +8916,15 @@ func (q *Query) ExpectAffected(n int64) *Query
 ```
 
 ExpectAffected checks the driver count \(or complete RETURNING row count\). Without AtomicWrite, an autocommitted write cannot be rolled back by this check.
+
+<a name="Query.ExplainPerformance"></a>
+### func \(\*Query\) ExplainPerformance
+
+```go
+func (q *Query) ExplainPerformance(ctx context.Context, o PerformanceOptions) (*PerformancePlan, error)
+```
+
+ExplainPerformance explicitly acquires a bounded non\-ANALYZE plan. Ordinary Plan, DryRun and CRUD never call it. Unsupported shapes/executors are refused before connecting. See docs/performance\-plans.md for the database trust boundary.
 
 <a name="Query.First"></a>
 ### func \(\*Query\) First
