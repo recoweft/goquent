@@ -109,6 +109,7 @@ import "github.com/recoweft/goquent/orm"
   - [func \(db \*DB\) Model\(v any\) \*query.Query](<#DB.Model>)
   - [func \(db \*DB\) Query\(q string, args ...any\) \(\*sql.Rows, error\)](<#DB.Query>)
   - [func \(db \*DB\) QueryContext\(ctx context.Context, q string, args ...any\) \(\*sql.Rows, error\)](<#DB.QueryContext>)
+  - [func \(db \*DB\) QueryObservedContext\(ctx context.Context, q string, args ...any\) \(\*observation.Rows, error\)](<#DB.QueryObservedContext>)
   - [func \(db \*DB\) QueryRow\(q string, args ...any\) \*Row](<#DB.QueryRow>)
   - [func \(db \*DB\) QueryRowContext\(ctx context.Context, q string, args ...any\) \*Row](<#DB.QueryRowContext>)
   - [func \(db \*DB\) QueryRowE\(ctx context.Context, q string, args ...any\) \(\*sql.Row, error\)](<#DB.QueryRowE>)
@@ -253,6 +254,7 @@ import "github.com/recoweft/goquent/orm"
 - [type RiskRuleConfig](<#RiskRuleConfig>)
 - [type Row](<#Row>)
   - [func \(r \*Row\) Err\(\) error](<#Row.Err>)
+  - [func \(r \*Row\) Format\(s fmt.State, \_ rune\)](<#Row.Format>)
   - [func \(r \*Row\) Scan\(dest ...any\) error](<#Row.Scan>)
 - [type RowsAffectedError](<#RowsAffectedError>)
 - [type ScanOptions](<#ScanOptions>)
@@ -288,6 +290,8 @@ import "github.com/recoweft/goquent/orm"
   - [func NewTransactionHook\(name string, run func\(context.Context, Tx\) error\) TransactionHook](<#NewTransactionHook>)
 - [type TransactionWithHooksSpec](<#TransactionWithHooksSpec>)
 - [type Tx](<#Tx>)
+  - [func \(tx Tx\) Commit\(\) error](<#Tx.Commit>)
+  - [func \(tx Tx\) Rollback\(\) error](<#Tx.Rollback>)
 - [type Warning](<#Warning>)
   - [func ValidateOperationSpec\(spec OperationSpec, opts OperationOptions\) \(\[\]Warning, error\)](<#ValidateOperationSpec>)
   - [func ValidateOperationSpecWithDiagnostics\(spec OperationSpec, opts OperationOptions\) \(\[\]Warning, operation.DiagnosticView, error\)](<#ValidateOperationSpecWithDiagnostics>)
@@ -1516,6 +1520,15 @@ func (db *DB) QueryContext(ctx context.Context, q string, args ...any) (*sql.Row
 ```
 
 QueryContext runs Query with a context.
+
+<a name="DB.QueryObservedContext"></a>
+### func \(\*DB\) QueryObservedContext
+
+```go
+func (db *DB) QueryObservedContext(ctx context.Context, q string, args ...any) (*observation.Rows, error)
+```
+
+QueryObservedContext preserves raw policy checks and tracks consumption until Close. Legacy QueryContext returns concrete \*sql.Rows with an incomplete handoff event.
 
 <a name="DB.QueryRow"></a>
 ### func \(\*DB\) QueryRow
@@ -2922,6 +2935,15 @@ func (r *Row) Err() error
 
 Err returns the original refusal or the underlying Row's error.
 
+<a name="Row.Format"></a>
+### func \(\*Row\) Format
+
+```go
+func (r *Row) Format(s fmt.State, _ rune)
+```
+
+
+
 <a name="Row.Scan"></a>
 ### func \(\*Row\) Scan
 
@@ -3249,6 +3271,24 @@ type Tx struct {
     driver.Tx
 }
 ```
+
+<a name="Tx.Commit"></a>
+### func \(Tx\) Commit
+
+```go
+func (tx Tx) Commit() error
+```
+
+Commit delegates unchanged; its boundary does not rewrite earlier SQL events.
+
+<a name="Tx.Rollback"></a>
+### func \(Tx\) Rollback
+
+```go
+func (tx Tx) Rollback() error
+```
+
+Rollback never runs automatically merely because an observation scope finishes.
 
 <a name="Warning"></a>
 ## type Warning
@@ -6397,6 +6437,187 @@ func TableName(v any) string
 ```
 
 TableName returns the table name for the given value.
+
+# observation
+
+```go
+import "github.com/recoweft/goquent/orm/observation"
+```
+
+Package observation provides opt\-in context query budgets and bounded, public\-safe executor\-boundary observations. It does not certify authorization or native SQL.
+
+## Index
+
+- [Variables](<#variables>)
+- [type Event](<#Event>)
+- [type Hook](<#Hook>)
+- [type Metric](<#Metric>)
+- [type Options](<#Options>)
+- [type Rows](<#Rows>)
+- [type Scope](<#Scope>)
+  - [func Start\(ctx context.Context, options Options\) \(context.Context, \*Scope, error\)](<#Start>)
+  - [func \(s \*Scope\) Drain\(h Hook\) \(attempts, panics int64, err error\)](<#Scope.Drain>)
+  - [func \(s \*Scope\) Finish\(\) Summary](<#Scope.Finish>)
+  - [func \(s \*Scope\) Format\(f fmt.State, \_ rune\)](<#Scope.Format>)
+  - [func \(s \*Scope\) MarshalJSON\(\) \(\[\]byte, error\)](<#Scope.MarshalJSON>)
+  - [func \(s \*Scope\) Snapshot\(\) Summary](<#Scope.Snapshot>)
+  - [func \(s \*Scope\) String\(\) string](<#Scope.String>)
+- [type Summary](<#Summary>)
+
+
+## Variables
+
+<a name="ErrDrainBusy"></a>
+
+```go
+var ErrDrainBusy = observe.ErrBusy
+```
+
+<a name="ErrNestedScope"></a>
+
+```go
+var ErrNestedScope = observe.ErrNested
+```
+
+<a name="ErrOptions"></a>
+
+```go
+var ErrOptions = observe.ErrOptions
+```
+
+<a name="ErrQueryBudgetExceeded"></a>
+
+```go
+var ErrQueryBudgetExceeded = observe.ErrBudget
+```
+
+<a name="Event"></a>
+## type Event
+
+
+
+```go
+type Event = observe.Event
+```
+
+<a name="Hook"></a>
+## type Hook
+
+
+
+```go
+type Hook func(Event)
+```
+
+<a name="Metric"></a>
+## type Metric
+
+
+
+```go
+type Metric = observe.Metric
+```
+
+<a name="Options"></a>
+## type Options
+
+
+
+```go
+type Options = observe.Options
+```
+
+<a name="Rows"></a>
+## type Rows
+
+
+
+```go
+type Rows = observe.Rows
+```
+
+<a name="Scope"></a>
+## type Scope
+
+Scope owns an observation interval. Finish freezes SQL statistics, not its budget.
+
+```go
+type Scope struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="Start"></a>
+### func Start
+
+```go
+func Start(ctx context.Context, options Options) (context.Context, *Scope, error)
+```
+
+
+
+<a name="Scope.Drain"></a>
+### func \(\*Scope\) Drain
+
+```go
+func (s *Scope) Drain(h Hook) (attempts, panics int64, err error)
+```
+
+Drain attempts delivery once per retained event, outside SQL execution and locks. Its per\-call counters remain separate from the frozen SQL observation interval.
+
+<a name="Scope.Finish"></a>
+### func \(\*Scope\) Finish
+
+```go
+func (s *Scope) Finish() Summary
+```
+
+
+
+<a name="Scope.Format"></a>
+### func \(\*Scope\) Format
+
+```go
+func (s *Scope) Format(f fmt.State, _ rune)
+```
+
+
+
+<a name="Scope.MarshalJSON"></a>
+### func \(\*Scope\) MarshalJSON
+
+```go
+func (s *Scope) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="Scope.Snapshot"></a>
+### func \(\*Scope\) Snapshot
+
+```go
+func (s *Scope) Snapshot() Summary
+```
+
+
+
+<a name="Scope.String"></a>
+### func \(\*Scope\) String
+
+```go
+func (s *Scope) String() string
+```
+
+
+
+<a name="Summary"></a>
+## type Summary
+
+
+
+```go
+type Summary = observe.Summary
+```
 
 # operation
 
@@ -12007,7 +12228,7 @@ import "github.com/recoweft/goquent/orm/scanner"
 func Map(rows *sql.Rows) (map[string]any, error)
 ```
 
-Map scans the current row into a map.
+
 
 <a name="Maps"></a>
 ## func Maps
@@ -12016,7 +12237,7 @@ Map scans the current row into a map.
 func Maps(rows *sql.Rows) ([]map[string]any, error)
 ```
 
-Maps scans all remaining rows into slice of maps.
+
 
 <a name="Struct"></a>
 ## func Struct
@@ -12025,7 +12246,7 @@ Maps scans all remaining rows into slice of maps.
 func Struct(dest any, rows *sql.Rows) error
 ```
 
-Struct scans current row into dest struct using column mapping.
+Struct scans one row, preserving the concrete database/sql API.
 
 <a name="Structs"></a>
 ## func Structs
@@ -12034,6 +12255,6 @@ Struct scans current row into dest struct using column mapping.
 func Structs(dest any, rows *sql.Rows) error
 ```
 
-Structs scans all remaining rows into the slice pointed to by dest. dest must be a pointer to a slice of structs.
+
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)
