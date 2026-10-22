@@ -67,7 +67,12 @@ no real secret is serialized and no test requires continued secret exposure.
 `TestExampleFixtureCompatibility` reuses the five checked-in files under
 [`examples/ai-safe-orm`](../../examples/ai-safe-orm). Their SHA-256 values in
 [`testdata/examples.json`](testdata/examples.json) preserve the exact PR1 baseline
-bytes without copying or regenerating the originals. It exercises Load/Validate,
+bytes. GQ-MAINT-04 regenerates only the runnable example manifest and preserves
+its original bytes at `orm/manifest/testdata/legacy-example.json`; this historical
+baseline and the legacy unknown-type public-view canary now read that copy.
+No baseline hash changes. Current example generation/capture and determinism are
+covered by the CLI regression, separately from these legacy refusals.
+It exercises Load/Validate,
 WriteJSON/Load of known manifest fields, schema/policy fingerprint comparison,
 changed-schema rejection and example OperationSpec compilation (params, limit and
 soft-delete predicate). Missing generated-code/database fingerprints remain

@@ -15,11 +15,12 @@ import (
 
 func TestPublicViewsOperationValuesAndLegacyBoundary(t *testing.T) {
 	const secret = "fictional-view@example.invalid gq_fake_token_06 gq_fake_password_06 gq_fake_person_06"
-	m, err := manifest.Load("../../examples/ai-safe-orm/goquent.manifest.json")
+	m, err := manifest.Load("../../orm/manifest/testdata/legacy-example.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// This canary checks an ordinary value ref; tenant claims now refuse.
+	// Preserve the legacy unknown-type canary; the regenerated SQL declaration
+	// correctly rejects this text value for an integer column. Tenant claims refuse.
 	for i := range m.Tables[0].Columns {
 		m.Tables[0].Columns[i].TenantScope = false
 	}
