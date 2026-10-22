@@ -63,8 +63,9 @@ goquent review --format sarif \
 
 Both trees are analyzed with full package/helper context. Root snapshots and
 loader-consumed bytes are compared before/after analysis; external loader inputs
-must agree by exact path and bytes across the two sessions. Generated loader
-inputs at different temporary/cache paths can therefore leave comparison unknown
+must agree by exact path and bytes across the two sessions, with one finite
+exception for unused native Go test executables described below. Other generated
+loader inputs at different temporary/cache paths can still leave comparison unknown
 even when both analyses succeed. This checks source correspondence, not
 package authenticity or source execution. Concurrent mutation is unsupported;
 observed changes invalidate correspondence. Explicit runtime-evidence producers,
@@ -72,6 +73,32 @@ current-manifest inputs and unmappable configuration disable comparison trust,
 without weakening the original head gate. Source JSON cannot supply comparison
 evidence. Directory reads reject symlinks/special files and use `os.OpenRoot`
 for confinement; existing module loading retains its own documented boundary.
+
+GQ-MAINT-03 PR1 (1/1), [Issue #97](https://github.com/recoweft/goquent/issues/97),
+separates an unused synthetic test executable from **cross-session external**
+comparison only. Native `go/packages` loading still uses `Tests: true`. With
+Go 1.26.4 and x/tools v0.43.0, a second metadata-only dependency load must agree
+with the syntax-load roots, their file sets and import identities. The executable
+must have a complete, error-free single-file main syntax/type result, a related
+original package and test variant, native test-harness imports, and no incoming
+dependency edge. File roles are combined across roots and transitive dependencies:
+any ordinary/shared role vetoes the exception. Explicitly reviewed/overlaid files,
+selected syntax/type information, helper ownership and transitive type imports
+also veto it. Names, suffixes and generated comments alone never establish this
+role. Custom or automatically discovered external package drivers do not receive
+the exception; unknown or inconsistent metadata retains exact comparison.
+
+All captured executable bytes remain subject to the existing same-session
+mutation, parse, timeout and size checks. No source bytes are normalized and no
+public exclusion marker is accepted. Independently proven unused executables may
+have different counts, paths or registration bytes between base and head. This
+does not certify their contents or execution. Tests, test variants, helpers,
+ordinary generated files and consumed dependency/standard-library sources retain
+their full source checks. For example, adding the first test can also add ordinary
+external library inputs; if their consumed sets differ, comparison still fails
+closed. This change does not make all valid source changes comparable, change
+public/source wire versions, or improve precision. Whole-tree context changes
+can still leave individual findings unknown even when input correspondence holds.
 
 The finite diff subset is UTF-8 Git-style unified text with `a/` and `b/`
 repository-relative exact paths, bounded to **1 MiB, 4,096 file records and

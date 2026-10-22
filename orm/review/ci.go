@@ -206,17 +206,19 @@ func captureValid(c *ciCapture, root string, tree sourceTree) bool {
 	return true
 }
 
-// External loader inputs must be identical in both sessions. This is source
-// correspondence only, not a claim about physical databases or module provenance.
+// External analysis inputs must be identical in both sessions. Each loader may
+// independently prove a native test executable unused; its bytes still undergo
+// captureValid and Session.unchanged. This is source correspondence only, not a
+// claim about physical databases, module provenance or executable contents.
 func equalExternalCaptures(a, b *ciCapture, ar, br string) bool {
 	x, y := sourceTree{}, sourceTree{}
 	for p, v := range a.inputs {
-		if relativeFile(ar, p) == "" {
+		if relativeFile(ar, p) == "" && !a.unusedTestMain[p] {
 			x[p] = v
 		}
 	}
 	for p, v := range b.inputs {
-		if relativeFile(br, p) == "" {
+		if relativeFile(br, p) == "" && !b.unusedTestMain[p] {
 			y[p] = v
 		}
 	}

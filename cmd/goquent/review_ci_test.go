@@ -97,3 +97,77 @@ func TestReviewCISARIFManifestAndLegacySource(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewCIChangedGoTestsFormats(t *testing.T) {
+	base, head := t.TempDir(), t.TempDir()
+	repo, e := filepath.Abs("../..")
+	if e != nil {
+		t.Fatal("root")
+	}
+	mod, e := os.ReadFile(filepath.Join(repo, "go.mod"))
+	if e != nil {
+		t.Fatal("module")
+	}
+	mod = []byte(strings.Replace(string(mod), "module github.com/recoweft/goquent", "module fixture.example/cli", 1) + "\nrequire github.com/recoweft/goquent v0.0.0\nreplace github.com/recoweft/goquent => " + filepath.ToSlash(repo) + "\n")
+	sum, e := os.ReadFile(filepath.Join(repo, "go.sum"))
+	if e != nil {
+		t.Fatal("sum")
+	}
+	before := "package fixture\nimport \"testing\"\nfunc TestBefore(t *testing.T) {}\n"
+	after := before + "func TestAfter(t *testing.T) {}\n"
+	for root, test := range map[string]string{base: before, head: after} {
+		for name, b := range map[string][]byte{"go.mod": mod, "go.sum": sum, "sample_test.go": []byte(test), "sample.go": []byte("package fixture\nimport \"github.com/recoweft/goquent/orm\"\nfunc sample(db *orm.DB) { var rows []map[string]any; _ = db.Table(\"PRIVATE_TABLE_CANARY\").Select(\"*\").Get(&rows) }\n")} {
+			if os.WriteFile(filepath.Join(root, name), b, 0600) != nil {
+				t.Fatal("fixture")
+			}
+		}
+	}
+	patch := filepath.Join(t.TempDir(), "changes.patch")
+	if os.WriteFile(patch, []byte("diff --git a/sample_test.go b/sample_test.go\n--- a/sample_test.go\n+++ b/sample_test.go\n@@ -3 +3,2 @@\n func TestBefore(t *testing.T) {}\n+func TestAfter(t *testing.T) {}\n"), 0600) != nil {
+		t.Fatal("patch")
+	}
+	for _, format := range []string{"json", "json-v2", "review-ci-json", "sarif"} {
+		t.Run(format, func(t *testing.T) {
+			var out, errs bytes.Buffer
+			code := run([]string{"review", "--format", format, "--fail-on", "medium", "--fail-on-precision", "partial", "--diff", patch, "--diff-base-root", base, head}, &out, &errs)
+			if code != 1 || errs.Len() != 0 {
+				t.Fatalf("exit=%d", code)
+			}
+			for _, secret := range []string{"PRIVATE_", base, head, "sample_test.go", "_testmain.go"} {
+				if strings.Contains(out.String(), secret) {
+					t.Fatal("public canary leak")
+				}
+			}
+			switch format {
+			case "json":
+				if _, e := review.DecodeReportView(out.Bytes()); e != nil {
+					t.Fatal("json")
+				}
+			case "json-v2":
+				if _, e := review.DecodeReportViewV2(out.Bytes()); e != nil {
+					t.Fatal("json v2")
+				}
+			case "review-ci-json":
+				v, e := review.DecodeCIView(out.Bytes())
+				if e != nil || v.Gate.Input || !v.Gate.Risk || !v.Gate.Precision || v.Diff.Modified != 1 {
+					t.Fatal("comparison gates")
+				}
+			case "sarif":
+				var doc map[string]any
+				if json.Unmarshal(out.Bytes(), &doc) != nil || doc["version"] != "2.1.0" {
+					t.Fatal("sarif")
+				}
+			}
+		})
+	}
+	// A stale patch must retain exit-2 precedence over the unchanged full gates.
+	if os.WriteFile(filepath.Join(head, "sample_test.go"), []byte(after+"// unlisted mutation\n"), 0600) != nil {
+		t.Fatal("write")
+	}
+	var out, errs bytes.Buffer
+	code := run([]string{"review", "--format", "review-ci-json", "--fail-on", "medium", "--fail-on-precision", "partial", "--diff", patch, "--diff-base-root", base, head}, &out, &errs)
+	v, e := review.DecodeCIView(out.Bytes())
+	if code != 2 || e != nil || !v.Gate.Input || !v.Gate.Risk || !v.Gate.Precision {
+		t.Fatal("stale patch gates")
+	}
+}

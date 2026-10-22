@@ -40,6 +40,9 @@ func loadReviewTypes(parent context.Context, paths []string) map[string]*typedFi
 	return loadReviewTypesSnapshot(parent, paths, nil)
 }
 func loadReviewTypesSnapshot(parent context.Context, paths []string, overlay map[string][]byte) map[string]*typedFile {
+	return loadReviewTypesCaptured(parent, paths, overlay, nil)
+}
+func loadReviewTypesCaptured(parent context.Context, paths []string, overlay map[string][]byte, capture *ciCapture) map[string]*typedFile {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -124,6 +127,8 @@ func loadReviewTypesSnapshot(parent context.Context, paths []string, overlay map
 		return parser.ParseFile(fset, filename, src, parser.ParseComments)
 	}
 	dirs := 0
+	roles := newTestMainRoles()
+	native := nativePackageDriver()
 	for _, root := range roots {
 		var patterns []string
 		for dir := range groups[root] {
@@ -133,11 +138,23 @@ func loadReviewTypesSnapshot(parent context.Context, paths []string, overlay map
 		sort.Strings(patterns)
 		dirs += len(patterns)
 		if dirs > maxTypeDirectories || ctx.Err() != nil {
+			roles.valid = false
 			continue
 		}
-		pkgs, err := packages.Load(&packages.Config{Context: ctx, Overlay: overlay, Dir: root, Mode: packages.LoadSyntax, Tests: true, ParseFile: parseBounded, BuildFlags: []string{"-mod=readonly"}}, patterns...)
+		pkgs, err := packages.Load(&packages.Config{Context: ctx, Overlay: overlay, Dir: root, Mode: packages.LoadSyntax | packages.NeedForTest, Tests: true, ParseFile: parseBounded, BuildFlags: []string{"-mod=readonly"}}, patterns...)
 		if err != nil {
+			roles.valid = false
 			continue
+		}
+		if capture != nil && native {
+			// Request dependency file roles without expanding syntax loading. Never
+			// mix type objects from separate loads. Metadata only narrows the exception.
+			meta, err := packages.Load(&packages.Config{Context: ctx, Overlay: overlay, Dir: root, Mode: packages.LoadImports | packages.NeedDeps | packages.NeedForTest, Tests: true, BuildFlags: []string{"-mod=readonly"}}, patterns...)
+			if err != nil {
+				roles.valid = false
+			} else {
+				roles.add(pkgs, meta, root)
+			}
 		}
 		// Prefer the test variant, which includes ordinary and internal test files.
 		sort.SliceStable(pkgs, func(i, j int) bool { return len(pkgs[i].Syntax) < len(pkgs[j].Syntax) })
@@ -162,6 +179,9 @@ func loadReviewTypesSnapshot(parent context.Context, paths []string, overlay map
 				out[abs] = &typedFile{file: f, fset: pkg.Fset, info: pkg.TypesInfo, pkg: pkg.Types, helpers: helpers, incomplete: pkg.IllTyped || len(pkg.Errors) > 0 || pkg.TypesInfo == nil}
 			}
 		}
+	}
+	if capture != nil && native && ctx.Err() == nil {
+		capture.unusedTestMain = roles.unused(out, overlay, parsedSources)
 	}
 	if overlay != nil {
 		for path, b := range parsedSources {
