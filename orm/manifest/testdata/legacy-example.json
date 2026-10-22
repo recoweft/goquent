@@ -1,0 +1,92 @@
+{
+  "version": "1",
+  "generated_at": "2026-04-24T17:39:08.544523808Z",
+  "generator_version": "goquent",
+  "dialect": "mysql",
+  "schema_fingerprint": "sha256:da9121bea6805f710e2cfc09abbeb52edee4f5aca4f91c2a104143daf8b542e3",
+  "policy_fingerprint": "sha256:8fa9cac9c88d18d8896f580d9a2698072db3d7c58f28bca6d08fba0e50a09599",
+  "tables": [
+    {
+      "name": "users",
+      "columns": [
+        {
+          "name": "deleted_at",
+          "type": "timestamp",
+          "nullable": true,
+          "soft_delete": true
+        },
+        {
+          "name": "email",
+          "type": "varchar(255)",
+          "nullable": false,
+          "pii": true
+        },
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "varchar(255)",
+          "nullable": false
+        },
+        {
+          "name": "tenant_id",
+          "type": "varchar(64)",
+          "nullable": false,
+          "tenant_scope": true,
+          "required_filter": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_users_tenant_id",
+          "columns": [
+            "tenant_id"
+          ]
+        }
+      ],
+      "policies": [
+        {
+          "type": "pii",
+          "column": "email",
+          "mode": "warn"
+        },
+        {
+          "type": "required_filter",
+          "column": "tenant_id",
+          "mode": "enforce"
+        },
+        {
+          "type": "soft_delete",
+          "column": "deleted_at",
+          "mode": "enforce"
+        },
+        {
+          "type": "tenant_scope",
+          "column": "tenant_id",
+          "mode": "enforce"
+        }
+      ],
+      "query_examples": [
+        {
+          "name": "active_rows_select",
+          "operation": "select",
+          "select": [
+            "id"
+          ],
+          "required_by": "soft_delete"
+        },
+        {
+          "name": "tenant_scoped_select",
+          "operation": "select",
+          "select": [
+            "id"
+          ],
+          "required_by": "tenant_scope"
+        }
+      ]
+    }
+  ]
+}

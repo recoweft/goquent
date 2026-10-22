@@ -59,9 +59,25 @@ messages. Checked-in fictional source JSON is internal fixture data, not a publi
 display API. MCP returns structural summaries without real schema discovery.
 
 
-GQ-AI-07 migration: the executable now supplies an explicit signed application
-tenant through DB Settings. The preserved JSON fixtures intentionally remain
-legacy: manifest verification reports a stale schema fingerprint after regeneration,
-and the CLI Operation command rejects the tenant value claim. These are expected
-refusals, not runnable trusted tenant input. See the [typed validation guide](../../docs/typed-operation-validation.md)
-for regeneration and application migration; CLI/MCP cannot deserialize trust.
+The manifest is regenerated from this directory's schema and policy files:
+
+```bash
+go run ./cmd/goquent manifest --dialect mysql \
+  --schema ./examples/ai-safe-orm/schema.json \
+  --policy ./examples/ai-safe-orm/policies.json \
+  --unsafe-local-output /tmp/new-goquent-manifest.json
+```
+
+Use a new local artifact path, verify it with the inputs above, then replace only
+this example's manifest. Generation time varies; the remaining generated content
+is deterministic. GQ-MAINT-04 updates the five SQL type-source declarations from
+the GQ-AI-07 migration. The old manifest remains an independent negative fixture
+in `orm/manifest/testdata/legacy-example.json`; its schema comparison stays stale.
+Schema and policy checks now pass; generated-code and database checks are skipped
+because no such evidence is supplied. This is not full schema/capability coverage.
+
+The executable supplies an explicit signed application tenant through DB Settings.
+`operation.json` and `values.json` still contain an untrusted tenant value claim
+that the CLI Operation command rejects. Manifest freshness does not authorize
+that claim. See the [typed validation guide](../../docs/typed-operation-validation.md);
+CLI/MCP cannot deserialize application trust.

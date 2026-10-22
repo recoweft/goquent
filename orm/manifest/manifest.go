@@ -254,19 +254,28 @@ func Verify(stored, current *Manifest, checkedAt time.Time) Verification {
 		}
 		v.Checks = append(v.Checks, check)
 	}
-	if stored == nil || current == nil {
+	if Validate(stored) != nil || Validate(current) != nil {
 		return Verification{
 			Fresh:     false,
 			CheckedAt: checkedAt,
 			Checks: []FreshnessCheck{{
 				Name:    "manifest",
 				Status:  "stale",
-				Message: "manifest or current state is missing",
+				Message: "manifest contract is invalid",
 			}},
 		}
 	}
-	add("schema", stored.SchemaFingerprint, current.SchemaFingerprint)
-	add("policy", stored.PolicyFingerprint, current.PolicyFingerprint)
+	addContent := func(name, expected, actual, storedContent, currentContent string) {
+		add(name, expected, actual)
+		if expected != storedContent || actual != currentContent {
+			check := &v.Checks[len(v.Checks)-1]
+			check.Status = "stale"
+			check.Message = "fingerprint does not match manifest content"
+			v.Fresh = false
+		}
+	}
+	addContent("schema", stored.SchemaFingerprint, current.SchemaFingerprint, fingerprintSchema(stored.Tables), fingerprintSchema(current.Tables))
+	addContent("policy", stored.PolicyFingerprint, current.PolicyFingerprint, fingerprintPolicies(stored.Tables), fingerprintPolicies(current.Tables))
 	add("generated_code", stored.GeneratedCodeFingerprint, current.GeneratedCodeFingerprint)
 	add("database", stored.DatabaseFingerprint, current.DatabaseFingerprint)
 	return v
