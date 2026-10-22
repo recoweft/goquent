@@ -33,8 +33,9 @@ apply. An auto predicate does not rescue a forbidden literal.
 
 CLI and MCP gain no trusted settings input. Their old tenant JSON examples now
 refuse. The runnable `examples/ai-safe-orm` example uses an explicit application
-schema, signed integer tenant and DB settings. Its checked-in legacy JSON files
-remain unchanged as refusal/migration fixtures. A reason, Fresh, low risk,
+schema, signed integer tenant and DB settings. Its manifest is regenerated from the example schema/policy inputs in GQ-MAINT-04;
+the old manifest remains a separate stale regression fixture. The checked-in
+operation/values JSON remains an untrusted tenant refusal fixture. A reason, Fresh, low risk,
 public diagnostic or matching Values entry never creates application provenance.
 
 ## Input contract
