@@ -126,7 +126,7 @@ func Run(opts Options) (ReviewReport, error) {
 	}
 	ctx.session = newSession(opts, allFiles)
 	defer ctx.session.token.Close()
-	ctx.types = loadReviewTypesSnapshot(opts.Context, allFiles, ctx.session.inputs)
+	ctx.types = loadReviewTypesCaptured(opts.Context, allFiles, ctx.session.inputs, opts.capture)
 	reviewedFiles = allFiles
 	{
 		files := allFiles

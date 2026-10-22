@@ -26,6 +26,9 @@ type sourceTree map[string][]byte
 type ciCapture struct {
 	inputs map[string][]byte
 	valid  bool
+	// Only cross-session external comparison uses this private loader evidence.
+	// All captured bytes still participate in same-session mutation checks.
+	unusedTestMain map[string]bool
 }
 
 // readTree bounds all context, including non-review files. No symlinks or special
