@@ -165,7 +165,14 @@ func TestExampleFixtureCompatibility(t *testing.T) {
 			t.Fatalf("invalid fixture path %q", fixture.Path)
 		}
 		seen[fixture.Path] = true
-		data, err := os.ReadFile(filepath.Join(repo, fixture.Path))
+		// GQ-MAINT-04 moves only the historical manifest to a preserved
+		// negative fixture. Keep the original hash; current regeneration is
+		// covered by TestExampleManifestRegeneration in the CLI package.
+		inputPath := fixture.Path
+		if inputPath == "examples/ai-safe-orm/goquent.manifest.json" {
+			inputPath = "orm/manifest/testdata/legacy-example.json"
+		}
+		data, err := os.ReadFile(filepath.Join(repo, inputPath))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +190,7 @@ func TestExampleFixtureCompatibility(t *testing.T) {
 		}
 	}
 	base := filepath.Join(repo, "examples/ai-safe-orm")
-	stored, err := manifest.Load(filepath.Join(base, "goquent.manifest.json"))
+	stored, err := manifest.Load(filepath.Join(repo, "orm/manifest/testdata/legacy-example.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

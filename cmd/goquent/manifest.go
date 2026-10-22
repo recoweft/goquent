@@ -222,6 +222,9 @@ func runManifestVerify(args []string, stdout, stderr io.Writer) int {
 		databaseSchemaForVerify = *databaseSchemaPath
 	}
 	stored, err := manifest.Load(*manifestPath)
+	if err == nil {
+		err = manifest.Validate(stored)
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
@@ -269,6 +272,9 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	stored, err := manifest.Load(*manifestPath)
+	if err == nil {
+		err = manifest.Validate(stored)
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, "PUBLIC_OUTPUT: operation failed; details omitted")
 		return 2
