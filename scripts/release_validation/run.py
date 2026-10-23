@@ -84,6 +84,8 @@ class Collector:
                 code = completed.returncode
             except (OSError, subprocess.TimeoutExpired):
                 code = 125
+        with (self.output / 'commands.jsonl').open('a') as metadata:
+            metadata.write(json.dumps(dict(command=args, exit=code, log=path.name, native=native)) + '\n')
         return code, path
 
     def simple(self, args):
@@ -147,9 +149,9 @@ class Collector:
 
     def build(self):
         if self.cli.exists():
-            return True
+            return 0
         code, _ = self.command(['go', 'build', '-o', str(self.cli), './cmd/goquent'])
-        return code == 0
+        return code
 
     def strict_inputs(self):
         if not self.base or not self.head:
@@ -213,8 +215,9 @@ class Collector:
             return self.tests(['./cmd/goquent', './orm/query', './orm/review', './orm/mcp'], 'Canary|Public|Redact|SARIF|Sarif')
         if name == 'example':
             return self.simple(['sh', 'examples/ai-safe-orm/check.sh'])
-        if not self.build():
-            return result('fail', reason='build')
+        build_code = self.build()
+        if build_code:
+            return result('fail', build_code, reason='build')
         if name == 'manifest':
             code, _ = self.command([str(self.cli), 'manifest', 'verify', '--manifest', 'examples/ai-safe-orm/goquent.manifest.json',
                 '--schema', 'examples/ai-safe-orm/schema.json', '--policy', 'examples/ai-safe-orm/policies.json'])

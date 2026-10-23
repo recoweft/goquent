@@ -85,6 +85,9 @@ class ValidationTests(unittest.TestCase):
         code, log = collector.command(['sh', '-c', 'test -z "$TEST_MYSQL_DSN$TEST_DB_DSN$TEST_POSTGRES_DSN" || exit 8; echo secret-canary; exit 7'])
         self.assertEqual(code, 7)
         self.assertIn('secret-canary', log.read_text())
+        metadata = json.loads((self.root / 'commands.jsonl').read_text())
+        self.assertEqual(metadata['exit'], 7)
+        self.assertEqual(metadata['log'], log.name)
 
     def test_default_never_calls_db_and_public_boundary(self):
         output = self.root / 'fresh'

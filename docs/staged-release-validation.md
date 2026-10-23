@@ -29,7 +29,8 @@ only explicit `go test -json` supplies machine-readable test events.
 Each invocation collects new evidence; it cannot import an earlier result.
 Commands execute synchronously in the stage order below. Raw stdout/stderr,
 Go/DB versions, test names, source trees, patch and resolved commits stay in the
-new mode-0700 directory (files inherit umask 077). `results.json` is private too.
+new mode-0700 directory (files inherit umask 077). `results.json` and `commands.jsonl` (actual commands, exits and log mapping) are
+private too.
 Do not upload that directory, logs, source JSON, SQL, errors, identifiers, DSNs,
 binding material or absolute paths to CI/PR/MCP. The stdout summary includes only
 fixed stage names/statuses, numeric exits and counts. Existing CLI public views
