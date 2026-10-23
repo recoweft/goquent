@@ -100,14 +100,15 @@ func (c ExecutionContext) Input() ExecutionContextInput {
 // value uses empty policies, built-in risk defaults and missing context. Copies
 // safely share only privately owned immutable data.
 type Settings struct {
-	strict     bool
-	autoTenant bool
-	database   string
-	schema     ApplicationSchema
-	policies   PolicySet
-	risk       RiskConfig
-	execution  ExecutionContext
-	err        error
+	authorization Authorization
+	strict        bool
+	autoTenant    bool
+	database      string
+	schema        ApplicationSchema
+	policies      PolicySet
+	risk          RiskConfig
+	execution     ExecutionContext
+	err           error
 }
 
 // NewSettings builds a detached snapshot without consulting globals.

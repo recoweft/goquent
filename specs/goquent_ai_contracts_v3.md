@@ -562,3 +562,13 @@ v1 contain no SQL, values, identifiers, arbitrary causes or shape keys. SQL succ
 is distinct from transaction commit; Finish does not reset budgets or operate on
 rows/transactions. Benchmarks compare the same mock workload to main and measure
 local native latency separately. Whole-Issue acceptance remains separate.
+
+## GQ-AI-13 PR1 external authorization contract
+
+See [scoped external authorization](../docs/external-authorization.md) for the
+finite trusted-adapter interface, DB-scoped registration and opaque request-bound
+decisions. The independent private validator reuses existing binding material;
+production planning, validation and execution do not call providers in PR1.
+Strict high-risk refusal, Compatibility reasons, source wire formats and private
+HMAC domains remain unchanged. Execution integration and consumption are PR2;
+this contract does not complete external authorized execution or whole-Issue ACs.
