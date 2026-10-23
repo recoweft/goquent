@@ -22,8 +22,8 @@ func NewAuthorization(provider AuthorizationProvider, subject string) (Authoriza
 }
 
 // WithAuthorization installs an explicit registration on this DB's settings.
-// PR1 defines the contract only: existing execution gates remain unchanged and
-// production planning/execution does not call the provider.
+// High-risk execution is supported only through the six validated Query families.
+// Ordinary high-risk paths refuse; Plan and Validate never call the provider.
 func WithAuthorization(a Authorization) Option {
 	return func(db *DB) { db.settings = db.settings.WithAuthorization(a) }
 }

@@ -9,6 +9,10 @@ import (
 )
 
 func (e *plannedExecution) observe(method string) (*observe.Ticket, error) {
+	if err := e.checkAuthorizationDispatch(); err != nil {
+		observe.Reject(e.ctx, err)
+		return nil, err
+	}
 	if !observe.Enabled(e.ctx) {
 		return nil, nil
 	}

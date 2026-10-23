@@ -681,8 +681,13 @@ func TestBindingPrivateApprovalDeadlineAndHighRiskRefusal(t *testing.T) {
 	high := RiskHigh
 	c.Settings = c.Settings.WithRiskConfig(RiskConfig{Rules: map[string]RiskRuleConfig{WarningLimitMissing: {Severity: &high}}})
 	q = NewWithSettings(spy, "users", testDialect(false), c.Settings).Select("id").Where("tenant_id", 1).RequireApproval("fixture reason")
-	if h, _, err := q.ValidateSelect(nil, c, explicit); err == nil || h != nil || spy.calls != [6]int{} {
-		t.Fatal("reason became high-risk authority", err)
+	h, p, err := q.ValidateSelect(nil, c, explicit)
+	if err != nil || h == nil || !p.Blocked {
+		t.Fatal("pending candidate", err)
+	}
+	var rows []struct{ ID int }
+	if err = q.ExecuteValidatedSelect(nil, c, h, &rows); !errors.Is(err, ErrAuthorizationMissing) || spy.calls != [6]int{} {
+		t.Fatal("reason became authority", err)
 	}
 }
 

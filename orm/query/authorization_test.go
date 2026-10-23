@@ -262,7 +262,7 @@ func TestAuthorizationOpaqueAndSettings(t *testing.T) {
 		t.Fatal("settings mutation")
 	}
 }
-func TestAuthorizationProductionRemainsDisconnected(t *testing.T) {
+func TestAuthorizationPlanningAndLowRiskRemainDisconnected(t *testing.T) {
 	for _, pg := range []bool{false, true} {
 		q, c, spy, mock := bindingFixture(t, pg)
 		provider := &authorizationSpy{}
@@ -288,8 +288,8 @@ func TestAuthorizationProductionRemainsDisconnected(t *testing.T) {
 		c.Settings = c.Settings.WithRiskConfig(RiskConfig{Rules: map[string]RiskRuleConfig{WarningLimitMissing: {Severity: &high}}})
 		q = NewWithSettings(spy, "users", testDialect(pg), c.Settings).Select("id").Where("tenant_id", 1).RequireApproval("intent")
 		_, _ = q.Plan(nil)
-		if _, _, err = q.ValidateSelect(nil, c, bindingExpiry()); err == nil {
-			t.Fatal("high risk validated")
+		if h, p, err := q.ValidateSelect(nil, c, bindingExpiry()); err != nil || h == nil || !p.Blocked {
+			t.Fatal("pending high risk candidate unavailable", err)
 		}
 		if err = q.Get(&rows); err == nil {
 			t.Fatal("high risk executed")

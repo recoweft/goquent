@@ -1,11 +1,14 @@
 # Scoped external authorization contracts
 
-GQ-AI-13 PR1(1/2), [Issue #103](https://github.com/recoweft/goquent/issues/103).
-This PR defines application registration, opaque adapter request/decision types,
-and an independent private validator. **Production execution is not connected.**
-No Plan, compile, review, Validate or execution path invokes the provider in PR1.
-Strict still refuses high-risk operations, even with a registered allow provider.
-PR2 is a separate change after this PR merges; this is not whole-Issue acceptance.
+GQ-AI-13 PR2(2/2), [Issue #103](https://github.com/recoweft/goquent/issues/103).
+External authorization is connected only to the six existing
+`Validate*` / `ExecuteValidated*` Query families: select, count, insert, batch,
+update and delete. This is a finite execution boundary, not authorization support
+for every CRUD helper or whole-Issue acceptance.
+
+Plan, compile, review and Validate remain provider-free and database-free.
+A successful Validate returns a **pending single-attempt candidate**, not an
+execution permission. Ordinary Strict high-risk execution remains refused.
 
 ## Registration and trust
 
@@ -37,12 +40,13 @@ is neither a public digest nor a physical DB identity.
 
 ## Request and response boundary
 
-There is no public request constructor, authorization terminal, permission
-consumer or conversion from QueryPlan/source JSON/public views. The private
-request constructor and validator are tested independently, with no production
-caller in PR1. They reuse existing private snapshot equality and binding context
-comparison rather than a caller-provided hash. Existing canonical encodings,
-HMAC domains, source wire versions and bindingSettings remain unchanged.
+There is no public request constructor, new authorization terminal, serialized
+permission consumer or conversion from QueryPlan/source JSON/public views.
+ExecuteValidated constructs the request from the rebuilt private planner seal.
+It reuses private snapshot equality and binding context comparison rather than
+a caller-provided hash. Existing canonical encodings, HMAC domains and source
+wire versions remain unchanged. Registration identity is compared separately
+from bindingSettings bytes: providers are never canonicalized or publicly hashed.
 
 The trusted adapter can explicitly read Operation (select/count/insert/batch/
 update/delete), Subject, Scope, Target, Dialect, Tenant (detached value plus
@@ -102,23 +106,89 @@ classification. Validation is non-consuming and can be repeated: success is not
 execution, consumption, a transaction commit or external exactly-once evidence.
 There is no second ledger or public consume API in PR1.
 
-PR2 must add authorization registration/current-subject correspondence to existing
-private binding checks without canonicalizing provider pointers; preserve
-ValidatedPlan's CAS-before-validation, shared-copy single-attempt behavior,
-concurrent-loser refusal and consumption on mismatch, cancellation, expiry and
-DB failure. It must recheck final private material and deadlines immediately
-before dispatch. Those execution properties are **not implemented for the new
-contract here**. External revocation and forced interruption of an uncooperative
-provider are not guaranteed.
+## Execution, migration and compatibility
 
-## Compatibility, output and remaining integration
+Supply a trusted `BindingCurrent` and explicit finite expiry to the existing
+Validate method, then supply current trusted state again to ExecuteValidated:
 
-Reasons and legacy Approval record intent; PII AccessReason describes purpose.
-Suppression, low displayed risk, manifest Fresh and public/source JSON do not
-become permission. Compatibility retains its reason-based execution behavior.
-Strict's `external_high_risk_permit_missing` gate is unchanged. A future permit
-must never override structural blocked findings, tenant failures, unparsed Raw,
-unsupported operations or invalid/missing schema.
+```go
+current := query.BindingCurrent{Settings: db.Settings(), BindingContext: binding}
+q := db.Table("orders").Where("tenant_id", tenantID).
+    RequireApproval("record the intended maintenance operation")
+handle, diagnostic, err := q.ValidateUpdate(ctx, current, expiresAt, patch)
+if err != nil {
+    return err
+}
+_ = diagnostic // Display only; blocked authorization-pending output is expected.
+_, err = q.ExecuteValidatedUpdate(ctx, current, handle, patch)
+return err
+```
+
+The application constructs `binding` with `NewBindingContext` using its current
+key, scope, generation, target and dialect, and registers its authenticated
+subject/provider on `db` before creating the Query. No key/scope is inferred or
+automatically generated. Settings and BindingCurrent are value snapshots: the
+application must supply fresh assertions; reassignment of an unrelated variable
+cannot notify an already running call of an external configuration change.
+
+Validate uses a local private planner copy, never a shared bypass switch. It may
+produce a handle only when structural inspection succeeds. Pending high-risk
+diagnostics stay blocked and lose private execution evidence before returning.
+Changing diagnostic SQL, args, risk, Approval or JSON cannot change the handle.
+Ordinary Plan retains its Strict refusal. Both built-in and configured risk are
+checked; suppression or a configured downgrade cannot remove required authority
+or rescue a built-in structural block.
+
+ExecuteValidated consumes the shared handle by CAS **before** validating current
+inputs. Copies, concurrent losers and same-handle provider reentry cannot attempt
+it again. Initial mismatch/cancellation/expiry/structural rejection calls neither
+provider nor executor. A high-risk supported attempt calls the provider at most
+once, after current binding checks. Low-risk attempts call it zero times. The
+provider result is checked against a new reconstruction after return and again
+at private execution and immediately before executor dispatch. Callback changes
+to the Query, input values, settings or contexts fail closed; there is no automatic
+retry or second authorization request. Missing/deny/error/unknown/mismatch/expiry
+and database failure all leave the handle consumed. The independent PR1 validator
+remains non-consuming; its repeatability is not repeatable execution authority.
+
+The request ceiling is the minimum explicit binding expiry, relevant Approval
+expiry and effective/stored context deadlines. Decision expiry is mandatory;
+equality is expired and excessive expiry is rejected rather than rounded down.
+Final dispatch rechecks current material, cancellation and the shortest deadline.
+No guarantee spans the interval after handing control to the executor, transaction
+commit, external revocation or an uncooperative provider. Providers own their
+synchronization and side effects. Unsynchronized mutation of a Query or input
+from another goroutine is unsupported; concurrent attempts with immutable inputs
+and a concurrency-safe provider share the handle's one-attempt gate.
+
+Reasons and legacy Approval record intent and retain their existing reason and
+expiry requirements. PII AccessReason is a purpose statement. None is permission.
+Neither suppression, displayed risk, manifest Fresh nor public/source JSON is
+permission. Compatibility without a provider retains its existing reason path.
+Registering a provider intentionally changes Compatibility: supported high-risk
+validated execution requires that provider, and ordinary high-risk execution
+refuses rather than falling back to a reason. Migrate such calls to the six
+validated families with explicit binding inputs, or retain the documented
+unregistered Compatibility behavior without claiming external authorization.
+
+| Entry | External authorization integration and limits |
+| --- | --- |
+| ValidateSelect/Count/Insert/InsertBatch/Update/Delete | Provider0/DB0; structural rejection returns no handle; pending high risk returns a single-attempt candidate and blocked diagnostic |
+| Corresponding ExecuteValidated methods | Connected; high risk requires provider, low risk provider0; structural rejection cannot be overridden |
+| Ordinary Query CRUD, batch, insert variants | High risk: Strict always refuses; Compatibility with provider refuses/provider0; unregistered Compatibility retains reason path |
+| Generic/scoped CRUD and RETURNING | Same ordinary gate; no new authorized RETURNING family; existing dialect restrictions remain |
+| Nested collections, idempotent commands, hooks | Their existing statement gates and preflights remain; no composite external authorization; opaque Strict recipes remain refused; Compatibility can have earlier effects before a later statement refusal |
+| Raw DB methods and raw recipes | No authorization support; Strict refuses unsupported Raw; provider-registered high risk refuses even with internal/user reason |
+| Custom Executor, WrapExecutor, external Tx | Same gate when using supported six families; ownership, scan and transaction responsibilities unchanged; inherited registration does not allow another Query's handle |
+| AtomicWrite/OptimisticVersion starting an owned Tx | High-risk authorization refuses before provider/Begin: the second executor/storage-probe boundary is not authorized by the original request; existing low-risk behavior and caller-managed Tx paths retain their limits |
+| Direct sql.DB/sql.Tx/Executor, SQLDB | Outside interception; never presented as Goquent-authorized |
+| CLI/MCP and migration | CLI/MCP remain read-only; migration apply is a separate human-controlled boundary, with no new DDL permission |
+
+Tenant violations, unknown schema, structural Blocked, unsupported expressions
+and unparsed Raw are never rescued by an allow. In provider-registered
+Compatibility, validated binding still requires the existing trusted schema,
+tenant and private identity material; ordinary compatibility heuristics do not
+establish that identity.
 
 Registration/request/decision reject JSON and format as fixed opaque text for
 ordinary fmt logging, including nested exported fields. Method-level decode
@@ -129,12 +199,10 @@ pointers retain standard JSON null behavior. This is not protection against
 reflection, unsafe memory inspection or explicit sensitive accessor logging.
 No PlanView, CLI, JSON/SARIF display or MCP fields are added.
 
-PR2 must enumerate ordinary CRUD, validated families, generic/RETURNING, Raw,
-custom Executors, external Tx and callback recipes, including refusals and paths
-outside interception. Existing custom Executor/Tx ownership and callback limits
-remain unchanged. Direct sql.DB/sql.Tx/Executor calls are outside the gate.
-Plans/compile/review remain non-executing and must not implicitly call providers.
-CLI/MCP stay read-only; migration apply remains a separate human-controlled
-boundary. No DDL permission or migration safety guarantee follows from this API.
 Physical database identity, external policy/schema freshness and stale application
-assertions remain outside the existing private binding proof.
+assertions remain outside the existing private binding proof. Tests distinguish
+local trusted adapter fixtures, spies/sqlmock, and native MySQL/PostgreSQL
+execution. They do not establish a production external authorization service,
+statement/value-specific external approval, exactly-once execution or commit
+success. Existing review risk/precision/unknown findings and unverified native
+performance/role/operator/cast/network-fault cases are not repaired by this change.

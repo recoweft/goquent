@@ -24,7 +24,8 @@ var (
 
 // AuthorizationProvider is an explicitly trusted application adapter. It must
 // authenticate its application context and verify external authority before
-// returning an allow candidate. PR1 does not invoke it from production paths.
+// returning an allow candidate. Supported ExecuteValidated paths invoke it once
+// per high-risk attempt; Plan and Validate never invoke it.
 // Implementations own their concurrency safety and external side effects.
 type AuthorizationProvider interface {
 	Authorize(context.Context, AuthorizationRequest) (AuthorizationDecision, error)
@@ -57,7 +58,7 @@ type AuthorizationRequest struct{ state *authorizationRequest }
 type authorizationRequest struct{ material authorizationMaterial }
 
 // authorizationMaterial is supplied only by a private planner/binding boundary.
-// The PR1 independent validator has no production caller. It does not bypass or
+// Supported validated execution supplies this material. It does not bypass or
 // replace structural gates, current-input inspection or execution consumption.
 type authorizationMaterial struct {
 	config                          Authorization

@@ -572,3 +572,17 @@ production planning, validation and execution do not call providers in PR1.
 Strict high-risk refusal, Compatibility reasons, source wire formats and private
 HMAC domains remain unchanged. Execution integration and consumption are PR2;
 this contract does not complete external authorized execution or whole-Issue ACs.
+
+## GQ-AI-13 PR2 finite authorized execution
+
+The [external authorization execution matrix](../docs/external-authorization.md)
+supersedes PR1's disconnected status only for the six existing validated Query
+families. Validate now permits structurally valid, authorization-pending candidates
+without provider or DB calls; blocked diagnostics remain non-executable.
+ExecuteValidated consumes first, invokes the configured adapter at most once for
+high risk, and rechecks current private correspondence and deadlines before
+executor dispatch. Ordinary high-risk methods remain unsupported for external
+authorization. Explicit provider registration also makes Compatibility ordinary
+high-risk methods refuse instead of falling back to reasons. Structural rejection,
+Raw restrictions, source wire formats, HMAC domains, CLI/MCP read-only boundaries
+and human-controlled migration remain intact. No whole-Issue acceptance follows.
