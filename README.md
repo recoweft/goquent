@@ -2569,7 +2569,7 @@ type Option func(*DB)
 func WithAuthorization(a Authorization) Option
 ```
 
-WithAuthorization installs an explicit registration on this DB's settings. PR1 defines the contract only: existing execution gates remain unchanged and production planning/execution does not call the provider.
+WithAuthorization installs an explicit registration on this DB's settings. High\-risk execution is supported only through the six validated Query families. Ordinary high\-risk paths refuse; Plan and Validate never call the provider.
 
 <a name="WithBoolScanPolicy"></a>
 ### func WithBoolScanPolicy
@@ -8402,7 +8402,7 @@ func (d *AuthorizationDecision) UnmarshalJSON([]byte) error
 <a name="AuthorizationProvider"></a>
 ## type AuthorizationProvider
 
-AuthorizationProvider is an explicitly trusted application adapter. It must authenticate its application context and verify external authority before returning an allow candidate. PR1 does not invoke it from production paths. Implementations own their concurrency safety and external side effects.
+AuthorizationProvider is an explicitly trusted application adapter. It must authenticate its application context and verify external authority before returning an allow candidate. Supported ExecuteValidated paths invoke it once per high\-risk attempt; Plan and Validate never invoke it. Implementations own their concurrency safety and external side effects.
 
 ```go
 type AuthorizationProvider interface {
@@ -11296,7 +11296,7 @@ type TenantPolicyResult struct {
 <a name="ValidatedPlan"></a>
 ## type ValidatedPlan
 
-ValidatedPlan is an opaque single\-attempt handle. Copies share consumption. It is neither a serialized permit nor a replacement for application authority.
+ValidatedPlan is an opaque single\-attempt handle. Copies share consumption. Validation may return an authorization\-pending candidate, not permission. It is neither a serialized permit nor a replacement for application authority.
 
 ```go
 type ValidatedPlan struct {
