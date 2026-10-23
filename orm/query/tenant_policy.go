@@ -309,11 +309,13 @@ func (q *Query) strictPolicyCheck(p *QueryPlan) error {
 			return err
 		}
 	}
-	// External high-risk permits are not implemented. Reasons/suppression and
-	// caller-selected risk thresholds cannot replace that missing authority.
+	// Structural rejection is independent of pending external authority.
 	risk := (defaultRiskEngine{}).CheckQuery(p)
 	configured := (defaultRiskEngine{config: q.settings.risk}).CheckQuery(p)
-	if risk.Blocked || configured.Blocked || requiresApprovalLevel(risk.Level) || requiresApprovalLevel(configured.Level) {
+	if risk.Blocked || configured.Blocked {
+		return tenantError("structural_risk_blocked")
+	}
+	if !q.bindingPlanning && (requiresApprovalLevel(risk.Level) || requiresApprovalLevel(configured.Level)) {
 		return tenantError("external_high_risk_permit_missing")
 	}
 	return nil
@@ -340,7 +342,7 @@ func tenantProjection(cols []ColumnRef, ts []tenantTarget) error {
 	return nil
 }
 func (q *Query) finalizeTenantPolicy(p *QueryPlan) {
-	if !q.settings.strict {
+	if !q.settings.strict && !q.bindingPlanning {
 		return
 	}
 	err := q.strictPolicyCheck(p)

@@ -66,9 +66,11 @@ type BindingCurrent struct {
 }
 
 // ValidatedPlan is an opaque single-attempt handle. Copies share consumption.
+// Validation may return an authorization-pending candidate, not permission.
 // It is neither a serialized permit nor a replacement for application authority.
 type ValidatedPlan struct{ state *bindingState }
 type bindingState struct {
+	authorization         Authorization
 	used                  atomic.Bool
 	owner                 *Query
 	executor              executor
@@ -128,6 +130,7 @@ func (q *Query) bindingContext(ctx context.Context) (context.Context, error) {
 	return ctx, nil
 }
 
+// Authorization registration identity is checked separately, never canonicalized.
 // Settings are compared independently of Query's additional policy override.
 // Otherwise that override could conceal a changed current PolicySet.
 func bindingSettings(s Settings) ([]byte, error) {
@@ -157,6 +160,9 @@ func bindingSettings(s Settings) ([]byte, error) {
 }
 func (q *Query) checkBindingCurrent(c BindingCurrent) ([]byte, error) {
 	b, s := c.BindingContext.input, c.Settings
+	if s.authorization.state != q.settings.authorization.state {
+		return nil, ErrBindingMismatch
+	}
 	if b == nil || len(b.Key) < 32 || s.database == "" || s.schema.input == nil || b.Target != s.database || b.Target != s.schema.input.Database || b.Dialect != s.schema.input.Dialect {
 		return nil, ErrBindingContext
 	}
@@ -195,6 +201,10 @@ func (q *Query) bindingPlan(ctx context.Context, family string, data any, batch 
 			return nil, bindingFailure(err)
 		}
 	}
+	owner := q
+	planner := *q
+	planner.bindingPlanning = true
+	q = &planner
 	var p *QueryPlan
 	var err error
 	switch family {
@@ -224,6 +234,7 @@ func (q *Query) bindingPlan(ctx context.Context, family string, data any, batch 
 		return nil, ErrBindingUnavailable
 	}
 	e := p.execution
+	e.owner = owner
 	e.ctx = ctx
 	if e.gate != nil {
 		return nil, bindingFailure(e.gate)
@@ -304,7 +315,7 @@ func (q *Query) validateBinding(ctx context.Context, c BindingCurrent, expiry ti
 	if !expiry.After(time.Now()) {
 		return nil, nil, ErrBindingExpired
 	}
-	h := &ValidatedPlan{state: &bindingState{owner: q, executor: q.exec, context: effective, queryContext: q.ctx, binding: c.BindingContext, snapshot: e.identity, ids: ids, inspection: inspection, settings: settings, operation: operation, expires: expiry}}
+	h := &ValidatedPlan{state: &bindingState{authorization: q.settings.authorization, owner: q, executor: q.exec, context: effective, queryContext: q.ctx, binding: c.BindingContext, snapshot: e.identity, ids: ids, inspection: inspection, settings: settings, operation: operation, expires: expiry}}
 	// Detach the optional approval timestamp from the Query as well.
 	if p.Approval != nil && p.Approval.ExpiresAt != nil {
 		exp := *p.Approval.ExpiresAt
@@ -324,9 +335,25 @@ func (q *Query) prepareBinding(ctx context.Context, c BindingCurrent, h *Validat
 	if !s.used.CompareAndSwap(false, true) {
 		return nil, ErrBindingConsumed
 	}
+	p, err := q.rebuildBinding(ctx, c, s, family, data, batch, columns)
+	if err != nil {
+		return nil, err
+	}
+	if p.execution.authorizationRequired {
+		if err = q.authorizeBinding(ctx, c, s, p, family, data, batch, columns); err != nil {
+			return nil, err
+		}
+	}
+	return p, nil
+}
+
+func (q *Query) rebuildBinding(ctx context.Context, c BindingCurrent, s *bindingState, family string, data any, batch []map[string]any, columns []string) (*QueryPlan, error) {
 	effective, err := q.bindingContext(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if s.authorization.state != q.settings.authorization.state {
+		return nil, ErrBindingMismatch
 	}
 	if s.owner != q || !bindingSame(s.context, effective) || !bindingSame(s.queryContext, q.ctx) {
 		return nil, ErrBindingOwner

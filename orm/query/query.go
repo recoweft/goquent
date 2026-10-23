@@ -42,6 +42,8 @@ type ownedExecutor struct{ executor }
 
 // Query wraps goquent QueryBuilder and the executor.
 type Query struct {
+	// bindingPlanning is set only on a stack-local planner copy.
+	bindingPlanning     bool
 	writeResult         writecheck.Options
 	writeOwner          *sql.DB
 	managedWriteTx      bool
@@ -260,6 +262,12 @@ func (q *Query) finalizePlan(plan *QueryPlan) {
 	q.finalizeTenantPolicy(plan)
 	q.finalizeOperation(plan)
 	q.sealExecution(plan)
+	if q.bindingPlanning && plan.execution.authorizationRequired {
+		// The diagnostic remains unapproved. Private inspection was sealed before
+		// adding this display-only refusal; no public plan is promoted to authority.
+		plan.Blocked, plan.RiskLevel = true, RiskBlocked
+		plan.Warnings = append(plan.Warnings, Warning{Code: "EXTERNAL_AUTHORIZATION_REQUIRED", Level: RiskBlocked, Message: "external authorization pending"})
+	}
 }
 
 func (q *Query) applyPolicyMetadata(plan *QueryPlan) {

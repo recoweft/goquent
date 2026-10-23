@@ -17,28 +17,40 @@ import (
 // diagnostics are never read back as SQL, arguments or permission to execute.
 // This is an in-process lifecycle, not a serialized plan or external permit.
 type plannedExecution struct {
-	observationShape string
-	results          writecheck.Options
-	writeOwner       *sql.DB
-	managedTx        bool
-	bindingExpires   *time.Time
-	identity         *planidentity.Snapshot
-	identityErr      error
-	owner            *Query
-	ctx              context.Context
-	executor         executor
-	sql              string
-	args             []any
-	inspection       *QueryPlan
-	insertRows       []map[string]any
-	gate             error
-	expires          *time.Time
-	used             atomic.Bool
+	authorizationRequired bool
+	authorizationCheck    func() error
+	observationShape      string
+	results               writecheck.Options
+	writeOwner            *sql.DB
+	managedTx             bool
+	bindingExpires        *time.Time
+	identity              *planidentity.Snapshot
+	identityErr           error
+	owner                 *Query
+	ctx                   context.Context
+	executor              executor
+	sql                   string
+	args                  []any
+	inspection            *QueryPlan
+	insertRows            []map[string]any
+	gate                  error
+	expires               *time.Time
+	used                  atomic.Bool
 }
 
 func (q *Query) sealExecution(p *QueryPlan) {
 	e := &plannedExecution{results: q.writeResult.Clone(), writeOwner: q.writeOwner, managedTx: q.managedWriteTx, owner: q, ctx: q.ctx, executor: q.exec, sql: p.SQL,
 		args: valuecopy.Slice(p.Params), gate: ensurePlanExecutable(p)}
+	if q.settings.strict || q.settings.authorization.state != nil {
+		base := (defaultRiskEngine{}).CheckQuery(p)
+		configured := (defaultRiskEngine{config: q.settings.risk}).CheckQuery(p)
+		e.authorizationRequired = requiresApprovalLevel(base.Level) || requiresApprovalLevel(configured.Level)
+		if base.Blocked || configured.Blocked {
+			e.gate = ErrBlockedOperation
+		} else if e.gate == nil && e.authorizationRequired && !q.bindingPlanning {
+			e.gate = ErrAuthorizationMissing
+		}
+	}
 	// Keep structural inspection alongside the exact statement, detached from the
 	// diagnostic projection. Unsupported custom payloads retain compatibility
 	// semantics; the strict gate already refuses values it cannot compare.
@@ -96,6 +108,14 @@ func (q *Query) checkExecution(p *QueryPlan) error {
 	e := p.execution
 	if e.gate != nil {
 		return e.gate
+	}
+	if e.authorizationRequired {
+		if e.authorizationCheck == nil {
+			return ErrAuthorizationMissing
+		}
+		if err := e.authorizationCheck(); err != nil {
+			return err
+		}
 	}
 	if e.ctx != nil {
 		if err := e.ctx.Err(); err != nil {
@@ -253,4 +273,16 @@ func (q *Query) executeRows(p *QueryPlan, scan func(observe.Reader) error) error
 func (q *Query) executeRow(p *QueryPlan, dest ...any) error {
 	_, err := q.execute(p, executionRow, nil, dest...)
 	return err
+}
+
+// checkAuthorizationDispatch runs at the final dispatch reservation boundary.
+// It never calls a provider or consumes an observation budget on refusal.
+func (e *plannedExecution) checkAuthorizationDispatch() error {
+	if !e.authorizationRequired {
+		return nil
+	}
+	if e.authorizationCheck == nil {
+		return ErrAuthorizationMissing
+	}
+	return e.authorizationCheck()
 }

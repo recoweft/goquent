@@ -137,16 +137,14 @@ fresh inspection and by the private dispatch gate. Existing ordinary API context
 behavior is unchanged.
 
 ExpiresAt is mandatory and future at generation. The handle is capped by any
-private approval expiry; a fresh plan can shorten but never extend it. The
-current Strict domain refuses high-risk operations requiring external permits
-before a handle is created, even with a reason. The private approval minimum
-calculation is unit-tested separately; it does not enable that unsupported path. Cancellation
-and expiry are checked again at final private bind. After matching current input,
-the exact fresh planner record supplies SQL and typed ordered arguments to one
-Executor call; there is no second SQL render, public-JSON reconstruction or callback
-provider between comparison and dispatch. The original private execution CAS is
-also consumed. Driver errors/scan errors remain ordinary result errors after an
-attempt; successful inspection does not predict DB success or Tx commit.
+private approval expiry; a fresh plan can shorten but never extend it. GQ-AI-13
+allows structurally valid high-risk pending candidates, and checks the minimum
+binding/approval/context/decision deadline during authorization and at dispatch.
+The high-risk provider callback is followed by fresh private reconstruction and
+comparison; it cannot change the authorized statement through public JSON.
+The original private execution CAS is also consumed. Driver/scan errors remain
+ordinary result errors after an attempt; successful inspection or authorization
+does not predict DB success or Tx commit. Low-risk binding has no provider call.
 
 ## Refusal identities and precedence
 
@@ -174,3 +172,15 @@ INSERT clauses, JSON, copy/one-attempt/concurrency and final cancellation/expiry
 `tests/plan_binding_test.go` exercises six operations, bool scanning and external
 Tx rollback against both databases. The language-neutral fixture is
 `tests/contracts/testdata/validated_binding_v1.json`; it is not an executable permit.
+
+## GQ-AI-13 execution update
+
+[External authorization](external-authorization.md) now connects the six validated
+families. Validate can return an authorization-pending candidate with a blocked
+diagnostic, without contacting a provider. That candidate is not permission.
+ExecuteValidated consumes first and authorizes high risk against the exact private
+request, then rechecks current material and deadlines before dispatch. Registration
+identity is compared independently alongside existing bindingSettings bytes.
+Ordinary high-risk execution remains unsupported with an explicit provider;
+Compatibility without one retains its existing reason path. Structural refusals
+remain authoritative; see the linked entry matrix and owned-atomic limitations.
