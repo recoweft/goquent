@@ -16,6 +16,14 @@ These rules are mandatory:
 - The current MCP scope is read-only context and review tooling. Do not use MCP for DB writes, migration apply, or raw SQL execution.
 - Goquent does not give AI agents authority to operate a production database autonomously.
 
+## Publication and execution boundary
+
+Review SQL/params, identifiers and source artifacts only in restricted local
+review. Attach redacted PlanView/MigrationPlanView/ReportView and fixed check
+summaries to PRs. Do not publish source JSON, reasons containing private context,
+arbitrary errors, paths or binding keys. Public views are not gate inputs or
+execution permissions. Use the complete private artifacts for decisions.
+
 ## Standard Workflow For DB Reads
 
 From the repository root, use the project-specific schema and policy inputs:
@@ -33,7 +41,9 @@ Then choose the narrowest supported representation:
 2. Use the Goquent DSL when the read does not fit the OperationSpec MVP.
 3. Use raw SQL only when the raw SQL conditions below are satisfied.
 
-Compile OperationSpec when it fits:
+Compile OperationSpec when it fits. CLI/MCP cannot supply trusted tenant settings;
+the following CLI path is for supported non-tenant inputs. For tenant reads use
+DB-scoped CompileOperation as shown in the connection-free example:
 
 ```bash
 go run ./cmd/goquent operation compile \
@@ -105,7 +115,9 @@ Required filters are part of the access contract. Missing required filters usual
 
 ## Raw SQL
 
-Prefer OperationSpec or the Goquent DSL. Raw SQL is acceptable only when all of these are true:
+Prefer OperationSpec or the Goquent DSL. Strict refuses unsupported Raw; external
+authorization does not add a Raw execution family. In a separately reviewed
+Compatibility path, Raw SQL still requires all of these conditions:
 
 - The operation cannot reasonably be represented with supported Goquent APIs.
 - The reason is specific, such as database-specific syntax, a measured performance need, or migration-only SQL.
@@ -141,9 +153,9 @@ go run ./cmd/goquent migrate dry-run \
 
 For migration PRs, attach:
 
-- `MigrationPlan` output
+- redacted migration public-view output
 - dry-run output
-- destructive or high-risk approval reason
+- confirmation of separately reviewed destructive/high-risk intent; keep sensitive reasons local
 - preflight evidence
 - rollback or compatibility notes when relevant
 - `goquent review` output
@@ -189,7 +201,7 @@ Use MCP only for deterministic context and read-only review tooling.
 
 Allowed:
 
-- read schema, manifest, model, relation, policy, migration, example, and review-rule resources
+- read bounded public manifest, policy, migration and review summaries; schema-name discovery is not exposed
 - inspect manifest status
 - review query text without executing it
 - review migration SQL without applying it
@@ -246,7 +258,7 @@ Is this a read query?
   v
 Is this a write or migration?
   |
-  +-- write --> Generate/review QueryPlan; require approval for high risk.
+  +-- write --> Plan/inspect; bind supported families; require external authority for Strict high risk.
   +-- migration --> Run migrate plan and dry-run; require approval/preflight for high or destructive steps.
   |
   v
@@ -265,40 +277,39 @@ Every PR that changes database access should include the relevant subset:
 - `go test ./...` result
 - `goquent manifest verify` result
 - `goquent review` result
-- `QueryPlan` output for changed repository methods or OperationSpecs
-- `MigrationPlan` and dry-run output for migrations
-- suppression reasons, owners, and expirations
-- approval reasons for high or destructive operations
+- redacted `PlanView` output for changed repository methods or OperationSpecs
+- redacted migration views and dry-run classifications for migrations
+- fixed suppression counts/status; inspect reasons, owners and expirations locally
+- fixed approval status; inspect sensitive intent and external authority locally
 - `partial` or `unsupported` static review locations
-- raw SQL reason and review result when raw SQL is used
+- fixed review classifications when raw SQL is used; keep SQL and reasons local
 
 Do not include secrets, production credentials, or sensitive parameter values in PR comments.
 
-## Example Commands
+## Current runnable workflow
 
-These commands are verified against the checked-in AI-safe example and do not require a live database:
+Follow [current safe workflows and migration](safe-workflows-migration.md) before
+moving from Compatibility to conditional Strict or adding external authorization.
+Validate returns a pending single-attempt candidate, not permission. Only the six
+ExecuteValidated families integrate the trusted scope adapter; ordinary high-risk
+CRUD/RETURNING refuses in Strict and provider-registered Compatibility. Reasons,
+Approval and manifest Fresh are never external authority.
+
+Run the connection-free example and its expected-refusal checker:
 
 ```bash
-go test ./examples/ai-safe-orm
 go run ./examples/ai-safe-orm
-go run ./cmd/goquent manifest verify \
-  --manifest ./examples/ai-safe-orm/goquent.manifest.json \
-  --schema ./examples/ai-safe-orm/schema.json \
-  --policy ./examples/ai-safe-orm/policies.json
-go run ./cmd/goquent operation compile \
-  --manifest ./examples/ai-safe-orm/goquent.manifest.json \
-  --spec ./examples/ai-safe-orm/operation.json \
-  --values ./examples/ai-safe-orm/values.json \
-  --format json
-go run ./cmd/goquent review --format pretty --fail-on blocked ./examples/ai-safe-orm
-go run ./cmd/goquent migrate plan ./examples/ai-safe-orm/migrations/001_add_users.sql
-go run ./cmd/goquent migrate plan ./examples/ai-safe-orm/migrations/002_drop_legacy_email.sql
-go run ./cmd/goquent migrate dry-run \
-  --approve "legacy column retired" \
-  ./examples/ai-safe-orm/migrations/002_drop_legacy_email.sql
+go test ./examples/ai-safe-orm -count=1
+sh examples/ai-safe-orm/check.sh
 ```
 
-The example intentionally contains findings. Use `--fail-on blocked` for the walkthrough so output remains visible without failing on the intentional high or destructive findings.
+The old OperationSpec/Values tenant JSON is intentionally rejected with
+`OPERATION_RESERVED_BINDING`; it cannot authenticate a tenant. Successful tenant
+compilation requires application-supplied DB settings. The checker retains the
+legacy fixtures and does not weaken review thresholds. Publish public views,
+fixed errors and bounded summaries only. Inspect SQL/params/source artifacts in
+restricted local review, not PR comments or MCP output. Source JSON is not a
+public view or an execution permit.
 
 ## Pre-PR Checklist
 
@@ -318,5 +329,5 @@ The example intentionally contains findings. Use `--fail-on blocked` for the wal
 Use this in a system or developer prompt for AI coding agents working on Goquent projects:
 
 ```text
-When writing database code with Goquent, treat Goquent as a deterministic database review boundary, not as business approval. Verify the manifest against current schema and policy inputs before using it; if it is stale, do not trust it or claim safety. Prefer read-only OperationSpec for supported select/filter/order/limit reads, otherwise use Goquent DSL. Compile or inspect QueryPlan output and review SQL, params, tables, predicates, risk, warnings, tenant scope, soft delete, PII, required filters, suppressions, approvals, and analysis precision. Never treat RiskLow as business approval. Never describe partial or unsupported static review as safe. Avoid raw SQL unless it is necessary, parameterized, policy-reviewed, and documented. For migrations, run migrate plan and dry-run, and require explicit approval plus preflight evidence for high or destructive changes. Use MCP only as read-only context and review tooling; do not use it for DB writes, migration apply, or raw SQL execution. Attach manifest verification, go test, goquent review, QueryPlan or MigrationPlan output, dry-run output, suppressions, approvals, raw SQL rationale, and precision limitations to PRs.
+When writing database code with Goquent, treat Goquent as a deterministic database review boundary, not as business approval. Verify the manifest against current schema and policy inputs before using it; if it is stale, do not trust it or claim safety. Prefer read-only OperationSpec for supported select/filter/order/limit reads, otherwise use Goquent DSL. Compile or inspect QueryPlan output and review SQL, params, tables, predicates, risk, warnings, tenant scope, soft delete, PII, required filters, suppressions, approvals, and analysis precision. Never treat RiskLow as business approval. Never describe partial or unsupported static review as safe. Avoid raw SQL unless it is necessary, parameterized, policy-reviewed, and documented. For migrations, run migrate plan and dry-run, and require explicit approval plus preflight evidence for high or destructive changes. Use MCP only as read-only context and review tooling; do not use it for DB writes, migration apply, or raw SQL execution. Attach fixed verification/test/review summaries, redacted public views and precision limitations to PRs. Keep SQL, values, identifiers, reasons, source artifacts, keys and arbitrary errors local. Strict high-risk execution requires the supported validated binding and trusted external authorization path; reason text is not permission.
 ```

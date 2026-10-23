@@ -40,28 +40,23 @@ Use Goquent as a database safety boundary, not as an approval system.
 
 ## Quick Start
 
-The repository includes a runnable AI-safe ORM example that does not require a live database.
+The [AI-safe example](examples/ai-safe-orm) runs without a database connection.
+Start with current application-supplied settings, typed planning, explicit binding
+and expected refusals:
 
 ```bash
-go test ./...
 go run ./examples/ai-safe-orm
-go run ./cmd/goquent manifest verify \
-  --manifest ./examples/ai-safe-orm/goquent.manifest.json \
-  --schema ./examples/ai-safe-orm/schema.json \
-  --policy ./examples/ai-safe-orm/policies.json
-go run ./cmd/goquent operation compile \
-  --manifest ./examples/ai-safe-orm/goquent.manifest.json \
-  --spec ./examples/ai-safe-orm/operation.json \
-  --values ./examples/ai-safe-orm/values.json \
-  --format json
-go run ./cmd/goquent review --format pretty --fail-on blocked ./examples/ai-safe-orm
-go run ./cmd/goquent migrate plan ./examples/ai-safe-orm/migrations/002_drop_legacy_email.sql
-go run ./cmd/goquent migrate dry-run \
-  --approve "legacy column retired" \
-  ./examples/ai-safe-orm/migrations/002_drop_legacy_email.sql
+go test ./examples/ai-safe-orm -count=1
+sh examples/ai-safe-orm/check.sh
 ```
 
-The example intentionally contains medium, high, and destructive findings so the review output is visible. The walkthrough uses `--fail-on blocked` to keep the command runnable. In a project CI gate, use the threshold your team requires, commonly `--fail-on high`.
+The checker asserts nonzero refusal classifications; the old tenant JSON is a
+negative fixture, not a successful CLI tenant workflow. Manifest checks cover
+supplied schema/policy only; generated-code/database checks are skipped.
+See [current workflows and migration](docs/safe-workflows-migration.md) for
+Compatibility versus conditional Strict, the six externally authorized validated
+families, public/source boundaries and native/mock validation limits. Ordinary
+review remains separate and may fail; thresholds and baselines are not relaxed.
 
 ## Basic ORM Usage
 
