@@ -424,24 +424,13 @@ type bindingNonComparableContext struct {
 	context.Context
 	padding []byte
 }
-type bindingCheckContext struct {
-	context.Context
-	calls int
-	check func(int) error
-}
 
-func (c *bindingCheckContext) Err() error {
-	c.calls++
-	if c.check != nil {
-		return c.check(c.calls)
-	}
-	return nil
-}
-func TestBindingContextOwnerAndLastDispatchChecks(t *testing.T) {
-	for _, kind := range []string{"explicit", "fallback", "changed", "noncomparable", "copy", "nil", "zero", "cancel-last", "expiry-last", "noncomparable-executor"} {
+func TestBindingContextOwnerChecks(t *testing.T) {
+	for _, kind := range []string{"explicit", "fallback", "changed", "noncomparable", "copy", "nil", "zero", "noncomparable-executor"} {
 		t.Run(kind, func(t *testing.T) {
 			q, c, spy, m := bindingFixture(t, false)
-			ctx := &bindingCheckContext{Context: context.Background()}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 			var supplied context.Context = ctx
 			if kind == "fallback" {
 				q.WithContext(ctx)
@@ -463,7 +452,6 @@ func TestBindingContextOwnerAndLastDispatchChecks(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ctx.calls = 0
 			want := error(nil)
 			switch kind {
 			case "changed":
@@ -479,23 +467,6 @@ func TestBindingContextOwnerAndLastDispatchChecks(t *testing.T) {
 			case "zero":
 				h = &ValidatedPlan{}
 				want = ErrBindingUnavailable
-			case "cancel-last":
-				ctx.check = func(n int) error {
-					if n >= 3 {
-						return context.Canceled
-					}
-					return nil
-				}
-				want = context.Canceled
-			case "expiry-last":
-				h.state.expires = time.Now().Add(time.Second)
-				ctx.check = func(n int) error {
-					if n == 3 {
-						time.Sleep(time.Until(h.state.expires) + time.Millisecond)
-					}
-					return nil
-				}
-				want = ErrBindingExpired
 			}
 			if want == nil {
 				m.ExpectExec(regexp.QuoteMeta(p.SQL)).WillReturnResult(sqlmock.NewResult(1, 1))
@@ -511,6 +482,77 @@ func TestBindingContextOwnerAndLastDispatchChecks(t *testing.T) {
 		})
 	}
 }
+
+// Exercise the existing prepare/dispatch boundary directly. Sleeping on a
+// monotonic deadline does not establish expiry for the wall-clock final gate,
+// and counting Context.Err calls does not identify the final bind boundary.
+func TestBindingFinalDispatchChecks(t *testing.T) {
+	for _, pg := range []bool{false, true} {
+		for _, kind := range []string{"valid", "expired", "canceled"} {
+			for _, boundary := range []string{"dispatch", "bind"} {
+				t.Run(fmt.Sprintf("%v/%s/%s", pg, kind, boundary), func(t *testing.T) {
+					q, c, spy, m := bindingFixture(t, pg)
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+					// A fixed far-future deadline avoids a scheduling budget for setup.
+					future := time.Date(9999, time.January, 1, 0, 0, 0, 0, time.UTC)
+					h, _, err := q.ValidateInsert(ctx, c, future, bindingRow())
+					if err != nil {
+						t.Fatal(err)
+					}
+					p, err := q.prepareBinding(ctx, c, h, "insert", bindingRow(), nil, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !h.state.used.Load() || p.execution.used.Load() || spy.calls != [6]int{} {
+						t.Fatal("unexpected prepared lifecycle")
+					}
+					if !p.execution.bindingExpires.Equal(future) || p.execution.ctx != ctx {
+						t.Fatal("prepared deadline or context changed")
+					}
+					if err = q.checkExecution(p); err != nil {
+						t.Fatal("valid pre-dispatch check failed", err)
+					}
+					var want error
+					switch kind {
+					case "expired":
+						// Mutate only this prepared private record, after earlier gates
+						// passed. No clock hook, elapsed-time wait or shared state.
+						past := time.Unix(0, 0).UTC()
+						p.execution.bindingExpires = &past
+						want = ErrBindingExpired
+					case "canceled":
+						cancel()
+						want = context.Canceled
+					}
+					calls := [6]int{}
+					if boundary == "bind" {
+						_, err = q.bindExecution(p)
+					} else {
+						if want == nil {
+							m.ExpectExec(regexp.QuoteMeta(p.SQL)).WillReturnResult(sqlmock.NewResult(1, 1))
+							calls[1] = 1
+						}
+						_, err = q.executeResult(p)
+					}
+					if !errors.Is(err, want) || spy.calls != calls {
+						t.Fatalf("gate error=%v, calls=%v", err, spy.calls)
+					}
+					if p.execution.used.Load() != (want == nil) {
+						t.Fatal("private execution consumption changed")
+					}
+					if _, err = q.prepareBinding(ctx, c, h, "insert", bindingRow(), nil, nil); !errors.Is(err, ErrBindingConsumed) {
+						t.Fatal("reserved handle became reusable", err)
+					}
+					if err = m.ExpectationsWereMet(); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestBindingDetachedKeyBatchOrderAndEffectiveConfig(t *testing.T) {
 	q, c, spy, m := bindingFixture(t, false)
 	key := bytes.Repeat([]byte{0xaa}, 32)
