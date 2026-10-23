@@ -2,42 +2,49 @@
 
 This example shows the Goquent safety workflow without requiring a live database.
 
-It covers:
+The default executable has no database connection and never calls an execution
+terminal. It demonstrates explicit application settings, a generated manifest
+summary, typed read-only OperationSpec and a validated read diagnostic. All
+printed artifacts are non-executable public views.
 
-- simple CRUD planning with `QueryPlan`.
-- tenant-scoped SaaS policies.
-- soft-delete default filters.
-- PII review with an access reason.
-- suppression and approval examples.
-- migration review inputs.
-- manifest verification inputs.
-- CI and MCP integration snippets.
-
-Run:
+Run from the repository root:
 
 ```bash
 go run ./examples/ai-safe-orm
+go test ./examples/ai-safe-orm -count=1
+sh examples/ai-safe-orm/check.sh
 ```
 
-Review:
+`check.sh` builds the example and CLI, checks normal startup, and asserts the
+expected nonzero exit codes and fixed classifications of both refusal modes and
+the legacy tenant JSON. It captures build/errors locally and deletes them. It
+also verifies the supplied manifest schema/policy; generated-code/database checks
+remain skipped. It does not run a native DB or adopt release acceptance.
+
+The built example accepts `refuse-tenant` (exit 3, `EXAMPLE_TENANT_REFUSED`) and
+`refuse-authorization` (exit 4, `EXAMPLE_AUTHORIZATION_DENIED_CONSUMED`). The latter
+raises the missing-limit risk to high, validates an authorization-pending
+candidate, then checks a deny-only adapter and the consumed handle. Neither mode
+can connect: the executor refuses every dispatch. The subprocess tests check
+public output and exact statuses. `go run` wraps a program's nonzero status;
+use the checker to verify the built executable's exact code.
+
+The tenant/subject are fictional application inputs, not deserialized authority.
+The random ephemeral binding key is a fixture only, not production key management.
+No allow-all adapter or DB execution mode is provided. For application migration,
+current-input binding, external authorization limits, dedicated native fixtures
+and separate review/release checkpoints, use the
+[current workflow guide](../../docs/safe-workflows-migration.md).
+
+Ordinary review is independent and can fail:
 
 ```bash
-go run ./cmd/goquent review --format pretty --fail-on blocked ./examples/ai-safe-orm
-go run ./cmd/goquent migrate plan ./examples/ai-safe-orm/migrations/001_add_users.sql
-go run ./cmd/goquent migrate plan ./examples/ai-safe-orm/migrations/002_drop_legacy_email.sql
-go run ./cmd/goquent manifest verify \
-  --manifest ./examples/ai-safe-orm/goquent.manifest.json \
-  --schema ./examples/ai-safe-orm/schema.json \
-  --policy ./examples/ai-safe-orm/policies.json
-go run ./cmd/goquent operation compile \
-  --manifest ./examples/ai-safe-orm/goquent.manifest.json \
-  --spec ./examples/ai-safe-orm/operation.json \
-  --values ./examples/ai-safe-orm/values.json \
-  --format json
+go run ./cmd/goquent review --format pretty --fail-on high ./examples/ai-safe-orm
 ```
 
-The example intentionally contains review findings so the output is visible; `--fail-on blocked`
-keeps the walkthrough command runnable.
+Preserve its risk/precision/unknown findings; do not lower the threshold to make
+this walkthrough green. Migration plans/dry-runs remain review inputs with
+separate deployment approval, not execution permissions.
 
 Run an MCP server with a narrow tool surface:
 
@@ -59,7 +66,7 @@ messages. Checked-in fictional source JSON is internal fixture data, not a publi
 display API. MCP returns structural summaries without real schema discovery.
 
 
-The manifest is regenerated from this directory's schema and policy files:
+For an intentional schema/policy update, a new manifest can be generated from this directory's schema and policy files:
 
 ```bash
 go run ./cmd/goquent manifest --dialect mysql \

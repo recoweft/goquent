@@ -2,9 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/recoweft/goquent/orm/query"
 	"log"
+	"os"
 	"time"
 
 	"github.com/recoweft/goquent/orm"
@@ -25,8 +30,49 @@ type User struct {
 func (User) TableName() string { return "users" }
 
 func main() {
+	mode := "plan"
+	if len(os.Args) == 2 {
+		mode = os.Args[1]
+	} else if len(os.Args) != 1 {
+		os.Exit(2)
+	}
+	os.Exit(run(mode))
+}
+
+// noDatabase has no driver or connection. Any unexpected dispatch fails closed.
+type noDatabase struct{}
+
+var errDatabaseDisabled = errors.New("EXAMPLE_DATABASE_DISABLED")
+
+func (noDatabase) Exec(string, ...any) (sql.Result, error) { return nil, errDatabaseDisabled }
+func (noDatabase) ExecContext(context.Context, string, ...any) (sql.Result, error) {
+	return nil, errDatabaseDisabled
+}
+func (noDatabase) Query(string, ...any) (*sql.Rows, error) { return nil, errDatabaseDisabled }
+func (noDatabase) QueryContext(context.Context, string, ...any) (*sql.Rows, error) {
+	return nil, errDatabaseDisabled
+}
+func (noDatabase) QueryRow(string, ...any) *sql.Row { panic(errDatabaseDisabled) }
+func (noDatabase) QueryRowContext(context.Context, string, ...any) *sql.Row {
+	panic(errDatabaseDisabled)
+}
+
+// denyOnly never grants permission and is used only by the refusal example.
+type denyOnly struct{}
+
+func (denyOnly) Authorize(_ context.Context, r query.AuthorizationRequest) (query.AuthorizationDecision, error) {
+	return r.Deny(), nil
+}
+
+func run(mode string) (code int) {
+	defer func() {
+		if recover() != nil {
+			fmt.Fprintln(os.Stderr, "EXAMPLE_EXECUTION_REFUSED")
+			code = 1
+		}
+	}()
 	ctx := context.Background()
-	db := orm.NewDB(nil, driver.MySQLDialect{})
+	db := orm.NewDBWithExecutor(noDatabase{}, driver.MySQLDialect{})
 
 	orm.ResetModelPolicies()
 	if err := orm.Model(User{}).
@@ -38,51 +84,6 @@ func main() {
 		Register(); err != nil {
 		log.Fatal("PUBLIC_OUTPUT: operation failed; details omitted")
 	}
-
-	simpleInsert, err := db.Table("users").
-		PlanInsert(ctx, map[string]any{
-			"tenant_id": int64(123),
-			"name":      "Alice",
-			"email":     "alice@example.test",
-		})
-	must("simple insert plan", err)
-
-	tenantRead, err := db.Table("users").
-		Select("id", "name").
-		Where("tenant_id", int64(123)).
-		OrderBy("id", "asc").
-		Limit(100).
-		Plan(ctx)
-	must("tenant read plan", err)
-
-	piiRead, err := db.Table("users").
-		Select("id", "email").
-		Where("tenant_id", int64(123)).
-		AccessReason("support ticket TICKET-123").
-		Limit(1).
-		Plan(ctx)
-	must("PII read plan", err)
-
-	suppressedExport, err := db.Table("users").
-		Select("id", "name").
-		Where("tenant_id", int64(123)).
-		SuppressWarning(
-			orm.WarningLimitMissing,
-			"tenant export streams through an application-level cursor",
-			orm.SuppressionOwner("data-platform"),
-			orm.SuppressionExpiresAt(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)),
-		).
-		Plan(ctx)
-	must("suppressed export plan", err)
-
-	approvedUpdate, err := db.Table("audit_logs").
-		WhereRaw("1 = 1", map[string]any{}).
-		RequireApproval("one-time audit log classification backfill").
-		PlanUpdate(ctx, map[string]any{"category": "import"})
-	must("approved update plan", err)
-
-	migrationPlan, err := migration.PlanSQL(`ALTER TABLE users DROP COLUMN legacy_email;`)
-	must("migration plan", err)
 
 	m, err := manifest.Generate(manifest.Options{
 		Dialect:     "mysql",
@@ -132,13 +133,68 @@ func main() {
 	})
 	must("operation spec compile", err)
 
-	printJSON("simple_insert", simpleInsert)
-	printJSON("tenant_read", tenantRead)
-	printJSON("pii_read", piiRead)
-	printJSON("suppressed_export", suppressedExport)
-	printJSON("approved_update", approvedUpdate)
-	printJSON("migration_plan", migrationPlan)
-	printJSON("operation_spec_plan", operationPlan)
+	printJSON("typed_operation", operationPlan)
+	printJSON("manifest_summary", m)
+
+	// Fixture-only ephemeral key. Production keys and current inputs belong to
+	// the application; no key, scope, SQL or source artifact is printed.
+	key := make([]byte, 32)
+	_, err = rand.Read(key)
+	must("fixture key", err)
+	binding, err := query.NewBindingContext(query.BindingContextInput{
+		Key: key, Scope: "example-only", Generation: "1", Target: "example", Dialect: "mysql",
+	})
+	must("binding", err)
+	current := query.BindingCurrent{Settings: settings, BindingContext: binding}
+	q := db.Table("users").Select("id", "name").Where("tenant_id", int64(123)).Limit(25)
+	_, diagnostic, err := q.ValidateSelect(ctx, current, time.Now().Add(time.Minute))
+	must("validate read", err)
+	printJSON("validated_read_diagnostic", diagnostic)
+
+	switch mode {
+	case "plan":
+		// No execution terminal is called on the default path.
+	case "refuse-tenant":
+		_, _, err := db.Table("users").Select("id").Limit(1).
+			ValidateSelect(ctx, current, time.Now().Add(time.Minute))
+		if err == nil {
+			return 1
+		}
+		fmt.Fprintln(os.Stderr, "EXAMPLE_TENANT_REFUSED")
+		return 3
+	case "refuse-authorization":
+		// A deny-only local adapter demonstrates refusal, not a production
+		// authentication service or a statement/value approval protocol.
+		registration, err := query.NewAuthorization(denyOnly{}, "fictional-subject")
+		must("registration", err)
+		high := query.RiskHigh
+		settings = settings.WithAuthorization(registration).WithRiskConfig(query.RiskConfig{
+			Rules: map[string]query.RiskRuleConfig{query.WarningLimitMissing: {Severity: &high}},
+		})
+		db = db.WithOptions(orm.WithSettings(settings))
+		current.Settings = settings
+		q = db.Table("users").Select("id").Where("tenant_id", int64(123)).RequireApproval("fixture intent only")
+		handle, pending, err := q.ValidateSelect(ctx, current, time.Now().Add(time.Minute))
+		must("pending candidate", err)
+		if handle == nil || pending == nil || !pending.Blocked {
+			return 1
+		}
+		printJSON("authorization_pending", pending)
+		var rows []User
+		err = q.ExecuteValidatedSelect(ctx, current, handle, &rows)
+		if !errors.Is(err, query.ErrAuthorizationDenied) {
+			return 1
+		}
+		if !errors.Is(q.ExecuteValidatedSelect(ctx, current, handle, &rows), query.ErrBindingConsumed) {
+			return 1
+		}
+		fmt.Fprintln(os.Stderr, "EXAMPLE_AUTHORIZATION_DENIED_CONSUMED")
+		return 4
+	default:
+		fmt.Fprintln(os.Stderr, "EXAMPLE_USAGE")
+		return 2
+	}
+	return 0
 }
 
 func must(label string, err error) {
@@ -157,6 +213,8 @@ func printJSON(label string, v any) {
 		if err == nil {
 			b, err = view.ToJSON()
 		}
+	case *manifest.Manifest:
+		b, err = json.Marshal(p.PublicView())
 	case *migration.MigrationPlan:
 		view, e := p.PublicView()
 		err = e
