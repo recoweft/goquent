@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import tarfile
@@ -79,10 +80,21 @@ class Collector:
             env.update({key: os.environ[key] for key in DSNS})
         with path.open('xb') as stream:
             try:
-                completed = subprocess.run(args, cwd=cwd or self.root, env=env,
-                                           stdout=stream, stderr=subprocess.STDOUT, timeout=1800)
-                code = completed.returncode
-            except (OSError, subprocess.TimeoutExpired):
+                process = subprocess.Popen(args, cwd=cwd or self.root, env=env,
+                                           stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
+                try:
+                    code = process.wait(timeout=1800)
+                except subprocess.TimeoutExpired:
+                    # Reap the command tree before starting another DB stage.
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    except OSError:
+                        raise RuntimeError('process cleanup unavailable') from None
+                    process.wait()
+                    code = 125
+            except OSError:
                 code = 125
         with (self.output / 'commands.jsonl').open('a') as metadata:
             metadata.write(json.dumps(dict(command=args, exit=code, log=path.name, native=native)) + '\n')

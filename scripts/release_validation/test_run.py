@@ -5,8 +5,10 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import signal
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 import run
 
 
@@ -88,6 +90,17 @@ class ValidationTests(unittest.TestCase):
         metadata = json.loads((self.root / 'commands.jsonl').read_text())
         self.assertEqual(metadata['exit'], 7)
         self.assertEqual(metadata['log'], log.name)
+
+    def test_timeout_reaps_process_group_before_return(self):
+        collector = run.Collector(self.root, self.root)
+        process = Mock(pid=12345)
+        process.wait.side_effect = [subprocess.TimeoutExpired('fixture', 1800), -9]
+        with patch('run.subprocess.Popen', return_value=process) as popen, patch('run.os.killpg') as kill:
+            code, _ = collector.command(['fixture'])
+        self.assertEqual(code, 125)
+        self.assertTrue(popen.call_args.kwargs['start_new_session'])
+        kill.assert_called_once_with(12345, signal.SIGKILL)
+        self.assertEqual(process.wait.call_count, 2)
 
     def test_default_never_calls_db_and_public_boundary(self):
         output = self.root / 'fresh'
