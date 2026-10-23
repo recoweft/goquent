@@ -275,3 +275,7 @@ Manifest version 1 remains, with documented schema/database fingerprint changes;
 legacy fingerprints and JSON tenant claims do not create verification or authority.
 GQ-AI-06 output boundaries and existing private binding domains remain intact.
 PR2 owns detailed public diagnostics; this PR does not close the whole Issue.
+
+For staged validation commands, evidence classifications and unresolved release
+blockers, see the [release validation checklist](docs/staged-release-validation.md).
+CI success does not authorize production release.

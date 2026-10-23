@@ -20,3 +20,11 @@ docs:
 	dirs="$$(go list -f '{{.Dir}}' $$packages | sed 's|$(CURDIR)|docs|')"; \
 	for d in $$dirs; do mkdir -p $$d; done; \
 	go run github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest --output "docs/{{.Dir}}/README.md" $$packages
+
+# A new private output directory is required; blocked release exits 1.
+.PHONY: release-validation release-validation-test
+release-validation:
+	@python3 scripts/release_validation/run.py --output "$(OUTPUT)" $(VALIDATION_ARGS)
+
+release-validation-test:
+	@PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/release_validation -p 'test_*.py'

@@ -1,8 +1,7 @@
 # Current safe workflows and migration
 
 GQ-AI-14 PR1(1/2), [Issue #106](https://github.com/recoweft/goquent/issues/106).
-This guide describes current bounded APIs. Staged release automation belongs to
-PR2; neither this guide nor successful tests adopts whole-project acceptance or
+This guide describes current bounded APIs. Staged validation is described in [the PR2 checklist](staged-release-validation.md); neither this guide nor successful tests adopts whole-project acceptance or
 approves production release.
 
 ## Start without a connection
@@ -108,7 +107,8 @@ tables and must never target production. The example itself has no DB execution
 opt-in and does not read DSNs. Native execution demonstrations remain in
 `tests/plan_binding_test.go` and `tests/external_authorization_test.go`.
 
-PR2 will supply staged release validation and a blocker ledger after PR1 merges.
+Use the [staged validation runner and blocker ledger](staged-release-validation.md)
+for fresh evidence collection after PR1.
 Retain inherited unresolved evidence: intermittent testmain review unknown and
 historical expiry failure causes are not established; previous successful reruns
 are not explanations. Record tests that were skipped or not run, and separate
