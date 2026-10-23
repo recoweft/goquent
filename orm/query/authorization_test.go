@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/DATA-DOG/go-sqlmock"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
 type authorizationSpy struct{ calls int }
@@ -19,9 +21,11 @@ func (s *authorizationSpy) Authorize(_ context.Context, r AuthorizationRequest) 
 
 type authorizationHostileError struct{}
 
-func (authorizationHostileError) Error() string { panic("error callback") }
-func (authorizationHostileError) Is(error) bool { panic("is callback") }
-func (authorizationHostileError) Unwrap() error { panic("unwrap callback") }
+func (authorizationHostileError) Error() string          { panic("error callback") }
+func (authorizationHostileError) Is(error) bool          { panic("is callback") }
+func (authorizationHostileError) Unwrap() error          { panic("unwrap callback") }
+func (authorizationHostileError) As(any) bool            { panic("as callback") }
+func (authorizationHostileError) Format(fmt.State, rune) { panic("format callback") }
 
 func authorizationFixture(t *testing.T) (authorizationMaterial, time.Time) {
 	t.Helper()
@@ -296,5 +300,137 @@ func TestAuthorizationProductionRemainsDisconnected(t *testing.T) {
 		if err = mock.ExpectationsWereMet(); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// Identical adapter descriptors do not imply identical private operations or
+// statement/value-specific external approval. Neither operation executes here.
+func TestAuthorizationSameDescriptorDifferentUpdate(t *testing.T) {
+	for _, pg := range []bool{false, true} {
+		t.Run(driverName(pg), func(t *testing.T) {
+			q, c, spy, _ := bindingFixture(t, pg)
+			m, now := authorizationFixture(t)
+			m.owner, m.executor, m.binding, m.family = q, q.exec, c.BindingContext, "update"
+			var err error
+			m.settings, err = bindingSettings(c.Settings)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.operation, err = q.bindingOperation("update", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			material := func(score int32) authorizationMaterial {
+				p, err := q.bindingPlan(nil, "update", map[string]any{"score": score}, nil, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				n := m
+				n.snapshot = p.execution.identity
+				n.inspection, err = bindingInspection(p.execution.inspection)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return n
+			}
+			one, two := material(3), material(4)
+			r1, err := newAuthorizationRequest(one, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r2, err := newAuthorizationRequest(two, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			descriptor := func(r AuthorizationRequest) []any {
+				v, present := r.Tenant()
+				return []any{r.Operation(), r.Subject(), r.Scope(), r.Target(), r.Dialect(), v, present, r.ExpiresAt()}
+			}
+			if !reflect.DeepEqual(descriptor(r1), descriptor(r2)) || one.snapshot.Equal(two.snapshot) {
+				t.Fatal("fixture must have identical descriptors and different private values")
+			}
+			d := r1.AllowUntil(one.ceiling)
+			if err := validateAuthorization(r1, one, d, nil, now); err != nil {
+				t.Fatal(err)
+			}
+			if err := validateAuthorization(r1, two, d, nil, now); err != ErrAuthorizationMismatch {
+				t.Fatal("changed current values accepted")
+			}
+			if err := validateAuthorization(r2, two, d, nil, now); err != ErrAuthorizationMismatch {
+				t.Fatal("old decision accepted for new request")
+			}
+			if err := validateAuthorization(r2, two, r2.AllowUntil(two.ceiling), nil, now); err != nil {
+				t.Fatal(err)
+			}
+			if spy.calls != [6]int{} {
+				t.Fatal("validation executed SQL")
+			}
+		})
+	}
+}
+
+func TestAuthorizationDecodeLifecycle(t *testing.T) {
+	m, now := authorizationFixture(t)
+	r, err := newAuthorizationRequest(m, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, a := r.AllowUntil(m.ceiling), m.config
+	rAlias, dAlias, aAlias := r, d, a
+	// encoding/json rejects malformed syntax before calling UnmarshalJSON.
+	for _, receiver := range []any{&r, &d, &a} {
+		if json.Unmarshal([]byte(`{"unfinished":`), receiver) == nil {
+			t.Fatal("syntax accepted")
+		}
+	}
+	if r != rAlias || d != dAlias || a != aAlias {
+		t.Fatal("unexpected pre-method mutation")
+	}
+	// Discard failed receivers. Copies are not globally revoked by decoding.
+	r, d, a = AuthorizationRequest{}, AuthorizationDecision{}, Authorization{}
+	for _, receiver := range []any{&rAlias, &dAlias, &aAlias} {
+		if json.Unmarshal([]byte(`null`), receiver) != ErrAuthorizationInvalid {
+			t.Fatal("method decode accepted")
+		}
+	}
+	if rAlias.state != nil || dAlias.request != nil || aAlias.state != nil {
+		t.Fatal("method did not clear receiver")
+	}
+	r, err = newAuthorizationRequest(m, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rAlias = r
+	if json.Unmarshal([]byte(`{}`), &r) != ErrAuthorizationInvalid || r.state != nil || rAlias.state == nil {
+		t.Fatal("receiver reset must not revoke independent aliases")
+	}
+	var rp *AuthorizationRequest
+	var dp *AuthorizationDecision
+	var ap *Authorization
+	for _, v := range []any{rp, dp, ap} {
+		b, err := json.Marshal(v)
+		if err != nil || string(b) != "null" {
+			t.Fatal("nil pointer JSON contract")
+		}
+	}
+}
+
+func TestAuthorizationShortenedCurrentDeadline(t *testing.T) {
+	m, now := authorizationFixture(t)
+	r, err := newAuthorizationRequest(m, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := r.AllowUntil(now.Add(time.Minute))
+	current := m
+	current.ceiling = d.expires.Add(-time.Nanosecond)
+	if err := validateAuthorization(r, current, d, nil, now); err != ErrAuthorizationInvalid {
+		t.Fatal("decision exceeded shortened current bound")
+	}
+	if err := validateAuthorization(r, current, r.AllowUntil(current.ceiling), nil, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateAuthorization(r, current, d, nil, current.ceiling); err != ErrAuthorizationExpired {
+		t.Fatal("expired current bound accepted")
 	}
 }

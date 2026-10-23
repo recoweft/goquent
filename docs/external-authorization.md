@@ -58,6 +58,12 @@ independently inspected SQL or every value. A workflow requiring statement/value
 approval beyond these inputs needs a separately designed adapter contract; do not
 silently substitute a family-wide permission.
 
+For example, two updates with the same subject, scope, tenant and operation
+family but different assigned values can have identical adapter descriptors.
+Their private snapshots and request instances remain distinct: a decision for
+the first update cannot validate the second. This correspondence check does not
+prove that an external service reviewed the business meaning of either value.
+
 `request.AllowUntil(expiry)` and `request.Deny()` create opaque candidates tied
 to that exact private request. Reconstructing an identical request creates a
 different instance. An allow response from another request is rejected, including
