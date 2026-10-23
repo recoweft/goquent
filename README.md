@@ -66,6 +66,11 @@ import "github.com/recoweft/goquent/orm"
 - [type ApplicationSchemaInput](<#ApplicationSchemaInput>)
 - [type ApplicationTable](<#ApplicationTable>)
 - [type Approval](<#Approval>)
+- [type Authorization](<#Authorization>)
+  - [func NewAuthorization\(provider AuthorizationProvider, subject string\) \(Authorization, error\)](<#NewAuthorization>)
+- [type AuthorizationDecision](<#AuthorizationDecision>)
+- [type AuthorizationProvider](<#AuthorizationProvider>)
+- [type AuthorizationRequest](<#AuthorizationRequest>)
 - [type BoolScanPolicy](<#BoolScanPolicy>)
   - [func \(p BoolScanPolicy\) String\(\) string](<#BoolScanPolicy.String>)
 - [type CapabilityAssessment](<#CapabilityAssessment>)
@@ -208,6 +213,7 @@ import "github.com/recoweft/goquent/orm"
 - [type OperationSpec](<#OperationSpec>)
 - [type OperationType](<#OperationType>)
 - [type Option](<#Option>)
+  - [func WithAuthorization\(a Authorization\) Option](<#WithAuthorization>)
   - [func WithBoolScanPolicy\(p BoolScanPolicy\) Option](<#WithBoolScanPolicy>)
   - [func WithExecutionContext\(c ExecutionContext\) Option](<#WithExecutionContext>)
   - [func WithPolicySet\(p PolicySet\) Option](<#WithPolicySet>)
@@ -467,6 +473,20 @@ const (
 ```
 
 ## Variables
+
+<a name="ErrAuthorizationMissing"></a>
+
+```go
+var (
+    ErrAuthorizationMissing  = query.ErrAuthorizationMissing
+    ErrAuthorizationDenied   = query.ErrAuthorizationDenied
+    ErrAuthorizationProvider = query.ErrAuthorizationProvider
+    ErrAuthorizationInvalid  = query.ErrAuthorizationInvalid
+    ErrAuthorizationMismatch = query.ErrAuthorizationMismatch
+    ErrAuthorizationExpired  = query.ErrAuthorizationExpired
+    ErrAuthorizationCanceled = query.ErrAuthorizationCanceled
+)
+```
 
 <a name="ErrCommandInput"></a>
 
@@ -1093,6 +1113,51 @@ type ApplicationTable = query.ApplicationTable
 
 ```go
 type Approval = query.Approval
+```
+
+<a name="Authorization"></a>
+## type Authorization
+
+
+
+```go
+type Authorization = query.Authorization
+```
+
+<a name="NewAuthorization"></a>
+### func NewAuthorization
+
+```go
+func NewAuthorization(provider AuthorizationProvider, subject string) (Authorization, error)
+```
+
+
+
+<a name="AuthorizationDecision"></a>
+## type AuthorizationDecision
+
+
+
+```go
+type AuthorizationDecision = query.AuthorizationDecision
+```
+
+<a name="AuthorizationProvider"></a>
+## type AuthorizationProvider
+
+
+
+```go
+type AuthorizationProvider = query.AuthorizationProvider
+```
+
+<a name="AuthorizationRequest"></a>
+## type AuthorizationRequest
+
+
+
+```go
+type AuthorizationRequest = query.AuthorizationRequest
 ```
 
 <a name="BoolScanPolicy"></a>
@@ -2496,6 +2561,15 @@ Option configures DB at creation.
 ```go
 type Option func(*DB)
 ```
+
+<a name="WithAuthorization"></a>
+### func WithAuthorization
+
+```go
+func WithAuthorization(a Authorization) Option
+```
+
+WithAuthorization installs an explicit registration on this DB's settings. PR1 defines the contract only: existing execution gates remain unchanged and production planning/execution does not call the provider.
 
 <a name="WithBoolScanPolicy"></a>
 ### func WithBoolScanPolicy
@@ -7593,6 +7667,29 @@ import "github.com/recoweft/goquent/orm/query"
 - [type ApplicationSchemaInput](<#ApplicationSchemaInput>)
 - [type ApplicationTable](<#ApplicationTable>)
 - [type Approval](<#Approval>)
+- [type Authorization](<#Authorization>)
+  - [func NewAuthorization\(provider AuthorizationProvider, subject string\) \(Authorization, error\)](<#NewAuthorization>)
+  - [func \(Authorization\) Format\(s fmt.State, \_ rune\)](<#Authorization.Format>)
+  - [func \(Authorization\) MarshalJSON\(\) \(\[\]byte, error\)](<#Authorization.MarshalJSON>)
+  - [func \(a \*Authorization\) UnmarshalJSON\(\[\]byte\) error](<#Authorization.UnmarshalJSON>)
+- [type AuthorizationDecision](<#AuthorizationDecision>)
+  - [func \(AuthorizationDecision\) Format\(s fmt.State, \_ rune\)](<#AuthorizationDecision.Format>)
+  - [func \(AuthorizationDecision\) MarshalJSON\(\) \(\[\]byte, error\)](<#AuthorizationDecision.MarshalJSON>)
+  - [func \(d \*AuthorizationDecision\) UnmarshalJSON\(\[\]byte\) error](<#AuthorizationDecision.UnmarshalJSON>)
+- [type AuthorizationProvider](<#AuthorizationProvider>)
+- [type AuthorizationRequest](<#AuthorizationRequest>)
+  - [func \(r AuthorizationRequest\) AllowUntil\(expiresAt time.Time\) AuthorizationDecision](<#AuthorizationRequest.AllowUntil>)
+  - [func \(r AuthorizationRequest\) Deny\(\) AuthorizationDecision](<#AuthorizationRequest.Deny>)
+  - [func \(r AuthorizationRequest\) Dialect\(\) string](<#AuthorizationRequest.Dialect>)
+  - [func \(r AuthorizationRequest\) ExpiresAt\(\) time.Time](<#AuthorizationRequest.ExpiresAt>)
+  - [func \(AuthorizationRequest\) Format\(s fmt.State, \_ rune\)](<#AuthorizationRequest.Format>)
+  - [func \(AuthorizationRequest\) MarshalJSON\(\) \(\[\]byte, error\)](<#AuthorizationRequest.MarshalJSON>)
+  - [func \(r AuthorizationRequest\) Operation\(\) string](<#AuthorizationRequest.Operation>)
+  - [func \(r AuthorizationRequest\) Scope\(\) string](<#AuthorizationRequest.Scope>)
+  - [func \(r AuthorizationRequest\) Subject\(\) string](<#AuthorizationRequest.Subject>)
+  - [func \(r AuthorizationRequest\) Target\(\) string](<#AuthorizationRequest.Target>)
+  - [func \(r AuthorizationRequest\) Tenant\(\) \(any, bool\)](<#AuthorizationRequest.Tenant>)
+  - [func \(r \*AuthorizationRequest\) UnmarshalJSON\(\[\]byte\) error](<#AuthorizationRequest.UnmarshalJSON>)
 - [type BindingContext](<#BindingContext>)
   - [func NewBindingContext\(input BindingContextInput\) \(BindingContext, error\)](<#NewBindingContext>)
   - [func \(BindingContext\) Format\(s fmt.State, \_ rune\)](<#BindingContext.Format>)
@@ -7843,11 +7940,13 @@ import "github.com/recoweft/goquent/orm/query"
   - [func NewSettings\(policies PolicySet, risk RiskConfig, execution ExecutionContext\) Settings](<#NewSettings>)
   - [func SnapshotDefaultSettings\(\) Settings](<#SnapshotDefaultSettings>)
   - [func \(s Settings\) ApplicationTenantContext\(\) \(ExecutionContext, error\)](<#Settings.ApplicationTenantContext>)
+  - [func \(s Settings\) Authorization\(\) Authorization](<#Settings.Authorization>)
   - [func \(s Settings\) Err\(\) error](<#Settings.Err>)
   - [func \(s Settings\) ExecutionContext\(\) ExecutionContext](<#Settings.ExecutionContext>)
   - [func \(s Settings\) IsStrict\(\) bool](<#Settings.IsStrict>)
   - [func \(s Settings\) PolicySet\(\) PolicySet](<#Settings.PolicySet>)
   - [func \(s Settings\) RiskConfig\(\) RiskConfig](<#Settings.RiskConfig>)
+  - [func \(s Settings\) WithAuthorization\(a Authorization\) Settings](<#Settings.WithAuthorization>)
   - [func \(s Settings\) WithExecutionContext\(c ExecutionContext\) Settings](<#Settings.WithExecutionContext>)
   - [func \(s Settings\) WithPolicySet\(p PolicySet\) Settings](<#Settings.WithPolicySet>)
   - [func \(s Settings\) WithRiskConfig\(r RiskConfig\) Settings](<#Settings.WithRiskConfig>)
@@ -7967,6 +8066,20 @@ const PlanViewVersion = 1
 ```
 
 ## Variables
+
+<a name="ErrAuthorizationMissing"></a>
+
+```go
+var (
+    ErrAuthorizationMissing  = errors.New("goquent: authorization missing")
+    ErrAuthorizationDenied   = errors.New("goquent: authorization denied")
+    ErrAuthorizationProvider = errors.New("goquent: authorization provider failed")
+    ErrAuthorizationInvalid  = errors.New("goquent: authorization invalid")
+    ErrAuthorizationMismatch = errors.New("goquent: authorization mismatch")
+    ErrAuthorizationExpired  = errors.New("goquent: authorization expired")
+    ErrAuthorizationCanceled = errors.New("goquent: authorization canceled")
+)
+```
 
 <a name="ErrBindingContext"></a>
 
@@ -8200,6 +8313,221 @@ type Approval struct {
     ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 ```
+
+<a name="Authorization"></a>
+## type Authorization
+
+Authorization is an immutable, process\-local registration, not authority by itself. Copies share registration identity; each constructor creates a new one. Provider internals are not copied or made immutable by Goquent.
+
+```go
+type Authorization struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewAuthorization"></a>
+### func NewAuthorization
+
+```go
+func NewAuthorization(provider AuthorizationProvider, subject string) (Authorization, error)
+```
+
+NewAuthorization registers an adapter and exact application subject \(1..256 bytes, not whitespace\-only\). Subject is not normalized or authenticated here.
+
+<a name="Authorization.Format"></a>
+### func \(Authorization\) Format
+
+```go
+func (Authorization) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="Authorization.MarshalJSON"></a>
+### func \(Authorization\) MarshalJSON
+
+```go
+func (Authorization) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="Authorization.UnmarshalJSON"></a>
+### func \(\*Authorization\) UnmarshalJSON
+
+```go
+func (a *Authorization) UnmarshalJSON([]byte) error
+```
+
+
+
+<a name="AuthorizationDecision"></a>
+## type AuthorizationDecision
+
+AuthorizationDecision is a request\-bound candidate, never an executable or serialized permission. Copies do not create another request or attempt.
+
+```go
+type AuthorizationDecision struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="AuthorizationDecision.Format"></a>
+### func \(AuthorizationDecision\) Format
+
+```go
+func (AuthorizationDecision) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="AuthorizationDecision.MarshalJSON"></a>
+### func \(AuthorizationDecision\) MarshalJSON
+
+```go
+func (AuthorizationDecision) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="AuthorizationDecision.UnmarshalJSON"></a>
+### func \(\*AuthorizationDecision\) UnmarshalJSON
+
+```go
+func (d *AuthorizationDecision) UnmarshalJSON([]byte) error
+```
+
+
+
+<a name="AuthorizationProvider"></a>
+## type AuthorizationProvider
+
+AuthorizationProvider is an explicitly trusted application adapter. It must authenticate its application context and verify external authority before returning an allow candidate. PR1 does not invoke it from production paths. Implementations own their concurrency safety and external side effects.
+
+```go
+type AuthorizationProvider interface {
+    Authorize(context.Context, AuthorizationRequest) (AuthorizationDecision, error)
+}
+```
+
+<a name="AuthorizationRequest"></a>
+## type AuthorizationRequest
+
+AuthorizationRequest has no public constructor. Accessors are sensitive inputs for the trusted adapter, not display data. No SQL, key or digest is exposed.
+
+```go
+type AuthorizationRequest struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="AuthorizationRequest.AllowUntil"></a>
+### func \(AuthorizationRequest\) AllowUntil
+
+```go
+func (r AuthorizationRequest) AllowUntil(expiresAt time.Time) AuthorizationDecision
+```
+
+AllowUntil records the trusted adapter's decision. Validation still checks the exact request, current private material, mandatory expiry and context. This method does not authenticate the adapter or independently check external ACLs.
+
+<a name="AuthorizationRequest.Deny"></a>
+### func \(AuthorizationRequest\) Deny
+
+```go
+func (r AuthorizationRequest) Deny() AuthorizationDecision
+```
+
+
+
+<a name="AuthorizationRequest.Dialect"></a>
+### func \(AuthorizationRequest\) Dialect
+
+```go
+func (r AuthorizationRequest) Dialect() string
+```
+
+
+
+<a name="AuthorizationRequest.ExpiresAt"></a>
+### func \(AuthorizationRequest\) ExpiresAt
+
+```go
+func (r AuthorizationRequest) ExpiresAt() time.Time
+```
+
+
+
+<a name="AuthorizationRequest.Format"></a>
+### func \(AuthorizationRequest\) Format
+
+```go
+func (AuthorizationRequest) Format(s fmt.State, _ rune)
+```
+
+
+
+<a name="AuthorizationRequest.MarshalJSON"></a>
+### func \(AuthorizationRequest\) MarshalJSON
+
+```go
+func (AuthorizationRequest) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="AuthorizationRequest.Operation"></a>
+### func \(AuthorizationRequest\) Operation
+
+```go
+func (r AuthorizationRequest) Operation() string
+```
+
+
+
+<a name="AuthorizationRequest.Scope"></a>
+### func \(AuthorizationRequest\) Scope
+
+```go
+func (r AuthorizationRequest) Scope() string
+```
+
+
+
+<a name="AuthorizationRequest.Subject"></a>
+### func \(AuthorizationRequest\) Subject
+
+```go
+func (r AuthorizationRequest) Subject() string
+```
+
+
+
+<a name="AuthorizationRequest.Target"></a>
+### func \(AuthorizationRequest\) Target
+
+```go
+func (r AuthorizationRequest) Target() string
+```
+
+
+
+<a name="AuthorizationRequest.Tenant"></a>
+### func \(AuthorizationRequest\) Tenant
+
+```go
+func (r AuthorizationRequest) Tenant() (any, bool)
+```
+
+
+
+<a name="AuthorizationRequest.UnmarshalJSON"></a>
+### func \(\*AuthorizationRequest\) UnmarshalJSON
+
+```go
+func (r *AuthorizationRequest) UnmarshalJSON([]byte) error
+```
+
+
 
 <a name="BindingContext"></a>
 ## type BindingContext
@@ -10635,7 +10963,7 @@ type RiskRuleConfig struct {
 <a name="Settings"></a>
 ## type Settings
 
-Settings is an immutable policy, risk and execution\-context snapshot. The zero value uses empty policies, built\-in risk defaults and missing context. Copies safely share only privately owned immutable data.
+Settings is an immutable policy, risk and execution\-context snapshot. The zero value uses empty policies, built\-in risk defaults and missing context. Copies share privately owned immutable snapshots and an optional authorization registration. The registered provider remains application\-owned and must implement its own concurrency safety.
 
 ```go
 type Settings struct {
@@ -10669,6 +10997,15 @@ func (s Settings) ApplicationTenantContext() (ExecutionContext, error)
 ```
 
 ApplicationTenantContext preserves application provenance and returns detached data through ExecutionContext.Input. It does not authenticate the application.
+
+<a name="Settings.Authorization"></a>
+### func \(Settings\) Authorization
+
+```go
+func (s Settings) Authorization() Authorization
+```
+
+
 
 <a name="Settings.Err"></a>
 ### func \(Settings\) Err
@@ -10711,6 +11048,15 @@ func (s Settings) PolicySet() PolicySet
 
 ```go
 func (s Settings) RiskConfig() RiskConfig
+```
+
+
+
+<a name="Settings.WithAuthorization"></a>
+### func \(Settings\) WithAuthorization
+
+```go
+func (s Settings) WithAuthorization(a Authorization) Settings
 ```
 
 
