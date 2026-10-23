@@ -40,27 +40,40 @@ func main() {
 }
 
 // noDatabase has no driver or connection. Any unexpected dispatch fails closed.
-type noDatabase struct{}
+type noDatabase struct{ calls int }
 
 var errDatabaseDisabled = errors.New("EXAMPLE_DATABASE_DISABLED")
 
-func (noDatabase) Exec(string, ...any) (sql.Result, error) { return nil, errDatabaseDisabled }
-func (noDatabase) ExecContext(context.Context, string, ...any) (sql.Result, error) {
+func (e *noDatabase) Exec(string, ...any) (sql.Result, error) {
+	e.calls++
 	return nil, errDatabaseDisabled
 }
-func (noDatabase) Query(string, ...any) (*sql.Rows, error) { return nil, errDatabaseDisabled }
-func (noDatabase) QueryContext(context.Context, string, ...any) (*sql.Rows, error) {
+func (e *noDatabase) ExecContext(context.Context, string, ...any) (sql.Result, error) {
+	e.calls++
 	return nil, errDatabaseDisabled
 }
-func (noDatabase) QueryRow(string, ...any) *sql.Row { panic(errDatabaseDisabled) }
-func (noDatabase) QueryRowContext(context.Context, string, ...any) *sql.Row {
+func (e *noDatabase) Query(string, ...any) (*sql.Rows, error) {
+	e.calls++
+	return nil, errDatabaseDisabled
+}
+func (e *noDatabase) QueryContext(context.Context, string, ...any) (*sql.Rows, error) {
+	e.calls++
+	return nil, errDatabaseDisabled
+}
+func (e *noDatabase) QueryRow(string, ...any) *sql.Row {
+	e.calls++
+	panic(errDatabaseDisabled)
+}
+func (e *noDatabase) QueryRowContext(context.Context, string, ...any) *sql.Row {
+	e.calls++
 	panic(errDatabaseDisabled)
 }
 
 // denyOnly never grants permission and is used only by the refusal example.
-type denyOnly struct{}
+type denyOnly struct{ calls int }
 
-func (denyOnly) Authorize(_ context.Context, r query.AuthorizationRequest) (query.AuthorizationDecision, error) {
+func (d *denyOnly) Authorize(_ context.Context, r query.AuthorizationRequest) (query.AuthorizationDecision, error) {
+	d.calls++
 	return r.Deny(), nil
 }
 
@@ -72,7 +85,14 @@ func run(mode string) (code int) {
 		}
 	}()
 	ctx := context.Background()
-	db := orm.NewDBWithExecutor(noDatabase{}, driver.MySQLDialect{})
+	executor := &noDatabase{}
+	defer func() {
+		if executor.calls != 0 {
+			fmt.Fprintln(os.Stderr, "EXAMPLE_UNEXPECTED_DISPATCH")
+			code = 1
+		}
+	}()
+	db := orm.NewDBWithExecutor(executor, driver.MySQLDialect{})
 
 	orm.ResetModelPolicies()
 	if err := orm.Model(User{}).
@@ -147,6 +167,9 @@ func run(mode string) (code int) {
 	must("binding", err)
 	current := query.BindingCurrent{Settings: settings, BindingContext: binding}
 	q := db.Table("users").Select("id", "name").Where("tenant_id", int64(123)).Limit(25)
+	planned, err := q.Plan(ctx)
+	must("read plan", err)
+	printJSON("read_plan", planned)
 	_, diagnostic, err := q.ValidateSelect(ctx, current, time.Now().Add(time.Minute))
 	must("validate read", err)
 	printJSON("validated_read_diagnostic", diagnostic)
@@ -157,7 +180,7 @@ func run(mode string) (code int) {
 	case "refuse-tenant":
 		_, _, err := db.Table("users").Select("id").Limit(1).
 			ValidateSelect(ctx, current, time.Now().Add(time.Minute))
-		if err == nil {
+		if !errors.Is(err, query.ErrBlockedOperation) {
 			return 1
 		}
 		fmt.Fprintln(os.Stderr, "EXAMPLE_TENANT_REFUSED")
@@ -165,7 +188,8 @@ func run(mode string) (code int) {
 	case "refuse-authorization":
 		// A deny-only local adapter demonstrates refusal, not a production
 		// authentication service or a statement/value approval protocol.
-		registration, err := query.NewAuthorization(denyOnly{}, "fictional-subject")
+		provider := &denyOnly{}
+		registration, err := query.NewAuthorization(provider, "fictional-subject")
 		must("registration", err)
 		high := query.RiskHigh
 		settings = settings.WithAuthorization(registration).WithRiskConfig(query.RiskConfig{
@@ -176,16 +200,16 @@ func run(mode string) (code int) {
 		q = db.Table("users").Select("id").Where("tenant_id", int64(123)).RequireApproval("fixture intent only")
 		handle, pending, err := q.ValidateSelect(ctx, current, time.Now().Add(time.Minute))
 		must("pending candidate", err)
-		if handle == nil || pending == nil || !pending.Blocked {
+		if handle == nil || pending == nil || !pending.Blocked || provider.calls != 0 {
 			return 1
 		}
 		printJSON("authorization_pending", pending)
 		var rows []User
 		err = q.ExecuteValidatedSelect(ctx, current, handle, &rows)
-		if !errors.Is(err, query.ErrAuthorizationDenied) {
+		if !errors.Is(err, query.ErrAuthorizationDenied) || provider.calls != 1 {
 			return 1
 		}
-		if !errors.Is(q.ExecuteValidatedSelect(ctx, current, handle, &rows), query.ErrBindingConsumed) {
+		if !errors.Is(q.ExecuteValidatedSelect(ctx, current, handle, &rows), query.ErrBindingConsumed) || provider.calls != 1 {
 			return 1
 		}
 		fmt.Fprintln(os.Stderr, "EXAMPLE_AUTHORIZATION_DENIED_CONSUMED")
