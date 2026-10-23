@@ -333,3 +333,54 @@ func TestDBSettingsRawRiskAndSoftDeleteUseLocalSnapshots(t *testing.T) {
 		}
 	}
 }
+
+// A registered provider is configuration only in PR1.
+type settingsAuthorizationProvider struct{}
+
+func (*settingsAuthorizationProvider) Authorize(context.Context, AuthorizationRequest) (AuthorizationDecision, error) {
+	panic("PR1 must not call provider")
+}
+func TestAuthorizationDBInheritance(t *testing.T) {
+	provider := &settingsAuthorizationProvider{}
+	a, err := NewAuthorization(provider, "app-subject")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := NewAuthorization(provider, "app-subject")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	db := NewDB(sqlDB, driver.MySQLDialect{}, WithAuthorization(a))
+	other := NewDBWithExecutor(nil, driver.PostgresDialect{}, WithAuthorization(b))
+	if other.Settings().Authorization() == a {
+		t.Fatal("DB registrations shared")
+	}
+	for _, child := range []*DB{db.Clone(), db.WithOptions(), db.WrapExecutor(nil)} {
+		if child.Settings().Authorization() != a || child.Table("users").Settings().Authorization() != a {
+			t.Fatal("inheritance")
+		}
+	}
+	if db.WithOptions(WithAuthorization(b)).Settings().Authorization() != b || db.Settings().Authorization() != a {
+		t.Fatal("replacement")
+	}
+	mock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tx.Settings().Authorization() != a || db.WrapTx(tx.Tx.Tx).Settings().Authorization() != a {
+		t.Fatal("Tx inheritance")
+	}
+	mock.ExpectRollback()
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

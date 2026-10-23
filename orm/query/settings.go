@@ -98,16 +98,19 @@ func (c ExecutionContext) Input() ExecutionContextInput {
 
 // Settings is an immutable policy, risk and execution-context snapshot. The zero
 // value uses empty policies, built-in risk defaults and missing context. Copies
-// safely share only privately owned immutable data.
+// share privately owned immutable snapshots and an optional authorization
+// registration. The registered provider remains application-owned and must
+// implement its own concurrency safety.
 type Settings struct {
-	strict     bool
-	autoTenant bool
-	database   string
-	schema     ApplicationSchema
-	policies   PolicySet
-	risk       RiskConfig
-	execution  ExecutionContext
-	err        error
+	authorization Authorization
+	strict        bool
+	autoTenant    bool
+	database      string
+	schema        ApplicationSchema
+	policies      PolicySet
+	risk          RiskConfig
+	execution     ExecutionContext
+	err           error
 }
 
 // NewSettings builds a detached snapshot without consulting globals.

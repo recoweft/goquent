@@ -177,3 +177,11 @@ Regression evidence is in `orm/settings_test.go`, `orm/query/settings_test.go`
 and `tests/settings_test.go`; C26/C27 in the shared case register describe the
 bounded guarantees. Consult the PR/report for actual commands, failures, skips,
 server versions and CI head; test definitions are not execution evidence.
+
+## External authorization registration (GQ-AI-13 PR1)
+
+`NewAuthorization(provider, subject)` and `WithAuthorization(registration)` add
+explicit per-DB configuration. Copies and transactions retain the registration;
+a new constructor creates a distinct private instance. Provider internals remain
+application-owned. This is an unconnected contract in PR1, not a Strict bypass.
+See [external authorization](external-authorization.md) for trust and migration.
