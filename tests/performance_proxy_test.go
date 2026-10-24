@@ -156,9 +156,7 @@ func (p *boundaryProxy) pair(client, server net.Conn) {
 		if _, err := io.ReadFull(client, body); err != nil {
 			break
 		}
-		if p.dialect == "postgres" && startup && len(body) == 12 && binary.BigEndian.Uint32(body[:4]) == 80877102 {
-			p.cancelOnce.Do(func() { close(p.cancellation) })
-		}
+		isCancellation := p.dialect == "postgres" && startup && len(body) == 12 && binary.BigEndian.Uint32(body[:4]) == 80877102
 		statement := ""
 		if p.dialect == "mysql" && len(body) > 0 && body[0] == 3 {
 			statement = string(body[1:])
@@ -181,7 +179,7 @@ func (p *boundaryProxy) pair(client, server net.Conn) {
 		if p.armed.Load() && (strings.Contains(statement, "SELECT VERSION(), DATABASE()") || strings.Contains(statement, "SELECT pg_catalog.current_setting('server_version')")) {
 			hold.Store(true)
 		}
-		if _, err := server.Write(append(header, body...)); err != nil {
+		if err := p.forwardRequest(server, append(header, body...), isCancellation); err != nil {
 			break
 		}
 		startup = false
@@ -190,6 +188,28 @@ func (p *boundaryProxy) pair(client, server net.Conn) {
 	server.Close()
 	// close() releases a held response before joining this worker.
 	<-finished
+}
+
+// forwardRequest publishes cancellation only after the complete frame was written.
+// This is a transport write boundary, not server processing or rollback acknowledgement.
+func (p *boundaryProxy) forwardRequest(server io.Writer, frame []byte, cancellation bool) error {
+	for len(frame) > 0 {
+		n, err := server.Write(frame)
+		if n < 0 || n > len(frame) {
+			return io.ErrShortWrite
+		}
+		frame = frame[n:]
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return io.ErrShortWrite
+		}
+	}
+	if cancellation {
+		p.cancelOnce.Do(func() { close(p.cancellation) })
+	}
+	return nil
 }
 
 func (p *boundaryProxy) close(t *testing.T) {

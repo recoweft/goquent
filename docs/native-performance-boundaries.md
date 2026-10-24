@@ -40,7 +40,7 @@ custom opclass creation and full server session observation.
 The proxy frames PostgreSQL and MySQL requests rather than assuming TCP packet
 boundaries. A response-arrival channel establishes the injection point. Cancel
 and deadline release the held real response after context termination; PostgreSQL
-also requires observation of its driver cancellation packet before release.
+also requires full forwarding of its driver cancellation frame before release.
 Explicit disconnect remains a separate fault. A watchdog still tears down the
 fixture during cleanup. This does **not** prove prompt cancellation against an
 indefinitely unresponsive peer.
@@ -160,7 +160,7 @@ or context/error call-count dependence is used. Disabling each new exception in
 turn makes its cancellation and deadline positive regressions fail.
 
 Native cancellation/deadline release the real held response after context ends;
-PostgreSQL first requires the actual driver cancellation packet. Explicit transport
+PostgreSQL first requires full forwarding of the actual driver cancellation frame. Explicit transport
 disconnect is separate and still expects CLEANUP. Watchdog teardown is distinct
 from the semantic timeout. Cleanup is registered before acquisition and checks
 publication, proxy workers/listener, pool use, server session absence and a bounded
@@ -195,3 +195,68 @@ Review risk/precision/unknown findings, original example skips, historical cause
 fixed BLOCKERS and human release boundaries remain. No API/wire/hash/version or
 authorization change is introduced. The repair PR must remain draft/blocked while
 its residual is unresolved; merge, acceptance and release are separate decisions.
+
+## GQ-MAINT-13 revision 2: finite residual investigation
+
+The retained revision 1 `phase-fixed-race` log contains one failed PostgreSQL
+`network_cancel` leaf (and its parent failures). Its exact failing source tree
+was not recorded with that trial. Retained candidate source copies agree with
+one another; compared with initial head `54f987c`, their production difference
+is the later adopted owned-close classifier. Those copies do not establish the
+whole tree that produced the historical failure. Later passing samples cannot
+supply the missing attribution.
+
+### Distinct paths and observations
+
+The following analysis uses Go 1.25.0 `database/sql`, pq 1.10.9, and the initial
+revision 2 acquisition code. It separates possible mechanisms from attribution
+of the historical native failure.
+
+| Boundary | Possible result and precedence | Observation limit |
+| --- | --- | --- |
+| Query/collect before cleanup | Context termination maps query/result failure to CANCELED/TIMEOUT | Does not imply rollback or connection release completed |
+| Explicit rows close | A non-nil close result becomes CLEANUP | Rows may already have been closed by database/sql; unexposed failures cannot be reconstructed |
+| Transaction context override | Preserves known prior CLEANUP | Cancellation cannot erase a known rows cleanup failure |
+| Explicit rollback wins Tx.done CAS | The driver is called; independent errors including ErrBadConn become CLEANUP | pq's stored cancellation can be returned by `syncErr.get` as ErrBadConn; this is not the strict cancellation sentinel exception |
+| Automatic rollback wins Tx.done CAS | Explicit rollback returns ErrTxDone; existing ended-context exception preserves prior result | Automatic rollback's driver result is not returned to the explicit caller |
+| Exact rollback sentinel | Only matching standard caller-context sentinel receives the adopted exemption | Wrapped/joined errors and independent faults are not exempt |
+| Owned final Conn.Close | Exact ErrConnDone with exact matching prior cancellation/timeout and context preserves that prior result | Conn.done precedes release completion; logical termination is not physical close proof |
+| Prior CLEANUP at final close | Remains CLEANUP for every close/context result | Later logical-close exemption cannot hide independent rollback or rows cleanup |
+| Outer query-context override | Preserves known CLEANUP | Does not create successful performance evidence |
+| Proxy cancellation receipt | Complete startup cancellation frame has been read from client | Does not prove forwarding, server receipt, or server processing |
+| Proxy cancellation forwarding | Every frame byte has been successfully written before notification | Does not add a server acknowledgement guarantee |
+| Held response | The first nonempty server Read establishes response arrival | TCP Read is not a complete PostgreSQL message or query-response boundary |
+| Response release | Allows response bytes to flow after context termination and forwarding notification | Does not choose which database/sql rollback wins |
+| Result publication and teardown | Assertion-safe cleanup separately joins publication/workers, closes pool, observes session absence and normal control | Teardown observations cannot retroactively identify the original classification branch |
+
+The proxy previously published `cancellation` before `server.Write`. A controlled
+writer makes receipt-before-forwarding and short/error writes independently
+observable. The fixture now publishes only after writing the full request frame;
+a short successful write continues with its remainder, while zero progress or
+an error refuses publication. This is a test-only transport ordering change.
+It is not a claim that the historical PG failure came from this ordering, nor
+that forwarding completion ensures cancellation processing or rollback success.
+The server response remains a byte-stream gate, not a protocol completion parser.
+
+Channel-controlled regression cases cover blocked first write, blocked remainder,
+complete and short successful writes, zero progress, partial/full writes with an
+error, and an ordinary non-cancellation frame. They must not publish cancellation
+on a failed write. Watchdogs only bound stuck test workers; no scheduling sleeps,
+error-call counts, alternate accepted classifications or server ACK are added.
+
+The revision 2 investigation is capped at one predeclared PG cancel race batch
+of 30 native trials on a protected snapshot of the initial head. Build/setup
+failures are not native trials. Fixed-enum local instrumentation distinguishes
+rows close, explicit rollback and final owned close; raw evidence is not uploaded.
+The batch completed with 30 passing PG cancel leaves, zero failures and zero
+skips (exit 0); no failure-origin trace was produced. This is non-reproduction,
+not proof that the historical failure was repaired. Final immutable-head
+validation is recorded separately in the PR/report.
+If the historical branch remains unknown, the stopping condition is reached after
+that batch: retain the draft and the residual. Further work requires a concrete
+new distinguishing observation or an explicit acceptance decision, not another
+success-count sample. Options remain (A) retain the blocked draft, (B) investigate
+a specific contract-preserving deterministic alternative with new evidence, or
+(C) separately consult on a concrete new acceptance/classification proposal.
+Neither ErrBadConn exemption nor changing an independent CLEANUP expectation to
+CANCELED is authorized here.
