@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/recoweft/goquent/orm/query"
 )
@@ -66,6 +67,13 @@ func censusTrace(t *testing.T, trace ciComparisonTrace, result CIResult, ci CIOp
 		prior[f.key()] = append(prior[f.key()], f)
 	}
 	_, matched := applyBaseline(ci.Baseline, ci.Now, trace.base, trace.head, trace.sameContext)
+	if len(trace.head) != len(trace.headReport.Findings)+len(trace.headReport.SuppressedFindings) ||
+		len(trace.base) != len(trace.baseReport.Findings)+len(trace.baseReport.SuppressedFindings) ||
+		trace.headReport.OperationCount != len(trace.headReport.privateOperations) ||
+		trace.baseReport.OperationCount != len(trace.baseReport.privateOperations) ||
+		!reflect.DeepEqual(result.selected.privateOperations, result.report.privateOperations) {
+		t.Fatal("private population or operation coverage mismatch")
+	}
 	if len(trace.states) != len(trace.head) {
 		t.Fatal("trace population mismatch")
 	}
@@ -158,8 +166,24 @@ func TestComparisonCensusContextControls(t *testing.T) {
 				}
 			}
 			plain, err := RunCI(Options{}, ci)
-			if err != nil || plain.findings != r.findings || plain.ExitCode() != r.ExitCode() {
+			if err != nil || plain.findings != r.findings || plain.ExitCode() != r.ExitCode() ||
+				!reflect.DeepEqual(plain.report.Findings, r.report.Findings) ||
+				!reflect.DeepEqual(plain.selected.Findings, r.selected.Findings) ||
+				!reflect.DeepEqual(plain.selected.SuppressedFindings, r.selected.SuppressedFindings) {
+
 				t.Fatal("observer changed result")
+			}
+			for _, format := range []string{"json", "json-v2", "review-ci-json", "sarif", "github", "pretty"} {
+				var a, b bytes.Buffer
+				if plain.WriteDisplay(&a, format) != nil || r.WriteDisplay(&b, format) != nil || !bytes.Equal(a.Bytes(), b.Bytes()) {
+					t.Fatal("observer changed display or gates")
+				}
+				if bytes.Contains(b.Bytes(), []byte("PRIVATE_")) || bytes.Contains(b.Bytes(), []byte(head)) {
+					t.Fatal("private observation leaked")
+				}
+			}
+			if mode != "unlisted" && (!captureValid(tr.headCapture, head, tr.headTree) || !captureValid(tr.baseCapture, base, tr.baseTree) || !equalExternalCaptures(tr.headCapture, tr.baseCapture, head, base)) {
+				t.Fatal("capture correspondence changed")
 			}
 		})
 	}
@@ -266,7 +290,10 @@ func TestLocalComparisonCensus(t *testing.T) {
 	ordinary, ot := observedCI(t, Options{Paths: []string{head}}, CIOptions{Root: head, FailOn: query.RiskHigh})
 	write("ordinary-report.json", ot.headReport)
 	write("ordinary-capture.json", ot.headCapture.inputs)
-	if !reflect.DeepEqual(ordinary.report.Findings, r.report.Findings) || ordinary.report.OperationCount != r.report.OperationCount {
+	if !reflect.DeepEqual(ordinary.report.Findings, r.report.Findings) || ordinary.report.OperationCount != r.report.OperationCount ||
+		!reflect.DeepEqual(ordinary.report.SuppressedFindings, r.report.SuppressedFindings) ||
+		!equalExternalCaptures(ot.headCapture, tr.headCapture, head, head) {
+
 		t.Fatal("ordinary head population differs")
 	}
 	t.Logf("population=%d unknown=%d new=%d worsened=%d unchanged=%d matched=%d input_failed=%t exit=%d", census.Population, r.findings.Unknown, r.findings.New, r.findings.Worsened, r.findings.Unchanged, r.findings.Matched, r.invalid, r.ExitCode())
@@ -312,6 +339,60 @@ func TestComparisonCensusUnknownIdentityAndAmbiguity(t *testing.T) {
 			}
 			if mode == "ambiguous" && c.Primary["ambiguous_prior"] == 0 {
 				t.Fatal("ambiguous prior control")
+			}
+		})
+	}
+}
+
+// Exercise positive precedence too: attribution must never override a new,
+// worsened or matched decision just because whole-tree context changed.
+func TestComparisonCensusPositivePrecedence(t *testing.T) {
+	for _, mode := range []string{"new_source", "new_key", "worsened", "matched"} {
+		t.Run(mode, func(t *testing.T) {
+			base, head := ciFixture(t)
+			ci := CIOptions{Root: head, BaseRoot: base, Diff: []byte{}, Now: time.Now().UTC().Truncate(time.Second), FailOn: query.RiskMedium, FailOnPrecision: query.AnalysisPartial}
+			opts := Options{}
+			want := "new"
+			switch mode {
+			case "new_source", "new_key":
+				p := filepath.Join(head, "sample.go")
+				old, err := os.ReadFile(p)
+				if err != nil {
+					t.Fatal("fixture read")
+				}
+				after := string(old) + "// changed context within containing source\n"
+				if mode == "new_key" {
+					after = strings.Replace(string(old), "func sample", "\nfunc sample", 1)
+				}
+				if os.WriteFile(p, []byte(after), 0600) != nil {
+					t.Fatal("fixture write")
+				}
+				ci.Diff = changedFixturePatch(map[string]string{"sample.go": string(old)}, map[string]string{"sample.go": after})
+			case "worsened":
+				old := `{"rules":{"SELECT_STAR_USED":{"severity":"medium"}}}` + "\n"
+				after := `{"rules":{"SELECT_STAR_USED":{"severity":"high"}}}` + "\n"
+				for root, content := range map[string]string{base: old, head: after} {
+					if os.WriteFile(filepath.Join(root, "rules.json"), []byte(content), 0600) != nil {
+						t.Fatal("fixture write")
+					}
+				}
+				opts.ConfigPath = filepath.Join(head, "rules.json")
+				cfg, err := LoadConfig(opts.ConfigPath)
+				if err != nil {
+					t.Fatal("fixture configuration")
+				}
+				opts.Rules = cfg.Rules
+				ci.Diff = changedFixturePatch(map[string]string{"rules.json": old}, map[string]string{"rules.json": after})
+				want = "worsened"
+			case "matched":
+				initial, _ := observedCI(t, opts, ci)
+				ci.Baseline = baselineFor(t, initial, head, ci.Now)
+				want = "matched"
+			}
+			r, tr := observedCI(t, opts, ci)
+			c := censusTrace(t, tr, r, ci)
+			if r.invalid || c.States[want] == 0 || !r.risk || !r.precision {
+				t.Fatal("positive branch precedence")
 			}
 		})
 	}

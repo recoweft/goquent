@@ -232,6 +232,8 @@ diagnostics with changed whole-tree context. These exclusive attributions sum to
 1,489; overlapping unsupported membership is 208, not another population.
 Input correspondence succeeded while full risk/precision gates failed. No
 production comparison repair or narrower-context contract has been adopted.
-Further validation and specification consultation remain pending; this entry
-removes no fixed BLOCKERS, original-example skips, finite-native limitations,
+The delivered specification decision keeps this PR diagnostic-only under the
+existing comparison contract. Final-head validation is recorded in its PR; the
+initial census is not substituted for that measurement. This entry removes no
+fixed BLOCKERS, original-example skips, finite-native limitations,
 historical unresolved causes or human release requirement.

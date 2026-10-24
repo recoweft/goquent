@@ -356,11 +356,35 @@ No contract-preserving production defect has been established by these counts.
 Certifying narrower context alone would not supply the missing operation identity
 for 998 items, and supplying identity alone would not establish unchanged context.
 Promoting these findings would require a concrete comparison-contract decision;
-this investigation does not adopt one. Specification consultation is required
-before implementing such promotion. Full/race/vet/regeneration/canary/runner,
-strict-input four-case and companion matrices, final-head CI and an actual PR
-remain pending at this initial census boundary. This is not acceptance or release
-readiness; all existing fixed blockers and the separate human boundary remain.
+this investigation does not adopt one. The delivered specification decision selects a diagnosis-only PR under the
+current contract. This is not a permanent decision to require whole-tree equality,
+and does not authorize narrower context, inferred operation identities or
+unknown promotion. The initial counts above remain tied to their measured commit;
+final exact-head measurements and fresh validation belong in the linked PR.
+Population agreement and successful parity are not identity or context proofs.
+This is not acceptance or release readiness; all existing fixed blockers and the
+separate human boundary remain.
+
+Two separate future design candidates need explicit decisions before implementation:
+
+| Candidate | Finite scope and required proof | Invalidation, refusal and compatibility |
+| --- | --- | --- |
+| Missing comparison identity | First choose one supported diagnostic producer; bind an operation kind and canonical location to independently analyzed source, its selected build variant and consumed dependencies. Do not infer identity from diagnostic text, risk, SQL spelling or public fields. | Changed or incomplete source/dependency evidence invalidates identity. Ambiguous keys, unsupported producers, mutation and external-consumed mismatch refuse. Positive same-input and negative collision/change/unsupported regressions are prerequisites. No public wire identity or loader reinterpretation is authorized. |
+| Narrower context | First choose one already identified supported operation family; specify the complete source/configuration/policy/manifest/build/helper/external-input dependency closure before deciding whether any unrelated edit can be ignored. | Missing closure, changed consumed dependencies, stale captures, ambiguity and unsupported coverage remain unknown or input failure. Require positive proven-independent edits and negative relevant/unlisted/external/mutated edits. Retain full head gates, operation coverage, baseline rules and existing compatibility; any semantic change requires separate approval. |
+
+Supplying identity alone cannot discharge changed-context evidence. Narrower
+context alone cannot supply the missing identities. These are design inputs, not
+new guarantees or a request to weaken thresholds, baselines, exclusions or budgets.
+
+The opt-in collector is `TestLocalComparisonCensus`. Set
+`GOQUENT_COMPARISON_HEAD`, `GOQUENT_COMPARISON_BASE` and
+`GOQUENT_COMPARISON_DIFF` to the runner's exact private archives and nonempty
+patch; set `GOQUENT_COMPARISON_OUTPUT` to a fresh existing mode-0700 directory
+outside both roots and the checkout. Use the same toolchain/environment as the
+built CLI and capture test output privately. With no output variable it skips;
+with explicit inputs it checks actual branch parity and full populations before
+writing mode-0600 private census evidence. Files are not reusable CI inputs.
+Do not upload the directory. Final full/race opt-in skips remain explicit skips.
 
 ## Reproduction and validation
 
