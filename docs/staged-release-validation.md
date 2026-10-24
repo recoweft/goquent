@@ -176,3 +176,49 @@ coverage. Existing review risk/precision failures, the earlier 1486 unknown
 comparison findings, historical testmain/expiry causes, finite native performance
 limits and the human release boundary remain unresolved. No baseline, legacy
 fingerprint fixture, public contract or fixed BLOCKERS are relaxed.
+
+### PR118 revision 2: strict input failure
+
+The original clean comparison from base
+`22f4760010e8efd0bd0fc2e11778243417b2e44c` to head
+`e4888cd868e95bb103ffd385b02fc9e062037249` was freshly reproduced with Go
+1.26.4: actual CLI exit 2, input failure, risk/precision failures and 1489
+unknown findings. Complete private RunCI reports, gate inputs, captures and
+test-only loader diagnostics identified the finite text-diff rejection of the
+new companion registry's missing final LF. `parseDiff` rejects nonempty text
+without a terminal LF before reconstructing the patch; its invalid count was 1.
+This was an input-format failure, separate from risk/precision and unknowns.
+
+Both source trees and captures were valid, external captures agreed under the
+unchanged MAINT03 exception, and loader budget hits, cancellation and package
+errors were absent. Archived file paths and bytes matched both commits, with
+no group/other permission bits. No tracked executable existed in this pair.
+The owner-only executable preservation regression therefore uses a separate
+real executable fixture; it is not evidence of this failure's cause.
+
+| Same-toolchain controlled input | CLI result |
+| --- | --- |
+| Original bytes, private 0700/0600 archives | exit 2; input failed; unknown 1489 |
+| Only terminal LF added to the registry and corresponding patch | exit 1; input valid; risk/precision failed; unknown 1489 |
+| Original bytes with archived owner execution bits preserved | exit 2; input failed; unknown 1489 |
+| PR116 exact base a3b01b7 / head b99e2bb with the same private modes | exit 1; input valid; risk/precision failed; unknown 1486 |
+
+An initial sandbox run also had exit 2 but 1284 unknown findings. The sandbox
+prevented writes to the existing Go build cache; approved execution restored
+the original 1489 result. That environment-specific run is not substituted for
+the original reproduction or used to explain its diff rejection.
+
+The repair adds only the registry's final LF, preserving decoded JSON and all
+Go/module bytes. Archive extraction additionally retains owner execution for
+executable regular files while rejecting links/special files and retaining
+traversal checks. It never restores group/other access. No loader/input budgets,
+comparison semantics, exclusions, thresholds or baselines change.
+
+`python3 scripts/release_validation/check_strict_inputs.py` exercises the real
+CLI with the committed registry: valid LF, missing LF, unlisted change and
+restored valid input. Expected exits are 1/2/2/1, retaining risk/precision failure
+and checking public canary omission. CI runs it outside the fake-go publication
+harness. Archive regressions separately execute an extracted owner-only script
+and reject traversal, symlinks, hardlinks and special files. Final exact-head
+results and native/supplied matrices belong in PR118, not in these controls.
+Historical testmain/expiry causes and every fixed release blocker remain open.

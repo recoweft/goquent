@@ -27,8 +27,10 @@ DSNS = {
 def private_archive_member(member, destination):
     # Preserve the data filter's traversal checks, but never restore public
     # archive modes on private source evidence.
+    if not (member.isfile() or member.isdir()):
+        raise tarfile.FilterError('unsupported private source member')
     member = tarfile.data_filter(member, destination)
-    return member.replace(mode=0o700 if member.isdir() else 0o600)
+    return member.replace(mode=0o700 if member.isdir() or member.mode & 0o100 else 0o600)
 
 
 def result(status='not-run', code=None, **extra):

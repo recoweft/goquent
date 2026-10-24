@@ -63,14 +63,26 @@ class ValidationTests(unittest.TestCase):
             member = tarfile.TarInfo('tree/source.go')
             member.mode, member.size = 0o644, 6
             stream.addfile(member, io.BytesIO(b'canary'))
+            executable = tarfile.TarInfo('tree/check.sh')
+            payload = b'#!/bin/sh\nexit 0\n'
+            executable.mode, executable.size = 0o755, len(payload)
+            stream.addfile(executable, io.BytesIO(payload))
         target = self.root / 'private'
         target.mkdir(mode=0o700)
         with tarfile.open(archive) as stream:
             stream.extractall(target, filter=run.private_archive_member)
         self.assertEqual((target / 'tree').stat().st_mode & 0o777, 0o700)
         self.assertEqual((target / 'tree/source.go').stat().st_mode & 0o777, 0o600)
+        self.assertEqual((target / 'tree/source.go').read_bytes(), b'canary')
+        self.assertEqual((target / 'tree/check.sh').stat().st_mode & 0o777, 0o700)
+        self.assertEqual(subprocess.run([str(target / 'tree/check.sh')]).returncode, 0)
         with self.assertRaises(tarfile.OutsideDestinationError):
             run.private_archive_member(tarfile.TarInfo('../outside'), str(target))
+        for kind in (tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.FIFOTYPE, tarfile.CHRTYPE):
+            with self.subTest(kind=kind), self.assertRaises(tarfile.FilterError):
+                member = tarfile.TarInfo('tree/unsupported')
+                member.type = kind
+                run.private_archive_member(member, str(target))
 
     def test_aggregate_never_promotes_missing_evidence(self):
         for status in ('fail', 'not-run', 'skip', 'unverified'):
