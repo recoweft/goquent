@@ -87,8 +87,10 @@ existence for execution evidence. Check off a row only with fresh recorded outpu
 | ordinary | Built CLI `review --format review-ci-json --fail-on high ./...` | 09 complete private risk gate; separate from strict comparison |
 | strict | Built CLI `review --format review-ci-json --fail-on high --fail-on-precision partial --diff PATCH --diff-base-root BASE HEAD` | Clean nonempty exact-commit diff, full private gates and comparison classification; no new suppression/baseline |
 | manifest | Built CLI `manifest verify --manifest examples/ai-safe-orm/goquent.manifest.json --schema examples/ai-safe-orm/schema.json --policy examples/ai-safe-orm/policies.json` | Supplied schema/policy only; generated_code/database remain `skip` even on CLI exit 0 |
+| manifest-evidence | Fixed companion manifests, real generated repository, independent declared DB artifacts; 24 real CLI cases | Nonconnecting supplied-snapshot regression only; four-axis positives and retained fail/skip negative outcomes |
+| manifest-native | Same companion plus opt-in owned fixtures and existing live reader, both DBs sequentially | 24 real CLI cases, independent expected declarations before current/drift reads; no promotion of original example coverage |
 
-Native/full/race require `--native-disposable-fixture` **and all three** explicit
+Native/full/race and manifest-native require `--native-disposable-fixture` **and all three** explicit
 DSNs matching the existing default disposable Compose fixture. TEST_DB_DSN must
 be identical to TEST_MYSQL_DSN. The current runner deliberately supports only
 the checked-in loopback ports 3306/5432 and default fixture credentials/database;
@@ -131,7 +133,7 @@ remove any fixed runner blocker; final-head evidence belongs in the linked PR.
 | --- | --- | --- |
 | review-risk-precision / blocker | PR107 strict input_failed=false, risk and precision failed. Full/race 3701 pass each did not discharge review gates | Fresh ordinary and exact strict review; investigate findings within their supported contract. Do not lower thresholds or suppress/bulk-rebaseline |
 | review-unknown / unverified blocker | PR107 1473 unknown/new1; correspondence success is not complete precision | Fresh comparison and classify unknown separately from input failure, new and risk. Review unsupported contexts; preserve unknown until resolved |
-| manifest-coverage / unverified blocker | Example supplied schema/policy OK; generated_code/database skipped | Supply independently justified relevant evidence or retain explicit skipped coverage; never regenerate legacy fixture to hide it |
+| manifest-coverage / unverified blocker | Original example: schema/policy OK, generated_code/database skipped. Separate MAINT-10 companion: finite four-axis supplied/native evidence and refusal matrix; see [scope and commands](../tests/manifestfixture/README.md) | Companion success never clears original example skips or this fixed blocker; retain independent declarations, real exits, per-axis results and dialect/version limits |
 | native-performance-limits / unverified blocker | [Finite added cases](native-performance-boundaries.md) cover restricted roles, PostgreSQL custom index/cast refusal and post-Begin loopback faults; broader combinations remain unverified | Retain per-case fresh evidence, server versions, permissions and fault scope; these tests never clear this fixed blocker |
 | historical-testmain-cause / unresolved blocker | Intermediate testmain unknown did not recur; original cause undetermined | Reproducible evidence and source/loader cause analysis; MAINT03 finite exception is not universal elimination |
 | historical-expiry-cause / unresolved blocker | Historical expiry failure host/root cause unknown | Correlated fresh deadline/lifecycle evidence and cause investigation; rerun success alone is insufficient |
@@ -150,3 +152,73 @@ reinterpretation or broad runtime repair, stop dependent implementation and
 request specification consultation with evidence/options/impact. This workflow
 cannot redefine a gate or add a guarantee in prose. Do not close the whole Issue,
 merge, tag, publish a release/package, or accept overall AC on these results.
+
+## GQ-MAINT-10 companion boundary
+
+[Issue #117](https://github.com/recoweft/goquent/issues/117) adds separate
+`manifest-evidence` and `manifest-native` stages. Local initial runs verified
+24/24 real CLI cases in each stage: two four-axis positives per stage, with
+negative cases retaining their actual fail/skip and exits 1/2/0 respectively.
+The native run used MySQL 8.4.6 and PostgreSQL 16.10, isolated owned fixture
+objects and independent declared expected artifacts. This evidence is finite,
+not original-example validation or a release decision. Fresh final-head evidence
+belongs in the PR, including any later failed/unexecuted checks.
+
+The case table in the companion documents the preserved distinction between
+both optional fingerprints absent (`skipped`), one absent (`stale`), disabled
+DB comparison (`skipped`), and against-db without DB input (exit 2/no checks).
+The collector never turns those outcomes into a four-axis positive pass. Default
+runner/example remain nonconnecting. Unselected native collection is not-run;
+missing prerequisites are unverified; actual command failures remain failures.
+
+PR116's ten native boundary leaves remain separately evidenced, not broad native
+coverage. Existing review risk/precision failures, the earlier 1486 unknown
+comparison findings, historical testmain/expiry causes, finite native performance
+limits and the human release boundary remain unresolved. No baseline, legacy
+fingerprint fixture, public contract or fixed BLOCKERS are relaxed.
+
+### PR118 revision 2: strict input failure
+
+The original clean comparison from base
+`22f4760010e8efd0bd0fc2e11778243417b2e44c` to head
+`e4888cd868e95bb103ffd385b02fc9e062037249` was freshly reproduced with Go
+1.26.4: actual CLI exit 2, input failure, risk/precision failures and 1489
+unknown findings. Complete private RunCI reports, gate inputs, captures and
+test-only loader diagnostics identified the finite text-diff rejection of the
+new companion registry's missing final LF. `parseDiff` rejects nonempty text
+without a terminal LF before reconstructing the patch; its invalid count was 1.
+This was an input-format failure, separate from risk/precision and unknowns.
+
+Both source trees and captures were valid, external captures agreed under the
+unchanged MAINT03 exception, and loader budget hits, cancellation and package
+errors were absent. Archived file paths and bytes matched both commits, with
+no group/other permission bits. No tracked executable existed in this pair.
+The owner-only executable preservation regression therefore uses a separate
+real executable fixture; it is not evidence of this failure's cause.
+
+| Same-toolchain controlled input | CLI result |
+| --- | --- |
+| Original bytes, private 0700/0600 archives | exit 2; input failed; unknown 1489 |
+| Only terminal LF added to the registry and corresponding patch | exit 1; input valid; risk/precision failed; unknown 1489 |
+| Original bytes with archived owner execution bits preserved | exit 2; input failed; unknown 1489 |
+| PR116 exact base a3b01b7 / head b99e2bb with the same private modes | exit 1; input valid; risk/precision failed; unknown 1486 |
+
+An initial sandbox run also had exit 2 but 1284 unknown findings. The sandbox
+prevented writes to the existing Go build cache; approved execution restored
+the original 1489 result. That environment-specific run is not substituted for
+the original reproduction or used to explain its diff rejection.
+
+The repair adds only the registry's final LF, preserving decoded JSON and all
+Go/module bytes. Archive extraction additionally retains owner execution for
+executable regular files while rejecting links/special files and retaining
+traversal checks. It never restores group/other access. No loader/input budgets,
+comparison semantics, exclusions, thresholds or baselines change.
+
+`python3 scripts/release_validation/check_strict_inputs.py` exercises the real
+CLI with the committed registry: valid LF, missing LF, unlisted change and
+restored valid input. Expected exits are 1/2/2/1, retaining risk/precision failure
+and checking public canary omission. CI runs it outside the fake-go publication
+harness. Archive regressions separately execute an extracted owner-only script
+and reject traversal, symlinks, hardlinks and special files. Final exact-head
+results and native/supplied matrices belong in PR118, not in these controls.
+Historical testmain/expiry causes and every fixed release blocker remain open.

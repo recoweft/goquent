@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "managed_roots": [
+    "."
+  ],
+  "entries": [
+    {
+      "snapshot_kind": "manifest",
+      "input": "generator-input.json",
+      "target": "users_generated.go",
+      "generator_version": "typed-repository-v2",
+      "code_paths": [],
+      "options": {
+        "package_name": "manifestfixture",
+        "table_name": "users",
+        "row_type_name": "UserRow",
+        "repository_type_name": "UserRepository",
+        "orm_import_path": "github.com/recoweft/goquent/orm",
+        "typed": true,
+        "dialect": "mysql",
+        "projections": []
+      }
+    }
+  ]
+}
