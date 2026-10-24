@@ -1,0 +1,99 @@
+{
+  "version": "1",
+  "generated_at": "2026-10-24T00:00:00Z",
+  "generator_version": "goquent",
+  "dialect": "mysql",
+  "schema_fingerprint": "sha256:65fc30aa31ebf691deae8c68bae7559005d478d0a00662b55ca18fb97868e5c0",
+  "policy_fingerprint": "sha256:8fa9cac9c88d18d8896f580d9a2698072db3d7c58f28bca6d08fba0e50a09599",
+  "generated_code_fingerprint": "sha256:d3b86b8a013edde9865e508868ec84d1ad849e24b6d76d708a3d1bbf009aa3a5",
+  "database_fingerprint": "sha256:763435a259fc9af4b5961cc3c98260bf23618d79c48b18d243bf65f8d8b79dc8",
+  "tables": [
+    {
+      "name": "users",
+      "columns": [
+        {
+          "name": "deleted_at",
+          "type": "timestamp",
+          "type_source": "sql",
+          "nullable": true,
+          "soft_delete": true
+        },
+        {
+          "name": "email",
+          "type": "varchar(255)",
+          "type_source": "sql",
+          "nullable": false,
+          "pii": true
+        },
+        {
+          "name": "id",
+          "type": "bigint",
+          "type_source": "sql",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "varchar(255)",
+          "type_source": "sql",
+          "nullable": false
+        },
+        {
+          "name": "tenant_id",
+          "type": "varchar(64)",
+          "type_source": "sql",
+          "nullable": false,
+          "tenant_scope": true,
+          "required_filter": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_users_tenant_id",
+          "columns": [
+            "tenant_id"
+          ]
+        }
+      ],
+      "policies": [
+        {
+          "type": "pii",
+          "column": "email",
+          "mode": "warn"
+        },
+        {
+          "type": "required_filter",
+          "column": "tenant_id",
+          "mode": "enforce"
+        },
+        {
+          "type": "soft_delete",
+          "column": "deleted_at",
+          "mode": "enforce"
+        },
+        {
+          "type": "tenant_scope",
+          "column": "tenant_id",
+          "mode": "enforce"
+        }
+      ],
+      "query_examples": [
+        {
+          "name": "active_rows_select",
+          "operation": "select",
+          "select": [
+            "id"
+          ],
+          "required_by": "soft_delete"
+        },
+        {
+          "name": "tenant_scoped_select",
+          "operation": "select",
+          "select": [
+            "id"
+          ],
+          "required_by": "tenant_scope"
+        }
+      ]
+    }
+  ]
+}

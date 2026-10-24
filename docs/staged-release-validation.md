@@ -87,8 +87,10 @@ existence for execution evidence. Check off a row only with fresh recorded outpu
 | ordinary | Built CLI `review --format review-ci-json --fail-on high ./...` | 09 complete private risk gate; separate from strict comparison |
 | strict | Built CLI `review --format review-ci-json --fail-on high --fail-on-precision partial --diff PATCH --diff-base-root BASE HEAD` | Clean nonempty exact-commit diff, full private gates and comparison classification; no new suppression/baseline |
 | manifest | Built CLI `manifest verify --manifest examples/ai-safe-orm/goquent.manifest.json --schema examples/ai-safe-orm/schema.json --policy examples/ai-safe-orm/policies.json` | Supplied schema/policy only; generated_code/database remain `skip` even on CLI exit 0 |
+| manifest-evidence | Fixed companion manifests, real generated repository, independent declared DB artifacts; 24 real CLI cases | Nonconnecting supplied-snapshot regression only; four-axis positives and retained fail/skip negative outcomes |
+| manifest-native | Same companion plus opt-in owned fixtures and existing live reader, both DBs sequentially | 24 real CLI cases, independent expected declarations before current/drift reads; no promotion of original example coverage |
 
-Native/full/race require `--native-disposable-fixture` **and all three** explicit
+Native/full/race and manifest-native require `--native-disposable-fixture` **and all three** explicit
 DSNs matching the existing default disposable Compose fixture. TEST_DB_DSN must
 be identical to TEST_MYSQL_DSN. The current runner deliberately supports only
 the checked-in loopback ports 3306/5432 and default fixture credentials/database;
@@ -131,7 +133,7 @@ remove any fixed runner blocker; final-head evidence belongs in the linked PR.
 | --- | --- | --- |
 | review-risk-precision / blocker | PR107 strict input_failed=false, risk and precision failed. Full/race 3701 pass each did not discharge review gates | Fresh ordinary and exact strict review; investigate findings within their supported contract. Do not lower thresholds or suppress/bulk-rebaseline |
 | review-unknown / unverified blocker | PR107 1473 unknown/new1; correspondence success is not complete precision | Fresh comparison and classify unknown separately from input failure, new and risk. Review unsupported contexts; preserve unknown until resolved |
-| manifest-coverage / unverified blocker | Example supplied schema/policy OK; generated_code/database skipped | Supply independently justified relevant evidence or retain explicit skipped coverage; never regenerate legacy fixture to hide it |
+| manifest-coverage / unverified blocker | Original example: schema/policy OK, generated_code/database skipped. Separate MAINT-10 companion: finite four-axis supplied/native evidence and refusal matrix; see [scope and commands](../tests/manifestfixture/README.md) | Companion success never clears original example skips or this fixed blocker; retain independent declarations, real exits, per-axis results and dialect/version limits |
 | native-performance-limits / unverified blocker | [Finite added cases](native-performance-boundaries.md) cover restricted roles, PostgreSQL custom index/cast refusal and post-Begin loopback faults; broader combinations remain unverified | Retain per-case fresh evidence, server versions, permissions and fault scope; these tests never clear this fixed blocker |
 | historical-testmain-cause / unresolved blocker | Intermediate testmain unknown did not recur; original cause undetermined | Reproducible evidence and source/loader cause analysis; MAINT03 finite exception is not universal elimination |
 | historical-expiry-cause / unresolved blocker | Historical expiry failure host/root cause unknown | Correlated fresh deadline/lifecycle evidence and cause investigation; rerun success alone is insufficient |
@@ -150,3 +152,27 @@ reinterpretation or broad runtime repair, stop dependent implementation and
 request specification consultation with evidence/options/impact. This workflow
 cannot redefine a gate or add a guarantee in prose. Do not close the whole Issue,
 merge, tag, publish a release/package, or accept overall AC on these results.
+
+## GQ-MAINT-10 companion boundary
+
+[Issue #117](https://github.com/recoweft/goquent/issues/117) adds separate
+`manifest-evidence` and `manifest-native` stages. Local initial runs verified
+24/24 real CLI cases in each stage: two four-axis positives per stage, with
+negative cases retaining their actual fail/skip and exits 1/2/0 respectively.
+The native run used MySQL 8.4.6 and PostgreSQL 16.10, isolated owned fixture
+objects and independent declared expected artifacts. This evidence is finite,
+not original-example validation or a release decision. Fresh final-head evidence
+belongs in the PR, including any later failed/unexecuted checks.
+
+The case table in the companion documents the preserved distinction between
+both optional fingerprints absent (`skipped`), one absent (`stale`), disabled
+DB comparison (`skipped`), and against-db without DB input (exit 2/no checks).
+The collector never turns those outcomes into a four-axis positive pass. Default
+runner/example remain nonconnecting. Unselected native collection is not-run;
+missing prerequisites are unverified; actual command failures remain failures.
+
+PR116's ten native boundary leaves remain separately evidenced, not broad native
+coverage. Existing review risk/precision failures, the earlier 1486 unknown
+comparison findings, historical testmain/expiry causes, finite native performance
+limits and the human release boundary remain unresolved. No baseline, legacy
+fingerprint fixture, public contract or fixed BLOCKERS are relaxed.

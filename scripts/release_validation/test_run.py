@@ -18,6 +18,59 @@ class ValidationTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
+    def test_manifest_closed_four_axes_and_real_exits(self):
+        log = self.root / 'manifest.log'
+        view = dict(kind='goquent.verification_view', version=1, count=4,
+                    present=True, known=True, fresh=True,
+                    items=[dict(check=k, status='ok') for k in
+                           ('schema', 'policy', 'generated_code', 'database')])
+        def check(value, code=0):
+            log.write_text(json.dumps(value))
+            return run.manifest_evidence(log, code)['status']
+        self.assertEqual(check(view), 'pass')
+        self.assertEqual(check(view, 2), 'fail')
+        view['items'][-1]['status'] = 'skipped'
+        self.assertEqual(check(view), 'skip')
+        view['items'][-1]['status'] = 'stale'
+        view['fresh'] = False
+        self.assertEqual(check(view, 1), 'fail')
+        self.assertEqual(check(view), 'unverified')
+        view['items'][-1]['check'] = 'CANARY_UNKNOWN'
+        self.assertEqual(check(view), 'unverified')
+        view['items'][-1] = view['items'][0]
+        self.assertEqual(check(view), 'unverified')
+        log.write_text('CANARY_ERROR')
+        self.assertEqual(run.manifest_evidence(log, 2), run.result('fail', 2))
+        self.assertEqual(run.manifest_evidence(log, 0), run.result('unverified', 0))
+
+    def test_manifest_native_invoked_preflight_failure_is_not_unverified(self):
+        collector = run.Collector(self.root, self.root, True)
+        log = self.root / 'failed-preflight'
+        log.write_text('CANARY_SOCKET_ERROR')
+        with patch.dict(os.environ, run.DSNS, clear=True), patch.object(
+                collector, 'command', return_value=(125, log)):
+            row = collector.manifest_evidence(native=True)
+        self.assertEqual(row['status'], 'fail')
+        self.assertEqual(row['exit'], 125)
+
+    def test_manifest_real_cli_regressions(self):
+        # Independent committed expectations; no generation precedes this check.
+        repo = Path(__file__).resolve().parents[2]
+        out = self.root / 'private'
+        out.mkdir(mode=0o700)
+        previous = os.umask(0o077)
+        try:
+            collector = run.Collector(repo, out)
+            row = collector.manifest_evidence()
+            self.assertEqual(row['status'], 'pass', 'finite real CLI matrix failed; details omitted')
+            self.assertEqual(row['counts'], dict(passed=24, failed=0))
+            self.assertEqual(row['cases']['mysql/database-disabled']['status'], 'skip')
+            self.assertEqual(row['cases']['postgres/missing-code']['exit'], 1)
+            for path in out.rglob('*'):
+                self.assertEqual(path.stat().st_mode & 0o077, 0)
+        finally:
+            os.umask(previous)
+
     def test_aggregate_never_promotes_missing_evidence(self):
         for status in ('fail', 'not-run', 'skip', 'unverified'):
             with self.subTest(status=status):
@@ -50,7 +103,7 @@ class ValidationTests(unittest.TestCase):
             with patch.dict(os.environ, env, clear=True):
                 collector = run.Collector(self.root, self.root, opt_in)
                 with patch.object(collector, 'command', side_effect=AssertionError('must not execute')):
-                    for name in ('native', 'full', 'race'):
+                    for name in ('native', 'full', 'race', 'manifest-native'):
                         self.assertEqual(collector.stage(name)['status'], 'unverified')
 
     def test_fixture_versions_are_sequential_and_failure_stops_native(self):
