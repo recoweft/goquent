@@ -113,6 +113,94 @@ excluded inputs and budget exhaustion remain non-success; custom package drivers
 must not receive a native-loader exception. Missing policy/runtime evidence
 remains a separate contract limit, not a target for automatic promotion.
 
+### GQ-MAINT-07: fresh type-loading attribution
+
+GQ-MAINT-07 PR1, [Issue #111](https://github.com/recoweft/goquent/issues/111).
+The fresh complete `review.Run` source report again contains 1,474 findings and
+1,165 operations. This independently measured population contains 190
+`type_unavailable` findings and 190 reason-bearing operations, with zero duplicate
+finding locations. These are separate report arrays, not 380 failures. The
+fallback creates at most one operation per location; the reason does not by itself
+identify a failed package load. The preceding 190 was a reference, not the input
+to this census.
+
+| Exclusive attribution of the 190 findings | Count |
+| --- | ---: |
+| Complete selected loader state; type-confirmed raw call with nonliteral SQL operand | 189 |
+| Complete selected loader state; local cause not established by the bounded matcher | 1 |
+| Selected incomplete package / missing selected syntax / unmatched input | 0 |
+| Total | 190 |
+
+All 190 findings were reproduced by the existing tracker using diagnostic-loaded
+type information at the same physical locations. Independent existing-loader and
+diagnostic-loader file states agreed. For this population, selected packages have
+no IllTyped flag, package Errors or missing TypesInfo. Twenty-two finding locations
+have multiple loaded syntax variants; these overlap the attribution rows and are
+not 22 additional failures. The bounded parser made 1,857 calls, with zero observed
+parse-budget hits or cancellation. No finding was attributed to a compiler error
+string. The residual one is **unknown**, not repaired or silently assigned to the
+dominant cause. This does not establish that arbitrary broken inputs load correctly.
+
+The dominant mechanism is in the existing raw-call tracker: a recognized raw API
+whose SQL operand cannot be reconstructed as a supported string literal uses the
+same `type_unavailable` reason as unavailable types. The finding is retained in
+fallback operations. Typed AST identity, operand classification and tracker replay
+support the 189 count; message text alone does not. The synthetic
+`TestDiagnosticDynamicRawCounterexample` proves that a buildable typed call with a
+dynamic operand produces that reason, while replacing the operand with a literal
+retains the raw-risk warning without that reason. Neither case acquires runtime
+policy evidence or precise report status.
+
+**Next repair unit, P1:** separate raw-operand reconstruction diagnostics from
+actual loading failures in the tracker/fallback diagnostic classification. Scope
+is the reason and associated diagnostic explanation, preserving unsupported SQL,
+unknown runtime policy, risk/precision gates and complete private decision inputs.
+Positive regression: supported literal raw calls retain their warnings and typed
+recognition. Negative regression: dynamic operands, invalid argument forms and
+unavailable types remain non-success and cannot become precise. Any change to the
+closed public reason vocabulary or its interpretation needs its own specification
+consultation before implementation. This PR makes no production diagnostic or
+loader change. Investigate the residual one privately before assigning it to this
+repair unit; it supplies no evidence for a loader repair.
+
+The test-only `diagnosticLoad` mirrors the existing loader, including
+`LoadSyntax | NeedForTest`, `Tests=true`, `-mod=readonly`, module grouping, sorted
+package selection, test variants, overlays and unchanged parse/load budgets.
+`TestDiagnosticLoaderParity` removes only trace statements and checks normalized
+syntax against the production function to detect drift. Collection uses ordinary
+`./...` discovery, the same root and session input snapshot, Go 1.26.4, cached
+dependencies with GOPROXY=off/GOTOOLCHAIN=local, and no configuration, baseline,
+manifest or runtime evidence producer. Separate loads are not the same type-object
+universe: the harness checks selected-file state correspondence, replays existing
+tracking and rejects changed captured inputs. It does not claim that standalone
+`go list` proves loader success, or that this finite run covers every environment.
+
+`TestDiagnosticSelectionMechanisms` covers ordinary/internal/external typed test
+variants, an intentionally invalid internal variant, missing import/type and an
+excluded input. The invalid internal variant retains known typed raw recognition
+and unsupported coverage. `TestDiagnosticRefusalBoundaries` covers cancellation,
+file budget exhaustion and an empty custom driver without granting it a native
+exception. Existing typed, partial-load and driver regressions remain applicable.
+These negative fixtures explain mechanisms; none is asserted to account for the
+190 repository findings.
+
+For a fresh local census, create a mode-0700 output directory outside the input
+root and set `GOQUENT_TYPE_DIAGNOSTIC_OUTPUT` only for
+`go test -p 1 -count=1 ./orm/review -run
+'^Test(Diagnostic.*|LocalTypeLoadingCensus)$'`. Capture stdout/stderr locally too.
+The opt-in test writes new mode-0600 source report, input snapshot, selected paths,
+compiler/package diagnostics, context and aggregate files; it refuses existing
+output files. Without this opt-in the census is skipped. Do not upload these
+artifacts or publish package/file mappings. The ordinary CLI, CI wrapper, MCP and
+public formats do not use this diagnostic path. Full/race, vet, regeneration,
+canary, runner and exact ordinary/strict/manifest evidence are reported separately
+in the PR, including failures and skips.
+
+This attribution does not explain all 1,474 comparison unknowns or all 181 risky
+findings. Missing runtime policy remains independent. Historical testmain/expiry
+causes, generated_code/database manifest skips, native performance gaps, fixed
+BLOCKERS and the human release boundary below remain unchanged.
+
 ### 3. Conservative whole-tree comparison unknown
 
 The exact comparison produced 1,474 unknown findings with input_failed=false.
