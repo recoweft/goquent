@@ -389,8 +389,9 @@ Do not upload the directory. Final full/race opt-in skips remain explicit skips.
 ## Reproduction and validation
 
 GQ-MAINT-12 PR1 investigates a [bounded documentation comparison
-proposal](document-context-proof.md). Adoption is undecided; the test-only finite
-model does not supply a real loader closure witness. Current production
+proposal](document-context-proof.md). The delivered decision preserves the finite
+design/falsification record with eligible zero; it does not adopt a narrower-context
+guarantee. The test-only model does not supply a real loader closure witness. Current production
 classification and the historical MAINT11 measurements above remain unchanged.
 
 Use the existing staged runner with fresh protected output directories. Select

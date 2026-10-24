@@ -1,10 +1,12 @@
 # Bounded documentation comparison proposal
 
 GQ-MAINT-12 PR1, [Issue #121](https://github.com/recoweft/goquent/issues/121).
-Status: **proposal; adoption undecided**. This PR contains documentation and
-test-only falsification. Production comparison still requires whole-tree context
-equality. No unknown finding is promoted to unchanged or matched. A later
-implementation needs a separate PR/work item after specification consultation.
+Status: **design/falsification record accepted; narrower-context guarantee not
+adopted**. The delivered specification decision selects the design-only record
+with zero real-run eligibility. This PR contains documentation and test-only
+falsification. Production comparison still requires whole-tree context equality.
+No unknown finding is promoted to unchanged or matched. A later implementation
+needs a separate PR/work item and a new specification consultation.
 
 ## Candidate and present obstruction
 
@@ -119,16 +121,50 @@ attempt is environment-limited evidence, not a measured absence of SELECTs and
 not a reason to weaken loading or eligibility. Raw captures from both attempts
 remain protected locally; they are not uploaded.
 
-## Decision requested after fresh measurement
+## Delivered decision and future work
 
-Recommendation: retain the present whole-tree contract in production and accept
-this work only as a finite design/falsification record with zero current
-eligibility. Do not adopt an operational narrower-context guarantee until a
-bounded immutable input owner can supply all the missing closure evidence.
-An alternative is to retain only the existing whole-tree documentation and defer
-this model. Either option leaves current classifications and compatibility
-unchanged. A future owner/loader implementation is a separately scoped decision,
-not an implied commitment or an authorized part of this PR.
+The delivered decision selects retaining the present whole-tree contract in
+production and preserving this finite design/falsification record with zero
+current eligibility. It does not adopt an operational narrower-context guarantee.
+The alternative of deferring the model as well was not selected. Both alternatives
+leave current classifications and compatibility unchanged. Future work must
+identify a bounded immutable input owner, its captured and excluded inputs and
+negative dependencies, implementation feasibility, resource budget, invalidation
+and refusal conditions, and positive/negative evidence before another decision.
+That owner/loader implementation is not an authorized part of this PR.
+
+## Native failure retained as an integration residual
+
+The initial fresh full suite failed one leaf,
+`TestPerformancePlanNativeBoundaries/mysql/network_cancel` (three failure events
+including its two parents). The subsequent race suite passed that leaf. Both
+suites skipped the two unselected local census collectors. This does not repair
+or waive the full-suite failure.
+
+A protected, uncommitted test-overlay diagnostic repeated each dialect's cancel
+case 20 times without race and 10 times with race. Normal MySQL had 16 passes and
+4 failures; normal PostgreSQL had 20 passes. Race had 10 passes per dialect.
+The diagnostic preserves the original expected error, two-second context and
+transport teardown. It records only fixed error classes, context-state booleans
+and phase ordering; no payloads or arbitrary driver errors are published.
+
+In the four reproduced failures, the proxy was reached, explicit cancel changed
+the context to canceled, then transport teardown began, and result publication
+reported `PERFORMANCE_CLEANUP` instead of expected `PERFORMANCE_CANCELED` before
+teardown returned. The context was canceled, not deadline-exceeded, with result
+publication less than one millisecond after fault setup. Those observations do
+not support a two-second deadline explanation for those four trials. They do
+not establish the origin of the earlier uninstrumented failure or isolate the
+specific cleanup path. Failed assertions precede explicit server-session cleanup
+observation, so that observation is unverified for failed trials; deferred test
+cleanup remains in place.
+
+Root cause and fixture stability remain unresolved. No runtime error semantics,
+driver behavior, timeout, expected-error alternatives or skip rules are changed.
+Passing repetitions do not establish a repair. This remains a release/integration
+residual; broader repair would require a separate scope decision. Final exact-head
+census, local validation and CI results are recorded separately in the PR rather
+than treating earlier counts or passing tests as final-head evidence.
 
 The original example still has generated_code/database verification skips;
 the manifest companion's four-axis success is a separate finite evidence path.
