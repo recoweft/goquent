@@ -388,6 +388,11 @@ Do not upload the directory. Final full/race opt-in skips remain explicit skips.
 
 ## Reproduction and validation
 
+GQ-MAINT-12 PR1 investigates a [bounded documentation comparison
+proposal](document-context-proof.md). Adoption is undecided; the test-only finite
+model does not supply a real loader closure witness. Current production
+classification and the historical MAINT11 measurements above remain unchanged.
+
 Use the existing staged runner with fresh protected output directories. Select
 ordinary and manifest separately; strict additionally requires a clean exact
 head, independently resolved base and nonempty diff. Keep generated artifacts

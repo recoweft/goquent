@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/recoweft/goquent/orm/analysis"
 	"github.com/recoweft/goquent/orm/query"
 )
 
@@ -285,6 +286,39 @@ func TestLocalComparisonCensus(t *testing.T) {
 		InputFailed, RiskFailed, PrecisionFailed, ContextOK, SelectionValid, SameContext bool
 		Exit                                                                             int
 	}{r.invalid, r.risk, r.precision, tr.contextOK, tr.selectionValid, tr.sameContext, r.ExitCode()})
+	// MAINT12 measures the candidate family from private typed operation fields,
+	// never from reason strings or public projection. These are candidates, not
+	// a closure certificate. The current collector cannot certify Go's complete
+	// consumed input universe, so eligible is deliberately zero.
+	counts := struct {
+		SelectOperations, StaticSelectCandidates, CandidateFindings, Eligible int
+		ClosureAvailable                                                      bool
+	}{}
+	for _, op := range tr.headReport.privateOperations {
+		if op.operation != query.OperationSelect {
+			continue
+		}
+		counts.SelectOperations++
+		if op.Detail.SQL != analysis.Known || op.Detail.Columns != analysis.Known || op.Detail.Bindings != analysis.Known {
+			continue
+		}
+		counts.StaticSelectCandidates++
+		for _, f := range tr.head {
+			if !f.known || !sameLocation(f.f.Location, op.Location) {
+				continue
+			}
+			var previous []ciFinding
+			for _, old := range tr.base {
+				if old.key() == f.key() {
+					previous = append(previous, old)
+				}
+			}
+			if len(previous) == 1 && previous[0].known && sameDiagnostic(previous[0], f) {
+				counts.CandidateFindings++
+			}
+		}
+	}
+	write("document-candidates.json", counts)
 	// Full ordinary analysis is a separate axis; compare only complete private
 	// findings/operation counts, never use the public projection as input.
 	ordinary, ot := observedCI(t, Options{Paths: []string{head}}, CIOptions{Root: head, FailOn: query.RiskHigh})
