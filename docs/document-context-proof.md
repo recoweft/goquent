@@ -99,8 +99,25 @@ prior source correspondence. Candidate operation counts and finding counts are
 different units. Closure availability remains false; eligible remains zero.
 Do not publish raw collector artifacts or import them as future CI inputs.
 
-Fresh execution evidence and exact commit pair will be recorded in this PR.
-Until recorded, candidate counts and all validation outcomes are unverified.
+Fresh complete-private census on 2026-10-24 compared base
+`672c3eb7d501b486a08c83fc6e6dbd2b916136ac` with design/prototype commit
+`9e08aac` using Go 1.26.4, a clean exact nonempty diff and ordinary-report parity.
+It measured 210 SELECT operations, 18 static candidate operations and 14
+candidate diagnostic items. Closure availability was false and eligible was
+**0**. Actual production outcomes were 1,489 unknown, zero unchanged/matched;
+exclusive attribution was 998 missing head identities and 491 whole-tree
+context changes. These freshly observed counts happen to agree with MAINT11;
+they are not assertions or default eligibility. Input correspondence passed;
+risk and precision failed, with actual RunCI exit 1. The synthetic model's 18
+cases passed. Later final-head validation belongs in the PR evidence.
+
+The first sandbox census completed but type loading lacked writable build-cache
+access and produced no SELECT identities. A bounded `go list` diagnostic showed
+a read-only build-cache error; approved execution of that diagnostic succeeded.
+The fresh census above then ran through the approved execution path. The first
+attempt is environment-limited evidence, not a measured absence of SELECTs and
+not a reason to weaken loading or eligibility. Raw captures from both attempts
+remain protected locally; they are not uploaded.
 
 ## Decision requested after fresh measurement
 
