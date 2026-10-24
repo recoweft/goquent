@@ -121,6 +121,12 @@ These are inherited observations, **not fresh validation results for this PR**.
 Fresh invocation evidence belongs in the PR/report, with local/CI and native/mock
 clearly separated. A later success is not proof of the cause of an earlier failure.
 
+[GQ-MAINT-06 review triage](review-triage.md) links fresh finite risk, precision
+and comparison-unknown counts to three reproducible groups and separate repair
+priorities. Its uncollected loader-cause and unknown-branch partitions remain
+explicitly unavailable. It does not replace these inherited observations or
+remove any fixed runner blocker; final-head evidence belongs in the linked PR.
+
 | ID / classification | Guarantee, current evidence and impact | Required next evidence or correction |
 | --- | --- | --- |
 | review-risk-precision / blocker | PR107 strict input_failed=false, risk and precision failed. Full/race 3701 pass each did not discharge review gates | Fresh ordinary and exact strict review; investigate findings within their supported contract. Do not lower thresholds or suppress/bulk-rebaseline |
