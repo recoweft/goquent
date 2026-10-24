@@ -341,7 +341,7 @@ func (q *Query) ExplainPerformance(ctx context.Context, o PerformanceOptions) (*
 	}
 	// External executor labels and parsed source documents never reach this path.
 	result, e := acquirePerformance(ctx, db, dialect, p, shape)
-	if frozen.ctx != nil && frozen.ctx.Err() != nil {
+	if e != ErrPerformanceCleanup && frozen.ctx != nil && frozen.ctx.Err() != nil {
 		return nil, performanceFailure(frozen.ctx, ErrPerformanceCanceled)
 	}
 	if e != nil {
@@ -357,8 +357,9 @@ func acquirePerformance(ctx context.Context, db *sql.DB, dialect string, p *Quer
 		return nil, performanceFailure(ctx, ErrPerformanceConnection)
 	}
 	defer func() {
-		if conn.Close() != nil {
-			err = ErrPerformanceCleanup
+		closed := conn.Close()
+		err = performanceCloseResult(ctx.Err(), err, closed)
+		if err != nil {
 			out = nil
 		}
 	}()
@@ -381,23 +382,55 @@ func acquirePerformance(ctx context.Context, db *sql.DB, dialect string, p *Quer
 	return performanceTransaction(ctx, conn, dialect, p, shape)
 }
 
+// performanceCloseResult applies only to the exclusively owned acquisition handle.
+// Logical idempotence does not attest physical release or recover errors hidden
+// by database/sql. Known cleanup failures always retain precedence.
+func performanceCloseResult(ended, prior, closed error) error {
+	if prior == ErrPerformanceCleanup || closed == nil {
+		return prior
+	}
+	if closed == sql.ErrConnDone &&
+		((ended == context.Canceled && prior == ErrPerformanceCanceled) ||
+			(ended == context.DeadlineExceeded && prior == ErrPerformanceTimeout)) {
+		return prior
+	}
+	return ErrPerformanceCleanup
+}
+
 func performanceTransaction(ctx context.Context, conn *sql.Conn, dialect string, p *QueryPlan, shape qbapi.PerformanceShape) (out *PerformancePlan, err error) {
 	tx, e := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if e != nil {
 		return nil, performanceFailure(ctx, ErrPerformanceConnection)
 	}
 	defer func() {
-		e := tx.Rollback()
-		if e != nil && !(errors.Is(e, sql.ErrTxDone) && ctx.Err() != nil) {
-			err = ErrPerformanceCleanup
+		err = performanceRollback(ctx, tx, err)
+		if err != nil {
 			out = nil
 		}
 	}()
 	out, err = collectPerformance(ctx, tx, dialect, p, shape)
-	if ctx.Err() != nil {
+	if ctx.Err() != nil && err != ErrPerformanceCleanup {
 		return nil, performanceFailure(ctx, ErrPerformanceCanceled)
 	}
 	return out, err
+}
+
+// performanceRollback classifies an exact caller-context sentinel as cancellation,
+// not as an independent cleanup failure. It does not attest server-side abort or
+// connection reuse. Wrapped, joined, and unrelated failures remain cleanup errors.
+func performanceRollback(ctx context.Context, tx *sql.Tx, prior error) error {
+	e := tx.Rollback()
+	ended := ctx.Err()
+	if e == nil || (errors.Is(e, sql.ErrTxDone) && ended != nil) {
+		return prior
+	}
+	if (ended == context.Canceled || ended == context.DeadlineExceeded) && e == ended {
+		if prior == ErrPerformanceCleanup {
+			return prior
+		}
+		return performanceFailure(ctx, ErrPerformanceCanceled)
+	}
+	return ErrPerformanceCleanup
 }
 
 type performanceQuerier interface {

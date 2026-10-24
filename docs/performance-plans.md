@@ -72,7 +72,18 @@ metadata and EXPLAIN. PostgreSQL uses `EXPLAIN (ANALYZE FALSE, FORMAT JSON)`;
 MySQL uses `EXPLAIN FORMAT=JSON`. The transaction always rolls back and the
 connection returns to the pool. Begin/rollback and the transaction-local setting
 are acquisition controls; no target DML, DDL, ANALYZE or query observation is added.
-Cleanup failure is not reported as complete success.
+Cleanup failure is not reported as complete success. In an owned performance
+transaction, a rollback error strictly identical to the observed standard caller
+context termination sentinel is classified as cancellation or timeout, just like
+the existing terminated-context `ErrTxDone` path. Wrapped/joined errors and
+independent cleanup failures are not exempted. This limited error-priority change
+is documented in [native boundary evidence](native-performance-boundaries.md).
+Final close of the exclusively owned acquisition handle also preserves an exact
+prior CANCELED/TIMEOUT result when the observed standard context sentinel matches
+and close returns exactly `sql.ErrConnDone`. Known CLEANUP always wins; other
+non-nil close errors remain CLEANUP. This is logical-handle classification only.
+Neither exception proves server abort, rollback acknowledgement, physical-close
+success or safe connection reuse, nor recovers errors hidden by database/sql.
 
 The total connection wait/Begin/version/catalog/EXPLAIN/read budget is at most
 five seconds from entry, shortened by caller context or Timeout. Query context

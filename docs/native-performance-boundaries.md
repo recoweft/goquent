@@ -39,9 +39,11 @@ custom opclass creation and full server session observation.
 
 The proxy frames PostgreSQL and MySQL requests rather than assuming TCP packet
 boundaries. A response-arrival channel establishes the injection point. Cancel
-and deadline are followed by explicit transport teardown; this bounds drivers
-which await a cancellation response. It does **not** prove that every driver
-returns promptly against an indefinitely unresponsive peer without teardown.
+and deadline release the held real response after context termination; PostgreSQL
+also requires observation of its driver cancellation packet before release.
+Explicit disconnect remains a separate fault. A watchdog still tears down the
+fixture during cleanup. This does **not** prove prompt cancellation against an
+indefinitely unresponsive peer.
 The real server session/transaction must disappear within a bounded condition
 poll, the pool must have zero connections in use, and all proxy workers/listeners
 must close. The direct fixture must then collect a normal native control.
@@ -93,3 +95,103 @@ skips, historical testmain/expiry causes, and separate human release review are
 not discharged by these tests. No threshold, suppression, baseline, API, wire,
 hash, authorization or production runtime change is introduced. Whole-Issue
 acceptance, merge, Issue closure and release publication remain separate.
+
+## GQ-MAINT-13 cancellation classification revision
+
+GQ-MAINT-13 PR1, [Issue #123](https://github.com/recoweft/goquent/issues/123),
+starts from main `672c3eb7d501b486a08c83fc6e6dbd2b916136ac`. Specification
+consultations explicitly approved two limited runtime error-priority changes.
+This is not solely fixture stabilization or an unchanged error contract.
+
+### Cause and adopted boundaries
+
+A minimally instrumented MySQL failure came from deferred `tx.Rollback()` returning
+exactly `context.Canceled`, with a canceled caller context and no deadline
+expiration. It did not come from rows or connection close. MySQL driver v1.9.3
+returns its stored cancellation when rolling back a closed connection.
+`database/sql` also rolls back on context termination: its transaction-state CAS
+determines whether explicit rollback reaches the driver or returns `ErrTxDone`.
+The previous code exempted only the latter path from cleanup classification.
+This does not establish the cause of every uninstrumented failure or MAINT12's
+original failure.
+
+The rollback exemption now requires strict identity between its return value and
+the observed standard caller-context termination sentinel. Canceled maps to
+`PERFORMANCE_CANCELED`; deadline exceeded maps to `PERFORMANCE_TIMEOUT`.
+Wrapped/joined errors, a mismatched sentinel, live context, `ErrBadConn`, EOF and
+independent errors remain `PERFORMANCE_CLEANUP`. Existing `ErrTxDone` handling is
+not broadened. Known rows cleanup failures are preserved through transaction and
+query-context classification. No failure returns a plan or native authority.
+
+The second change applies only to final close of the exclusively owned acquisition
+handle, which never escapes to the caller. It classifies logical handle termination,
+not physical release. Exact identity is required throughout:
+
+| Prior result | Context | Close result | Final result |
+| --- | --- | --- | --- |
+| CLEANUP | Any | Any | CLEANUP |
+| Any | Any | nil | Preserve prior result |
+| CANCELED | Canceled | ErrConnDone | CANCELED |
+| TIMEOUT | DeadlineExceeded | ErrConnDone | TIMEOUT |
+| CANCELED/TIMEOUT | Live or mismatched | ErrConnDone | CLEANUP |
+| nil, QUERY, RESULT or another result | Any | ErrConnDone | CLEANUP |
+| Any non-CLEANUP result | Any | Independent/wrapped/joined close error | CLEANUP |
+
+Channel-controlled real `sql.Conn` tests show a second close can return
+`ErrConnDone` while physical driver close is blocked. Explicit close can also
+return nil when driver close returned an independent error. These identical public
+observations cannot prove physical cleanup success or recover failures hidden by
+`database/sql`. The adopted logical classification explicitly accepts that missing
+information. It does not attest rollback acknowledgement, server abort, physical
+close success, safe connection reuse, commit, or DB identity. Pool `InUse == 0`
+is not physical-close proof. Known independent failures remain CLEANUP; errors not
+exposed by the library cannot be recovered or ruled out here. No private fields,
+unsafe access, lifecycle reflection, driver changes, or new public API are used.
+
+### Regressions and finite evidence
+
+Real `sql.Tx` fixtures fix explicit rollback entry before cancellation, and use a
+driver-entry channel for automatic rollback. They cover 13 strict rollback cases,
+prior rows cleanup, and both connection-close orders with blocked physical close.
+The close classifier has 17 positive/negative cases; synthetic wrapper/join errors
+are classifier tests, not claimed native `sql.Conn.Close` injection. Context phases
+are synthetic unit evidence, separate from native driver/server evidence. No sleep
+or context/error call-count dependence is used. Disabling each new exception in
+turn makes its cancellation and deadline positive regressions fail.
+
+Native cancellation/deadline release the real held response after context ends;
+PostgreSQL first requires the actual driver cancellation packet. Explicit transport
+disconnect is separate and still expects CLEANUP. Watchdog teardown is distinct
+from the semantic timeout. Cleanup is registered before acquisition and checks
+publication, proxy workers/listener, pool use, server session absence and a bounded
+normal control even after assertion failure. Owned table/role/schema deletion has
+explicit absence checks; cleanup statement failures do not stop later attempts.
+
+| Measurement | Leaf results | Exit and limit |
+| --- | --- | --- |
+| Uninstrumented original main, MySQL cancel | 18 pass / 2 fail | 1; 20 trials |
+| Separate minimally instrumented original main, MySQL cancel | 19 pass / 1 fail | 1; 20 trials; rollback sentinel origin observed |
+| Instrumented original main, teardown after result | 20 pass / 0 fail | 0; 20 trials; not proof of repair |
+| Initial response-release candidate, both DB network cases | 26 pass / 4 fail | 1; 30 leaves |
+| Separate instrumented initial candidate, PG cancel | 0 pass / 5 fail | 1; 5 trials; rollback and connection cleanup observed |
+| Packet-synchronized candidate, instrumented PG cancel | 5 pass / 0 fail | 0; 5 trials |
+| Packet-synchronized candidate, normal both DB network cases | 30 pass / 0 fail | 0; 30 leaves |
+| Same candidate, race both DB network cases | 17 pass / 1 fail | 1; 18 leaves; PG cancel origin unresolved |
+| Separate instrumented PG race samples | 10 pass; then 30 pass | 0 each; neither waives the prior failure |
+| Forced assertion cleanup control, both DB | 2 intentional failures | 1; both resource/control and owned-table absence observations reached |
+
+All listed native leaf samples had zero skips. Forced failures and temporary
+instrumentation were removed. Versions observed separately were Go 1.25.0,
+MySQL 8.4.6 and PostgreSQL 16.10. Raw logs remain in protected local storage,
+not uploaded. Final post-change results are recorded separately in the PR/report.
+The earlier uninstrumented PG race failure remains causally unresolved: the new
+logical-close exception is supported by deterministic unit evidence, but without
+a matching native observation it is not claimed to repair that historical event.
+Fresh passes do not waive that residual or establish whole-Issue acceptance.
+
+[PR #122](https://github.com/recoweft/goquent/pull/122) remains a separate pending
+design draft. No new comparison guarantee is adopted; closureeligible remains 0.
+Review risk/precision/unknown findings, original example skips, historical causes,
+fixed BLOCKERS and human release boundaries remain. No API/wire/hash/version or
+authorization change is introduced. The repair PR must remain draft/blocked while
+its residual is unresolved; merge, acceptance and release are separate decisions.

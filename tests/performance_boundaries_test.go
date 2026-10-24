@@ -47,7 +47,14 @@ func TestPerformancePlanNativeBoundaries(t *testing.T) {
 				table = "public." + name
 			}
 			boundaryExec(t, db.SQLDB(), "CREATE TABLE "+table+" (id BIGINT PRIMARY KEY, hidden BIGINT)")
-			t.Cleanup(func() { boundaryExec(t, db.SQLDB(), "DROP TABLE "+table) })
+			t.Cleanup(func() {
+				boundaryCleanupExec(t, db.SQLDB(), "DROP TABLE "+table)
+				statement := "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?"
+				if dialect == "postgres" {
+					statement = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name=$1"
+				}
+				boundaryAbsent(t, db.SQLDB(), statement, name)
+			})
 			boundaryExec(t, db.SQLDB(), "INSERT INTO "+table+" VALUES (1,1),(2,2)")
 			boundaryControl(t, db, table)
 			t.Run("restricted_role", func(t *testing.T) { boundaryRestricted(t, db, dialect, dsn, table) })
@@ -85,7 +92,9 @@ func boundaryExec(t *testing.T, db *sql.DB, statement string) {
 
 func boundaryControl(t *testing.T, db *orm.DB, table string) {
 	t.Helper()
-	p, err := db.Table(table).Select("id").Where("id", int64(1)).Limit(1).ExplainPerformance(t.Context(), query.PerformanceOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	p, err := db.Table(table).Select("id").Where("id", int64(1)).Limit(1).ExplainPerformance(ctx, query.PerformanceOptions{})
 	if err != nil || p == nil || !p.Native() || p.Unknown || p.PublicView().Unknown || len(p.Raw) == 0 {
 		t.Fatal("normal native control failed")
 	}
@@ -112,7 +121,10 @@ func boundaryRestricted(t *testing.T, owner *orm.DB, dialect, dsn, table string)
 		if err != nil {
 			t.Skip("restricted role setup unavailable")
 		}
-		t.Cleanup(func() { boundaryExec(t, raw, "DROP USER '"+name+"'@'%'") })
+		t.Cleanup(func() {
+			boundaryCleanupExec(t, raw, "DROP USER '"+name+"'@'%'")
+			boundaryAbsent(t, raw, "SELECT COUNT(*) FROM mysql.user WHERE User=?", name)
+		})
 		boundaryExec(t, raw, "GRANT SELECT(id) ON testdb."+table+" TO '"+name+"'@'%'")
 		cfg, err := mysql.ParseDSN(dsn)
 		if err != nil {
@@ -128,8 +140,9 @@ func boundaryRestricted(t *testing.T, owner *orm.DB, dialect, dsn, table string)
 			t.Skip("restricted role setup unavailable")
 		}
 		t.Cleanup(func() {
-			boundaryExec(t, raw, "REVOKE ALL ON "+table+" FROM "+name)
-			boundaryExec(t, raw, "DROP ROLE "+name)
+			boundaryCleanupExec(t, raw, "REVOKE ALL ON "+table+" FROM "+name)
+			boundaryCleanupExec(t, raw, "DROP ROLE "+name)
+			boundaryAbsent(t, raw, "SELECT COUNT(*) FROM pg_catalog.pg_roles WHERE rolname=$1", name)
 		})
 		u, err := url.Parse(dsn)
 		if err != nil {
@@ -194,7 +207,10 @@ func boundaryPGCustom(t *testing.T, db *orm.DB, cast bool) {
 	if err != nil {
 		t.Skip("custom object setup unavailable")
 	}
-	t.Cleanup(func() { boundaryExec(t, raw, "DROP SCHEMA "+ns+" CASCADE") })
+	t.Cleanup(func() {
+		boundaryCleanupExec(t, raw, "DROP SCHEMA "+ns+" CASCADE")
+		boundaryAbsent(t, raw, "SELECT COUNT(*) FROM pg_catalog.pg_namespace WHERE nspname=$1", ns)
+	})
 	boundaryExec(t, raw, "CREATE SEQUENCE "+ns+".marker")
 	boundaryExec(t, raw, "CREATE TABLE "+ns+".target (id BIGINT)")
 	if cast {
@@ -261,5 +277,28 @@ func boundaryPGCustom(t *testing.T, db *orm.DB, cast bool) {
 	marker()
 	if raw.Stats().InUse != 0 {
 		t.Fatal("custom collection retained a connection")
+	}
+}
+
+// Cleanup errors must not prevent the remaining owned-object cleanup attempts.
+func boundaryCleanupExec(t *testing.T, db *sql.DB, statement string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := db.ExecContext(ctx, statement); err != nil {
+		t.Error("owned object cleanup failed")
+	}
+}
+func boundaryAbsent(t *testing.T, db *sql.DB, statement string, name string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var remaining int
+	if db.QueryRowContext(ctx, statement, name).Scan(&remaining) != nil {
+		t.Error("owned object cleanup observation failed")
+		return
+	}
+	if remaining != 0 {
+		t.Error("owned object remains after cleanup")
 	}
 }

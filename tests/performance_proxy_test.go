@@ -26,6 +26,9 @@ type boundaryProxy struct {
 	armed                        atomic.Bool
 	entered                      chan struct{}
 	stop                         chan struct{}
+	release                      chan struct{}
+	cancellation                 chan struct{}
+	cancelOnce                   sync.Once
 	once                         sync.Once
 	mu                           sync.Mutex
 	conns                        []net.Conn
@@ -36,7 +39,7 @@ type boundaryProxy struct {
 
 func newBoundaryProxy(t *testing.T, dialect, dsn string) (*boundaryProxy, string) {
 	t.Helper()
-	p := &boundaryProxy{dialect: dialect, entered: make(chan struct{}), stop: make(chan struct{})}
+	p := &boundaryProxy{dialect: dialect, entered: make(chan struct{}), stop: make(chan struct{}), release: make(chan struct{}), cancellation: make(chan struct{})}
 	var cfg *mysql.Config
 	var u *url.URL
 	var err error
@@ -113,8 +116,12 @@ func (p *boundaryProxy) pair(client, server net.Conn) {
 			if n > 0 {
 				if hold.Load() {
 					p.once.Do(func() { close(p.entered) })
-					<-p.stop
-					return
+					select {
+					case <-p.stop:
+						return
+					case <-p.release:
+						hold.Store(false)
+					}
 				}
 				if _, e := client.Write(buf[:n]); e != nil {
 					return
@@ -148,6 +155,9 @@ func (p *boundaryProxy) pair(client, server net.Conn) {
 		body := make([]byte, length)
 		if _, err := io.ReadFull(client, body); err != nil {
 			break
+		}
+		if p.dialect == "postgres" && startup && len(body) == 12 && binary.BigEndian.Uint32(body[:4]) == 80877102 {
+			p.cancelOnce.Do(func() { close(p.cancellation) })
 		}
 		statement := ""
 		if p.dialect == "mysql" && len(body) > 0 && body[0] == 3 {
@@ -229,16 +239,42 @@ func boundaryNetwork(t *testing.T, owner *orm.DB, dialect, dsn, table, fault str
 		t.Fatal("fault session identity unavailable")
 	}
 	proxy.armed.Store(true)
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	ctx, cancel := context.WithCancel(t.Context())
+	if fault == "timeout" {
+		cancel()
+		ctx, cancel = context.WithTimeout(t.Context(), 2*time.Second)
+	}
 	defer cancel()
 	type result struct {
 		p   *query.PerformancePlan
 		err error
 	}
 	done := make(chan result, 1)
+	published := make(chan struct{})
+	// Registered before acquisition: even a fatal assertion must join workers,
+	// inspect the server session and pool, and run a bounded native control.
+	t.Cleanup(func() {
+		cancel()
+		proxy.close(t)
+		select {
+		case <-published:
+		case <-time.After(3 * time.Second):
+			t.Error("fault publication cleanup deadline exceeded")
+			return
+		}
+		if db.Close() != nil {
+			t.Error("fault pool cleanup failed")
+		}
+		if db.SQLDB().Stats().InUse != 0 {
+			t.Error("fault pool connection retained")
+		}
+		boundaryServerGone(t, owner, dialect, session)
+		boundaryControl(t, owner, table)
+	})
 	go func() {
 		p, err := db.Table(table).Select("id").Limit(1).ExplainPerformance(ctx, query.PerformanceOptions{})
 		done <- result{p, err}
+		close(published)
 	}()
 	select {
 	case <-proxy.entered:
@@ -255,22 +291,33 @@ func boundaryNetwork(t *testing.T, owner *orm.DB, dialect, dsn, table, fault str
 		<-ctx.Done()
 		want = query.ErrPerformanceTimeout
 	}
-	// Teardown after the explicit deadline/cancel also bounds drivers which await
-	// a server cancellation reply. It is part of this fault scope, not a claim of
-	// unlimited driver cancellation support under an indefinitely stalled peer.
-	proxy.close(t)
+	if fault == "disconnect" {
+		proxy.close(t)
+	} else {
+		// Release the real response after context termination. In particular pq
+		// may await that response even after sending its cancellation packet.
+		// No explicit transport fault is injected into cancel-only or timeout.
+		if dialect == "postgres" {
+			select {
+			case <-proxy.cancellation:
+			case <-time.After(3 * time.Second):
+				t.Fatal("driver cancellation watchdog exceeded")
+			}
+		}
+		close(proxy.release)
+	}
 	select {
 	case r := <-done:
 		boundaryRefusal(t, r.p, r.err, want)
 	case <-time.After(3 * time.Second):
-		t.Fatal("fault acquisition deadline exceeded")
+		t.Fatal("fault acquisition watchdog exceeded")
 	}
-	if db.Close() != nil || db.SQLDB().Stats().InUse != 0 {
-		t.Fatal("fault pool cleanup failed")
-	}
+}
+
+func boundaryServerGone(t *testing.T, owner *orm.DB, dialect string, session int64) {
 	// Check the real server session disappeared, including its owned read-only
 	// transaction. Poll a condition with a deadline, never a sleep-based race.
-	cleanupCtx, cleanupCancel := context.WithTimeout(t.Context(), 3*time.Second)
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cleanupCancel()
 	tick := time.NewTicker(10 * time.Millisecond)
 	defer tick.Stop()
@@ -281,7 +328,8 @@ func boundaryNetwork(t *testing.T, owner *orm.DB, dialect, dsn, table, fault str
 		}
 		var remaining int
 		if owner.SQLDB().QueryRowContext(cleanupCtx, countSQL, session).Scan(&remaining) != nil {
-			t.Fatal("server cleanup observation failed")
+			t.Error("server cleanup observation failed")
+			return
 		}
 		if remaining == 0 {
 			break
@@ -289,8 +337,8 @@ func boundaryNetwork(t *testing.T, owner *orm.DB, dialect, dsn, table, fault str
 		select {
 		case <-tick.C:
 		case <-cleanupCtx.Done():
-			t.Fatal("server transaction cleanup deadline exceeded")
+			t.Error("server transaction cleanup deadline exceeded")
+			return
 		}
 	}
-	boundaryControl(t, owner, table)
 }
