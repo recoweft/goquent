@@ -78,6 +78,7 @@ class Collector:
         env = dict(self.env)
         if native:
             env.update({key: os.environ[key] for key in DSNS})
+            env['GOQUENT_NATIVE_DISPOSABLE_FIXTURE'] = '1'
         with path.open('xb') as stream:
             try:
                 process = subprocess.Popen(args, cwd=cwd or self.root, env=env,
@@ -119,8 +120,16 @@ class Collector:
             } | {
                 ('github.com/recoweft/goquent/tests', test + '/' + dialect)
                 for dialect in ('mysql', 'postgres')
-                for test in ('TestPerformancePlanNative', 'TestExternalAuthorizationDatabaseAndExternalTx',
+                for test in ('TestPerformancePlanNative', 'TestPerformancePlanNativeBoundaries', 'TestExternalAuthorizationDatabaseAndExternalTx',
                              'TestValidatedBindingDatabaseAndExternalTx')
+            }
+            required |= {
+                ('github.com/recoweft/goquent/tests', 'TestPerformancePlanNativeBoundaries/' + dialect + '/' + case)
+                for dialect in ('mysql', 'postgres')
+                for case in ('restricted_role', 'network_disconnect', 'network_timeout', 'network_cancel')
+            } | {
+                ('github.com/recoweft/goquent/tests', 'TestPerformancePlanNativeBoundaries/postgres/' + case)
+                for case in ('custom_operator', 'custom_cast')
             }
             events = [json.loads(line) for line in path.read_text().splitlines()]
             passed = {(e.get('Package'), e.get('Test')) for e in events if e.get('Action') == 'pass'}

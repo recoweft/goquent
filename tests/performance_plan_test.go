@@ -43,7 +43,7 @@ func TestPerformancePlanNative(t *testing.T) {
 			q := db.Table(table).Select("id").Where("tenant_id", int64(7)).OrderBy("id", "asc").Limit(10)
 			p, e := q.ExplainPerformance(t.Context(), query.PerformanceOptions{})
 			if e != nil {
-				t.Fatalf("native collection: %v", e)
+				t.Fatal("native collection")
 			}
 			if !p.Native() || len(p.Raw) == 0 || p.CapturedAt.IsZero() || p.ServerVersion == "" || len(p.Nodes) == 0 {
 				t.Fatal("missing native evidence")
@@ -64,7 +64,7 @@ func TestPerformancePlanNative(t *testing.T) {
 				db.Table(table).Select("id").Limit(1).LockForUpdate(),
 			} {
 				if _, e := unsafeQuery.ExplainPerformance(t.Context(), query.PerformanceOptions{}); e != query.ErrPerformanceUnsupported {
-					t.Fatalf("native structural refusal: %v", e)
+					t.Fatal("native structural refusal")
 				}
 			}
 			closedRaw, err := sql.Open(dialect, dsn)
@@ -96,7 +96,7 @@ func TestPerformancePlanNative(t *testing.T) {
 			}
 			defer raw.Exec("DROP VIEW IF EXISTS " + view)
 			if _, e := db.Table(view).Select("id").Limit(2).ExplainPerformance(t.Context(), query.PerformanceOptions{}); e != query.ErrPerformanceUnsupported {
-				t.Fatalf("view refusal: %v", e)
+				t.Fatal("view refusal")
 			}
 			tx, e := raw.BeginTx(t.Context(), &sql.TxOptions{ReadOnly: true})
 			if e != nil {
@@ -125,7 +125,7 @@ func TestPerformancePlanNative(t *testing.T) {
 					t.Fatal("unsupported fixture cleanup")
 				}
 				if failure != query.ErrPerformanceUnsupported {
-					t.Fatalf("schema refusal: %v", failure)
+					t.Fatal("schema refusal")
 				}
 			}
 			if dialect == "mysql" {
@@ -138,7 +138,7 @@ func TestPerformancePlanNative(t *testing.T) {
 					t.Fatal("temporary cleanup")
 				}
 				if failure != query.ErrPerformanceUnsupported {
-					t.Fatalf("temporary shadow refusal: %v", failure)
+					t.Fatal("temporary shadow refusal")
 				}
 			}
 			// Deadline covers connection acquisition, not just each individual query.
@@ -154,7 +154,7 @@ func TestPerformancePlanNative(t *testing.T) {
 			ownerCancel()
 			conn.Close()
 			if ownerError != query.ErrPerformanceTimeout {
-				t.Fatalf("owner deadline: %v", ownerError)
+				t.Fatal("owner deadline")
 			}
 			if e != query.ErrPerformanceTimeout || time.Since(started) > time.Second {
 				t.Fatal("connection wait deadline")
