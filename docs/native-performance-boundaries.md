@@ -260,3 +260,121 @@ a specific contract-preserving deterministic alternative with new evidence, or
 (C) separately consult on a concrete new acceptance/classification proposal.
 Neither ErrBadConn exemption nor changing an independent CLEANUP expectation to
 CANCELED is authorized here.
+
+## Revision 3: finite real-pq mechanism controls
+
+`TestPQCancellationMechanisms` uses pq 1.10.9 public driver interfaces and
+Go 1.25.0 `database/sql` with the existing disposable PostgreSQL fixture. It
+creates no persistent objects, roles or schemas and executes no performance
+acquisition or target query. These are driver/library mechanism controls, not
+production native-authority evidence or attribution of the historical failed
+trial. The production concrete-driver check is not bypassed or changed.
+
+| Fixed order | Native driver observation | Explicit public result | Existing contract mapping |
+| --- | --- | --- | --- |
+| Begin, then ordinary raw Rollback | nil | nil (raw driver.Tx) | No rollback cleanup failure |
+| Begin, cancel lifetime, await complete cancel-packet forwarding, raw Rollback | exact driver.ErrBadConn | exact driver.ErrBadConn (raw driver.Tx) | An observed explicit error remains CLEANUP, not the cancellation-sentinel exemption |
+| Begin through sql.DB, cancel lifetime, await automatic driver.Rollback entry and cancel forwarding, explicit sql.Tx.Rollback while driver blocked, release driver | exact driver.ErrBadConn | exact sql.ErrTxDone | The existing ended-context exception can preserve cancellation; the explicit caller cannot recover the hidden driver error |
+
+Connect and the pre-transaction backend-PID query use Background contexts. BeginTx
+receives a standard WithCancel lifetime context; database/sql forwards its derived
+transaction context to pq in the automatic case. No query cancellation context is
+used in these controls. There is no semantic timeout event; five-second channel
+watchdogs and bounded cleanup conditions only detect a stalled fixture.
+
+In pq 1.10.9, watchCancel stores the context error before opening its separate
+cancellation connection. Complete proxy forwarding is therefore a public network
+synchronization point after that store, not proof that the server processed the
+cancel or acknowledged rollback. The raw control observes the subsequent actual
+Rollback return. In the automatic control, driver entry proves database/sql already
+won Tx.done; the gate blocks forwarding Rollback until cancellation was observed.
+It does not infer the winner from scheduling or from Err-call counts. The
+connector decorator forwards all optional connection interfaces pq 1.10.9
+implements, including SessionResetter and Validator (which influence reuse).
+No driver patch, private field, reflection, unsafe access or production hook is
+used. The driver result is observed, not synthesized.
+
+The normal and race controls each passed three leaves once locally with Go
+1.25.0 and PostgreSQL 16.10. The initial launcher omitted opt-in and skipped the
+suite; that was setup, not a native trial. Normal verification preceded a small
+cleanup-only strengthening (checking the automatic result during fallback and
+asserting the automatic lifetime context); race covered that strengthening.
+A subsequent cleanup-only change registers lifetime cancellation after resource
+cleanup and checks the expected raw fallback result. Its before-Rollback early
+return branches were tested separately; no final immutable-head result is claimed.
+These consultation measurements are not final-head validation. Final-head results
+are recorded separately in PR124 and Issue123 after freezing the candidate.
+
+Cleanup is registered before assertions. The automatic gate is released and the
+rollback result joined on early failure; pool InUse is checked separately.
+Native cancelled Rollback calls pq's transaction finish/close path; its return
+is not a physical close-success certificate, and the fixture does not treat a
+second raw Close on that closed connection as one. Proxy workers/listener are
+joined, the backend PID is checked absent, and an independent SELECT control is
+checked. There are no owned persistent objects to delete in this added suite.
+Timeouts and independent cleanup failures remain test failures. These finite
+resource checks do not establish general rollback acknowledgement or safe reuse.
+
+The current production network_cancel fixture releases a held response after
+cancellation forwarding. That fixes transport ordering but does not select the
+winner of database/sql Tx.done. These controls consequently cannot establish a
+universal CANCELED expectation for production native cancellation. A raw explicit
+ErrBadConn is a separate fixed CLEANUP mapping, already covered by the strict
+rollback regression; it is not interchangeable with the automatic-first public
+ErrTxDone observation. The new decorator is not inserted into production acquire
+and cannot establish its native authority. No two-result expectation, skip,
+ErrBadConn exemption or driver-name exemption is introduced.
+
+The missing historical whole-tree and failure-origin trace remain missing.
+The adopted revision-3 answer to consultation
+`370f63b7-8c2b-467c-94d3-d6715e0fc08d` explicitly changes the acceptance scope:
+the finite improvements may undergo integration review without claiming that the
+historical causal AC was achieved. That unmet AC moves from a prerequisite for
+integration review to a separate, unresolved **release blocker** in
+[Issue123](https://github.com/recoweft/goquent/issues/123#release-blocking-residual).
+This is an acceptance change, not a statement that the original AC is unchanged.
+PR124 remains draft for controller review, and PR122 remains unchanged. Even a
+later controller integration of PR124 does not resolve or close Issue123.
+
+The independent residual records the earlier PG cancel race result (17 passes,
+one failure), the missing exact failing whole-tree and unknown cause. Later
+30/30 non-reproduction and current mechanism results do not prove repair. Its
+separate acceptance conditions are:
+
+- Map production native acquisition's query/transaction lifetime contexts,
+  public query/rows/rollback/close observations, invisible boundaries and
+  proxy/server/pool cleanup.
+- Separate cancel-only from independent transport/cleanup faults; require one
+  fixed classification, sensitive regressions and assertion-failure resource
+  observations for each observable event.
+- Where public interfaces cannot guarantee Tx.done order while preserving the
+  native concrete-type check, retain the unavailable synchronization point and
+  concrete counterexample for specification review. Raw-driver/mock controls
+  do not replace production native coverage.
+- Preserve the historical attribution as unknown rather than demanding endless
+  reconstruction. Keep the release blocker until a separate human release
+  review explicitly accepts the finite guarantee, unobservable information,
+  remaining risk and the preceding evidence.
+
+An existing, readable unresolved tracking item with these boundaries is required
+for this PR's integration review; resolving that entire separate work is not.
+New final-validation classification/resource/watchdog failures remain current
+integration blockers, not historical residuals. Existing native cancel/timeout/
+disconnect expectations are unchanged; repeated success cannot erase failures.
+Risk/precision/unknown1491 (the revision-2 measurement, not a new final count),
+original generated_code/database example skips, companion evidence limits,
+closureeligible=0, unadopted comparison guarantees, fixed BLOCKERS and human
+release boundaries remain. Neither mechanism success nor CI success constitutes
+historical causal repair or release eligibility.
+
+A protected overlay mutation that swallowed the actual automatic driver rollback
+error failed exactly that leaf (two other leaves passed, one parent failed,
+exit 1, race). A separate forced assertion overlay failed all three leaves as
+intended (one parent failed, exit 1, race) after raw Rollback or while automatic
+Rollback was gated. All three reached their cleanup observations without extra
+cleanup failures. The additional before-raw-Rollback forced-return control failed
+two leaves as intended (one parent failed, exit 1, race); both exercised fallback
+Rollback and completed their proxy/session/control checks. These are deliberate
+failure controls, not failed native-cancellation investigation trials. No overlay
+is committed. Existing strict rollback 13 cases, owned close 17 cases, actual
+sql.Conn/Tx ordering and rows-failure controls are separate mock/unit evidence.
