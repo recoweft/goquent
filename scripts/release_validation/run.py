@@ -24,6 +24,13 @@ DSNS = {
 }
 
 
+def private_archive_member(member, destination):
+    # Preserve the data filter's traversal checks, but never restore public
+    # archive modes on private source evidence.
+    member = tarfile.data_filter(member, destination)
+    return member.replace(mode=0o700 if member.isdir() else 0o600)
+
+
 def result(status='not-run', code=None, **extra):
     return dict(status=status, exit=code, **extra)
 
@@ -322,7 +329,7 @@ class Collector:
             with tarfile.open(archive) as source:
                 if any(not (m.isfile() or m.isdir()) for m in source.getmembers()):
                     return None
-                source.extractall(target, filter='data')
+                source.extractall(target, filter=private_archive_member)
             roots.append(target)
         code, patch = self.command(['git', 'diff', '--no-ext-diff', '--no-renames', resolved[0], resolved[1], '--'])
         if code or not patch.stat().st_size:

@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 import subprocess
 import signal
+import tarfile
 import unittest
 from unittest.mock import patch, Mock
 import run
@@ -52,6 +53,24 @@ class ValidationTests(unittest.TestCase):
             row = collector.manifest_evidence(native=True)
         self.assertEqual(row['status'], 'fail')
         self.assertEqual(row['exit'], 125)
+
+    def test_strict_archive_source_modes_and_traversal(self):
+        archive = self.root / 'source.tar'
+        with tarfile.open(archive, 'w') as stream:
+            directory = tarfile.TarInfo('tree')
+            directory.type, directory.mode = tarfile.DIRTYPE, 0o755
+            stream.addfile(directory)
+            member = tarfile.TarInfo('tree/source.go')
+            member.mode, member.size = 0o644, 6
+            stream.addfile(member, io.BytesIO(b'canary'))
+        target = self.root / 'private'
+        target.mkdir(mode=0o700)
+        with tarfile.open(archive) as stream:
+            stream.extractall(target, filter=run.private_archive_member)
+        self.assertEqual((target / 'tree').stat().st_mode & 0o777, 0o700)
+        self.assertEqual((target / 'tree/source.go').stat().st_mode & 0o777, 0o600)
+        with self.assertRaises(tarfile.OutsideDestinationError):
+            run.private_archive_member(tarfile.TarInfo('../outside'), str(target))
 
     def test_aggregate_never_promotes_missing_evidence(self):
         for status in ('fail', 'not-run', 'skip', 'unverified'):
