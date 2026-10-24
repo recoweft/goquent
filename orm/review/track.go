@@ -699,7 +699,11 @@ func (t *goTracker) raw(name string, c *ast.CallExpr, loc *query.SourceLocation)
 	sql, ok := stringLiteralValue(c.Args[i])
 	if !ok {
 		f := typeUnavailable(loc)
-		f.Message = "dynamic SQL cannot be reconstructed"
+		if t.tf != nil && !t.tf.incomplete && t.tf.info != nil && t.tf.pkg != nil {
+			f.Message = "dynamic SQL cannot be reconstructed"
+			f.Hint = "provide a supported SQL literal and review unsupported inputs"
+			f.Detail = analysis.Detail{SQL: analysis.Unsupported, Reasons: []string{"dynamic_value"}}.Normalize()
+		}
 		t.findings = append(t.findings, f)
 		return
 	}

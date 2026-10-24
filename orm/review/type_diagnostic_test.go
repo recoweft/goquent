@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -371,19 +372,25 @@ func TestLocalTypeLoadingCensus(t *testing.T) {
 			t.Fatal("diagnostic replay failed")
 		}
 		for _, f := range fs {
-			if hasTypeReason(f.Detail.Reasons) && f.Location != nil {
+			if (hasTypeReason(f.Detail.Reasons) || slices.Contains(f.Detail.Reasons, "dynamic_value")) && f.Location != nil {
 				replay[locationKey(f.Location)] = true
 			}
 		}
 	}
-	for _, key := range []string{"duplicate_locations", "multiple_variants", "ill_typed", "package_errors", "missing_types_info", "no_selected_syntax", "selected_incomplete", "unknown", "unknown_complete_loader", "unmatched", "loader_state_mismatch", "replay_unmatched", "canceled"} {
+	for _, key := range []string{"type_findings", "type_operations", "dynamic_findings", "dynamic_operations", "type_typed_raw", "dynamic_typed_raw", "typed_unqualified_raw", "type_unknown_complete_loader", "dynamic_unknown_complete_loader", "duplicate_locations", "multiple_variants", "ill_typed", "package_errors", "missing_types_info", "no_selected_syntax", "selected_incomplete", "unknown", "unknown_complete_loader", "unmatched", "loader_state_mismatch", "replay_unmatched", "canceled"} {
 		counts[key] = 0
 	}
 	for _, f := range report.Findings {
-		if !hasTypeReason(f.Detail.Reasons) {
+		dynamic := slices.Contains(f.Detail.Reasons, "dynamic_value")
+		if !hasTypeReason(f.Detail.Reasons) && !dynamic {
 			continue
 		}
-		counts["type_findings"]++
+		if hasTypeReason(f.Detail.Reasons) {
+			counts["type_findings"]++
+		}
+		if dynamic {
+			counts["dynamic_findings"]++
+		}
 		if f.Location == nil {
 			counts["unknown"]++
 			continue
@@ -410,8 +417,21 @@ func TestLocalTypeLoadingCensus(t *testing.T) {
 		if !tf.incomplete && tf.file != nil {
 			if diagnosticDynamicRaw(tf, f.Location) {
 				counts["typed_dynamic_raw"]++
+				if diagnosticUnqualifiedRaw(tf, f.Location) {
+					counts["typed_unqualified_raw"]++
+				}
+				if dynamic {
+					counts["dynamic_typed_raw"]++
+				} else {
+					counts["type_typed_raw"]++
+				}
 			} else {
 				counts["unknown_complete_loader"]++
+				if dynamic {
+					counts["dynamic_unknown_complete_loader"]++
+				} else {
+					counts["type_unknown_complete_loader"]++
+				}
 			}
 			continue
 		}
@@ -432,6 +452,9 @@ func TestLocalTypeLoadingCensus(t *testing.T) {
 		counts["selected_incomplete"]++
 	}
 	for _, op := range report.Operations {
+		if slices.Contains(op.Detail.Reasons, "dynamic_value") {
+			counts["dynamic_operations"]++
+		}
 		if hasTypeReason(op.Detail.Reasons) {
 			counts["type_operations"]++
 		}
@@ -527,7 +550,7 @@ func TestDiagnosticSelectionMechanisms(t *testing.T) {
 	}
 }
 
-// Match a physical selector location to type-confirmed raw recognition and its
+// Match a physical call location to type-confirmed raw recognition and its
 // nonliteral SQL operand. This does not infer causes from diagnostic messages.
 func diagnosticDynamicRaw(tf *typedFile, loc *query.SourceLocation) bool {
 	matched := false
@@ -536,11 +559,14 @@ func diagnosticDynamicRaw(tf *typedFile, loc *query.SourceLocation) bool {
 		if !ok {
 			return true
 		}
-		sel, ok := unparen(c.Fun).(*ast.SelectorExpr)
-		if !ok {
+		sel, selector := unparen(c.Fun).(*ast.SelectorExpr)
+		node := unparen(c.Fun)
+		if selector {
+			node = sel.Sel
+		} else if _, ok := node.(*ast.Ident); !ok {
 			return true
 		}
-		pos := tf.fset.PositionFor(sel.Sel.Pos(), false)
+		pos := tf.fset.PositionFor(node.Pos(), false)
 		if pos.Line != loc.Line || pos.Column != loc.Column {
 			return true
 		}
@@ -562,7 +588,7 @@ func diagnosticDynamicRaw(tf *typedFile, loc *query.SourceLocation) bool {
 		case "Prepare", "NewRawPlan":
 			i = 0
 		}
-		if selection := tf.info.Selections[sel]; selection != nil && selection.Kind() == types.MethodExpr {
+		if selection := tf.info.Selections[sel]; selector && selection != nil && selection.Kind() == types.MethodExpr {
 			i++
 		}
 		if i < 0 || i >= len(c.Args) {
@@ -570,6 +596,28 @@ func diagnosticDynamicRaw(tf *typedFile, loc *query.SourceLocation) bool {
 		}
 		_, literal := stringLiteralValue(c.Args[i])
 		matched = !literal
+		return true
+	})
+	return matched
+}
+
+// The original selector-only matcher missed same-package function calls.
+// This aggregate identifies that bounded residual without publishing a location.
+func diagnosticUnqualifiedRaw(tf *typedFile, loc *query.SourceLocation) bool {
+	matched := false
+	ast.Inspect(tf.file, func(n ast.Node) bool {
+		c, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		id, ok := unparen(c.Fun).(*ast.Ident)
+		if !ok {
+			return true
+		}
+		pos := tf.fset.PositionFor(id.Pos(), false)
+		if pos.Line == loc.Line && pos.Column == loc.Column && tf.function(id) != nil {
+			matched = true
+		}
 		return true
 	})
 	return matched
@@ -601,7 +649,7 @@ func example(db *sql.DB, text string) {
 	}
 	dynamic, literal := 0, 0
 	for _, f := range r.Findings {
-		if hasTypeReason(f.Detail.Reasons) {
+		if slices.Contains(f.Detail.Reasons, "dynamic_value") {
 			dynamic++
 			if f.Location == nil || !diagnosticDynamicRaw(tf, f.Location) {
 				t.Fatal("dynamic cause not matched")
