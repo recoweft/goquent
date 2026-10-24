@@ -222,3 +222,16 @@ harness. Archive regressions separately execute an extracted owner-only script
 and reject traversal, symlinks, hardlinks and special files. Final exact-head
 results and native/supplied matrices belong in PR118, not in these controls.
 Historical testmain/expiry causes and every fixed release blocker remain open.
+
+### GQ-MAINT-11 initial comparison diagnosis
+
+[Issue #119](https://github.com/recoweft/goquent/issues/119) now has an initial
+[private branch census](review-triage.md#gq-maint-11-private-comparison-branch-census):
+998 unknown items lack head comparison identity and 491 have matching known
+diagnostics with changed whole-tree context. These exclusive attributions sum to
+1,489; overlapping unsupported membership is 208, not another population.
+Input correspondence succeeded while full risk/precision gates failed. No
+production comparison repair or narrower-context contract has been adopted.
+Further validation and specification consultation remain pending; this entry
+removes no fixed BLOCKERS, original-example skips, finite-native limitations,
+historical unresolved causes or human release requirement.

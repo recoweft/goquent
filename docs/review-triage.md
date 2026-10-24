@@ -297,6 +297,71 @@ ambiguous matches remain fail-closed. Any proposal to certify narrower context
 or change comparison meaning requires specification consultation in its own
 authorized task; this PR adopts no such repair.
 
+### GQ-MAINT-11: private comparison branch census
+
+GQ-MAINT-11 PR1, [Issue #119](https://github.com/recoweft/goquent/issues/119).
+The initial clean exact comparison used main `1a9702e` as base and diagnostic
+commit `ffde82f` as head, after that main's CI and Docs both succeeded. Go 1.26.4
+and the same built CLI produced ordinary exit 1 (risk failed; precision not
+selected) and strict exit 1 (input valid; risk and precision failed). The original
+example manifest returned exit 0 with generated_code/database still skipped.
+Collector completion remained release-blocked, with exit 1.
+
+An internal observation point records RunCI's actual final state for every head
+list item. The opt-in test-only census obtains complete private reports, source
+trees, loader captures and exact diff from that same implementation. It never
+uses public projection as input. A separate diagnostic mirror checks its predicted
+state against **every actual state**, including the existing ordered new,
+worsened, unchanged, changed-source new and final matched override. Any difference
+fails collection. Default RunCI passes no observer and retains its original gates,
+comparison branches, operation coverage and public output vocabulary.
+
+The unit is a head finding-list item, including suppressed-list items separately
+when present. Private ordinal, canonical key, source bytes and operation identity
+retain correspondence; they are not published. This collection had 1,489 primary
+items, no suppressed items and 1,178 operations. All 1,489 were unknown; other
+comparison states were zero. Ordinary and strict complete head findings and
+operation counts agreed. The historical 1,489 was not an expected test value.
+
+| Exclusive attribution of actual unknown items | Count |
+| --- | ---: |
+| Head comparison identity unavailable | 998 |
+| Whole-tree context changed, with known matching diagnostic | 491 |
+| Other attribution categories | 0 |
+
+These are ordered blocking-condition attributions, not new production reasons or
+proof that each item has only one cause. After preserving all existing positive
+classification precedence, the diagnostic attributes unknown to invalid input,
+missing file, ambiguous prior key, unavailable head identity, unavailable prior
+identity, whole-tree context mismatch, then remaining diagnostic mismatch.
+The primary counts sum to the actual unknown count.
+
+Overlapping memberships were whole-tree change 1,489, same diagnostic 1,489,
+missing head operation identity 998, unavailable prior identity 998 and
+unsupported precision 208. Unsupported is contained within the 998 here;
+it is not an additional population. No ambiguous prior key or input-correspondence
+failure occurred in this pair. The 998 include supported-but-partial diagnostics,
+so unsupported alone cannot explain that group. Risk counts are a separate axis.
+
+Same-context and listed nonempty-context fixtures exercise unchanged versus
+unknown with full risk/precision gates retained. Unlisted input remains an input
+failure. Unsupported, missing-operation and duplicate suppressed-list fixtures
+exercise independent unknown conditions and ambiguous keys. Existing external
+input, same-session mutation and finite native-test-executable role regressions
+remain controls; no external-consumed input exception is added. Test source and
+all raw artifacts remain protected local evidence, outside both analyzed roots,
+with no group/other access and no upload.
+
+No contract-preserving production defect has been established by these counts.
+Certifying narrower context alone would not supply the missing operation identity
+for 998 items, and supplying identity alone would not establish unchanged context.
+Promoting these findings would require a concrete comparison-contract decision;
+this investigation does not adopt one. Specification consultation is required
+before implementing such promotion. Full/race/vet/regeneration/canary/runner,
+strict-input four-case and companion matrices, final-head CI and an actual PR
+remain pending at this initial census boundary. This is not acceptance or release
+readiness; all existing fixed blockers and the separate human boundary remain.
+
 ## Reproduction and validation
 
 Use the existing staged runner with fresh protected output directories. Select

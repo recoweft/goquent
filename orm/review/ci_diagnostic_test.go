@@ -239,6 +239,23 @@ func TestLocalComparisonCensus(t *testing.T) {
 		items = append(items, item{i, f.key(), f.file, f.operation, f.known, f.source, f.startLine, f.endLine, tr.states[i]})
 	}
 	write("finding-identities.json", items)
+	items = nil
+	for i, f := range tr.base {
+		items = append(items, item{i, f.key(), f.file, f.operation, f.known, f.source, f.startLine, f.endLine, ""})
+	}
+	write("base-finding-identities.json", items)
+	type operationIdentity struct {
+		Operation  query.OperationType
+		Start, End int
+		Review     OperationReview
+	}
+	for name, report := range map[string]ReviewReport{"head": tr.headReport, "base": tr.baseReport} {
+		ops := []operationIdentity{}
+		for _, op := range report.privateOperations {
+			ops = append(ops, operationIdentity{op.operation, op.startLine, op.endLine, op})
+		}
+		write(name+"-operations.json", ops)
+	}
 	write("diff.json", diff)
 	write("gates.json", struct {
 		InputFailed, RiskFailed, PrecisionFailed, ContextOK, SelectionValid, SameContext bool
@@ -256,7 +273,7 @@ func TestLocalComparisonCensus(t *testing.T) {
 }
 
 func TestComparisonCensusUnknownIdentityAndAmbiguity(t *testing.T) {
-	for _, mode := range []string{"unsupported", "ambiguous"} {
+	for _, mode := range []string{"unsupported", "missing_operation", "ambiguous"} {
 		t.Run(mode, func(t *testing.T) {
 			base, head := ciFixture(t)
 			opts := Options{}
@@ -268,6 +285,12 @@ func TestComparisonCensusUnknownIdentityAndAmbiguity(t *testing.T) {
 					}
 					data = append(data, []byte("func invalid(){ missingSymbol() }\n")...)
 					if os.WriteFile(filepath.Join(root, "sample.go"), data, 0600) != nil {
+						t.Fatal("fixture write")
+					}
+				}
+			} else if mode == "missing_operation" {
+				for _, root := range []string{base, head} {
+					if os.WriteFile(filepath.Join(root, "query.sql"), []byte("DELETE FROM PRIVATE_IDENTITY_CANARY;\n"), 0600) != nil {
 						t.Fatal("fixture write")
 					}
 				}
@@ -283,6 +306,9 @@ func TestComparisonCensusUnknownIdentityAndAmbiguity(t *testing.T) {
 			}
 			if mode == "unsupported" && (c.Primary["head_identity_unknown"] == 0 || c.Overlap["unsupported"] == 0) {
 				t.Fatal("unsupported identity control")
+			}
+			if mode == "missing_operation" && (c.Primary["head_identity_unknown"] == 0 || c.Overlap["operation_missing"] == 0 || c.Overlap["unsupported"] != 0) {
+				t.Fatal("missing operation control")
 			}
 			if mode == "ambiguous" && c.Primary["ambiguous_prior"] == 0 {
 				t.Fatal("ambiguous prior control")
