@@ -260,7 +260,6 @@ func boundaryNetwork(t *testing.T, owner *orm.DB, dialect, dsn, table, fault str
 		case <-published:
 		case <-time.After(3 * time.Second):
 			t.Error("fault publication cleanup deadline exceeded")
-			return
 		}
 		if db.Close() != nil {
 			t.Error("fault pool cleanup failed")
