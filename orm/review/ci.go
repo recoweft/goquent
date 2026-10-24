@@ -238,6 +238,21 @@ func mapInput(base, head, p string) (string, bool) {
 // RunCI reuses Run's common diagnostics. It never parses diff text as code or
 // starts Git, a shell or a network client. Type loading retains Run's contract.
 func RunCI(opts Options, ci CIOptions) (CIResult, error) {
+	return runCI(opts, ci, nil)
+}
+
+// ciComparisonTrace is an internal observation point for test-only diagnostics.
+// Nothing here is a public projection or a reusable comparison input.
+type ciComparisonTrace struct {
+	headReport, baseReport                 ReviewReport
+	headTree, baseTree                     sourceTree
+	headCapture, baseCapture               *ciCapture
+	head, base                             []ciFinding
+	states                                 []string
+	contextOK, selectionValid, sameContext bool
+}
+
+func runCI(opts Options, ci CIOptions, observe func(ciComparisonTrace)) (CIResult, error) {
 	var result CIResult
 	if opts.Context == nil {
 		opts.Context = context.Background()
@@ -294,6 +309,9 @@ func RunCI(opts Options, ci CIOptions) (CIResult, error) {
 	result.precision = ci.FailOnPrecision != "" && HasFindingsAtOrAbovePrecision(result.report, ci.FailOnPrecision)
 	result.manifest = opts.RequireFreshManifest && result.report.ManifestStatus != nil && !result.report.ManifestStatus.Fresh
 	if !comparison {
+		if observe != nil {
+			observe(ciComparisonTrace{headReport: result.report, headCapture: hc})
+		}
 		return result, nil
 	}
 	after, e := readTree(opts.Context, root)
@@ -360,6 +378,10 @@ func RunCI(opts Options, ci CIOptions) (CIResult, error) {
 		byKey[f.key()] = append(byKey[f.key()], f)
 	}
 	selected := ReviewReport{Version: 1, canonical: true, Findings: []Finding{}, SuppressedFindings: []Finding{}}
+	var states []string
+	if observe != nil {
+		states = make([]string, len(head))
+	}
 	for i, f := range head {
 		previous := byKey[f.key()]
 		state := "unknown"
@@ -377,6 +399,9 @@ func RunCI(opts Options, ci CIOptions) (CIResult, error) {
 		}
 		if matched[i] {
 			state = "matched"
+		}
+		if observe != nil {
+			states[i] = state
 		}
 		switch state {
 		case "matched":
@@ -421,6 +446,9 @@ func RunCI(opts Options, ci CIOptions) (CIResult, error) {
 	selected.privateOperations = result.report.privateOperations
 	selected.OperationCount = result.report.OperationCount
 	result.selected = selected
+	if observe != nil {
+		observe(ciComparisonTrace{result.report, oldReport, headTree, oldTree, hc, bc, head, old, states, contextOK, selection.valid, sameContext})
+	}
 	return result, nil
 }
 
