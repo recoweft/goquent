@@ -400,7 +400,12 @@ improvements do not prove physical cleanup or historical causality. The
 [Issue123 release blocker](https://github.com/recoweft/goquent/issues/123#issuecomment-6386876158)
 remains open, and any fresh native classification/cleanup/watchdog failure is a
 current blocker. See the proposal for the preserved revision-1 failure record and
-revision-2 evidence boundary.
+revision-2 evidence boundary. The fresh pre-evidence-paragraph census at
+`e8ae0342734cabf24bf83203fa3e6d23dc82cc62` against that main measured
+1,495 unknown (1,004 identity / 491 context), 1,182 operations and candidate
+210 SELECT / 18 static operations / 14 diagnostics / 0 eligible. These are
+source-specific observations, not fixed expectations; final exact-head results
+are recorded separately in PR122/Issue121.
 
 Use the existing staged runner with fresh protected output directories. Select
 ordinary and manifest separately; strict additionally requires a clean exact

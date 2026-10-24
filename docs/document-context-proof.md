@@ -204,3 +204,26 @@ A fresh classification, cleanup or watchdog failure is a current review blocker;
 it must not be absorbed into historical residuals or erased by rerunning to pass.
 The worker keeps PR122 draft; the controller decides its finite integration
 readiness from current evidence and retained residuals.
+
+### Revision-2 measured census (before this evidence paragraph)
+
+A fresh complete-private census compared clean archives of base
+`cf1c8651dbdb2ea57b251d02115245f122273614` and synchronized source
+`e8ae0342734cabf24bf83203fa3e6d23dc82cc62` with Go 1.26.4, a writable cache
+and a nonempty exact diff. Collector exit was 0; actual RunCI exit was 1, with
+valid input and failed risk/precision gates. Actual branch parity, complete
+ordinary/head parity and population/operation checks passed. Head, base and
+ordinary reports each retained 1,182 operations and 1,495 primary findings
+(no suppressed findings). All 1,495 comparison items were unknown: 1,004 lacked
+head identity and 491 had whole-tree context changes. Other classes and primary
+causes were zero. The 210 unsupported items are an overlapping subset, not an
+additional population.
+
+The fresh candidate measurement was 210 SELECT operations, 18 static candidate
+operations and 14 candidate diagnostic items, with closure unavailable and
+eligible **0**. Equality with any earlier number is not reused evidence or proof
+of improvement. This paragraph changes the measured source; the final exact-head
+census and strict comparison are therefore rerun after committing it and are
+reported against their own SHA in PR122/Issue121. Full/race/native validation
+also uses that final clean head, without edits during collection. The historical
+revision-1 native failure and independent Issue123 release blocker remain.
