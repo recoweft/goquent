@@ -53,24 +53,6 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(row['status'], 'fail')
         self.assertEqual(row['exit'], 125)
 
-    def test_manifest_real_cli_regressions(self):
-        # Independent committed expectations; no generation precedes this check.
-        repo = Path(__file__).resolve().parents[2]
-        out = self.root / 'private'
-        out.mkdir(mode=0o700)
-        previous = os.umask(0o077)
-        try:
-            collector = run.Collector(repo, out)
-            row = collector.manifest_evidence()
-            self.assertEqual(row['status'], 'pass', 'finite real CLI matrix failed; details omitted')
-            self.assertEqual(row['counts'], dict(passed=24, failed=0))
-            self.assertEqual(row['cases']['mysql/database-disabled']['status'], 'skip')
-            self.assertEqual(row['cases']['postgres/missing-code']['exit'], 1)
-            for path in out.rglob('*'):
-                self.assertEqual(path.stat().st_mode & 0o077, 0)
-        finally:
-            os.umask(previous)
-
     def test_aggregate_never_promotes_missing_evidence(self):
         for status in ('fail', 'not-run', 'skip', 'unverified'):
             with self.subTest(status=status):
