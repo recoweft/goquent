@@ -201,6 +201,68 @@ findings. Missing runtime policy remains independent. Historical testmain/expiry
 causes, generated_code/database manifest skips, native performance gaps, fixed
 BLOCKERS and the human release boundary below remain unchanged.
 
+### GQ-MAINT-08: bounded dynamic raw attribution repair
+
+GQ-MAINT-08 PR1, [Issue #113](https://github.com/recoweft/goquent/issues/113).
+The production raw tracker now uses the existing `dynamic_value` reason when a
+recognized raw call has complete selected type information and only the SQL
+operand cannot be recovered by the existing `stringLiteralValue` implementation.
+Its message and hint are fixed strings describing unsupported SQL reconstruction.
+The unsupported code, medium severity, physical location and unsupported SQL /
+precision remain unchanged. Incomplete or missing types and invalid argument
+forms retain `type_unavailable`; literal raw warnings and the recognized receiver
+set are unchanged. This does not extend SQL analysis, change the loader, or grant
+runtime policy evidence or authorization.
+
+Fresh opt-in censuses and complete source reports were collected locally on Go
+1.26.4, before and after the repair. No previous count was an expected test value.
+The initial selector-only matcher independently reproduced the old 189 identified
+calls and one unknown. The residual was then checked by typed AST identity: it is
+a same-package, unqualified `NewRawPlan` call with a nonliteral operand. The
+extended test-only matcher covers that existing recognition shape and has a
+synthetic regression. Production recognition was not expanded. This establishes
+the residual's local cause; it does not establish general loader completeness.
+
+| Complete report population | Before | After |
+| --- | ---: | ---: |
+| Findings / operations | 1,474 / 1,165 | 1,474 / 1,165 |
+| `type_unavailable` findings / operations | 190 / 190 | 0 / 0 |
+| `dynamic_value` findings / operations | 0 / 0 | 190 / 190 |
+| Unsupported findings / operations | 197 / 197 | 197 / 197 |
+| Partial findings | 1,277 | 1,277 |
+| High / destructive / blocked findings | 147 / 29 / 5 | 147 / 29 / 5 |
+
+All finding codes, risk counts and SQL/policy axis counts are unchanged. Policy
+remains unknown for every finding and operation. Both censuses have zero selected
+incomplete packages, missing type information, parse-budget hits, cancellations,
+loader-state mismatches and unmatched tracker replay locations. Multiple syntax
+variants still overlap 22 finding locations. The revised matcher confirms 190
+typed dynamic calls, including one unqualified call, with no remaining unknown
+in this bounded population. The two report arrays are not additional failures.
+
+The fallback regression checks both findings and operations, preserving
+`unsupported`, unknown policy, `runtime_policy` and `evidence_missing`. Synthetic
+coverage includes context calls, method expressions, bound methods, unrelated
+receivers, literal SQL, actual load/parse failures and dynamic SQL in an incomplete
+package. Existing cancellation, budget and loader parity guards remain in force.
+Actual CLI subprocess tests retain medium-risk and precision exits of 1; a
+medium-risk dynamic finding still yields exit 0 at the high-only risk threshold
+while keeping the unsupported finding visible. Literal raw SQL still fails the
+high-risk gate. Public v1, v2 and SARIF retain their existing fixed projection;
+source locations remain sensitive source API data. MCP only accepts SQL text in
+its existing review route, not source files; its existing redaction/unknown-evidence
+regressions remain applicable without adding a source-review route.
+
+Detailed full/race, vet, regeneration, canary, runner, ordinary, clean exact strict
+and manifest outcomes are reported separately in the PR. Protected source reports
+and diagnostic logs remain local, outside the analyzed roots, and are not uploaded.
+Ordinary risk, strict risk/precision, comparison unknowns and manifest
+generated_code/database skips are not discharged by this classification repair.
+Native restricted-role/operator/cast/network-fault cases and historical
+testmain/expiry causes remain unverified. Fixed runner BLOCKERS and the human
+release boundary remain unchanged. No threshold, suppression, baseline, exclusion,
+public API, wire/hash/version or runtime authorization change is included.
+
 ### 3. Conservative whole-tree comparison unknown
 
 The exact comparison produced 1,474 unknown findings with input_failed=false.
