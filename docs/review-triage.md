@@ -322,8 +322,10 @@ all three explicit DSNs, sequential stages and `-p 1`; no global GOFLAGS `-json`
 new service provisioning or production connection is appropriate.
 
 No historical testmain or expiry failure cause is established by a later passing
-test. Native restricted-role, custom operator/cast and network-fault performance
-cases remain unverified. Manifest generated_code/database coverage stays skipped.
+test. [GQ-MAINT-09](native-performance-boundaries.md) adds finite restricted-role,
+PostgreSQL custom operator/cast and controlled loopback fault cases. Broader
+privilege, extension and network-fault coverage remains unverified; per-case
+fresh execution evidence is required, and MySQL operator/cast is not applicable. Manifest generated_code/database coverage stays skipped.
 All fixed staged-runner blockers and the separate human release boundary remain.
 This diagnosis adds no public API, JSON/SARIF/wire/hash format, runtime semantics,
 loader repair, suppression or baseline update, and does not claim release

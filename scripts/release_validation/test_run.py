@@ -171,17 +171,25 @@ class ValidationTests(unittest.TestCase):
         events = []
         for dialect in ('mysql', 'postgres'):
             for package, tests in [('orm', ['TestObservationIntegration']),
-                    ('tests', ['TestPerformancePlanNative', 'TestExternalAuthorizationDatabaseAndExternalTx',
+                    ('tests', ['TestPerformancePlanNative', 'TestPerformancePlanNativeBoundaries', 'TestExternalAuthorizationDatabaseAndExternalTx',
                                'TestValidatedBindingDatabaseAndExternalTx'])]:
                 for test in tests:
                     events.append(dict(Package='github.com/recoweft/goquent/' + package,
                                        Test=test + '/' + dialect, Action='pass'))
+        for dialect in ('mysql', 'postgres'):
+            cases = ['restricted_role', 'network_disconnect', 'network_timeout', 'network_cancel']
+            if dialect == 'postgres':
+                cases += ['custom_operator', 'custom_cast']
+            for case in cases:
+                events.append(dict(Package='github.com/recoweft/goquent/tests',
+                                   Test='TestPerformancePlanNativeBoundaries/' + dialect + '/' + case,
+                                   Action='pass'))
         events.append(dict(Package='github.com/recoweft/goquent/orm', Action='pass'))
         log.write_text(''.join(json.dumps(e) + '\n' for e in events))
         with patch.object(collector, 'command', return_value=(0, log)) as command:
             self.assertEqual(collector.tests(['./orm', './tests'], native=True)['status'], 'pass')
             self.assertIn('-p', command.call_args.args[0])
-            events.pop(0)
+            events.pop(-2)
             log.write_text(''.join(json.dumps(e) + '\n' for e in events))
             self.assertEqual(collector.tests(['./orm', './tests'], native=True)['status'], 'unverified')
 
