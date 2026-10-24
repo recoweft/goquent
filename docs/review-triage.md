@@ -392,7 +392,15 @@ GQ-MAINT-12 PR1 investigates a [bounded documentation comparison
 proposal](document-context-proof.md). The delivered decision preserves the finite
 design/falsification record with eligible zero; it does not adopt a narrower-context
 guarantee. The test-only model does not supply a real loader closure witness. Current production
-classification and the historical MAINT11 measurements above remain unchanged.
+comparison classification is unchanged; the historical MAINT11 measurements above
+remain tied to their original source. Revision 2 synchronizes PR124 through main
+`cf1c8651dbdb2ea57b251d02115245f122273614` after exact-main CI/Docs success.
+Fresh PR122 measurements are separate from PR124 counts. Its limited cancellation
+improvements do not prove physical cleanup or historical causality. The
+[Issue123 release blocker](https://github.com/recoweft/goquent/issues/123#issuecomment-6386876158)
+remains open, and any fresh native classification/cleanup/watchdog failure is a
+current blocker. See the proposal for the preserved revision-1 failure record and
+revision-2 evidence boundary.
 
 Use the existing staged runner with fresh protected output directories. Select
 ordinary and manifest separately; strict additionally requires a clean exact

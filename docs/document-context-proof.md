@@ -133,7 +133,7 @@ negative dependencies, implementation feasibility, resource budget, invalidation
 and refusal conditions, and positive/negative evidence before another decision.
 That owner/loader implementation is not an authorized part of this PR.
 
-## Native failure retained as an integration residual
+## Historical native failure retained (revision 1, 2026-10-24)
 
 The initial fresh full suite failed one leaf,
 `TestPerformancePlanNativeBoundaries/mysql/network_cancel` (three failure events
@@ -159,12 +159,12 @@ specific cleanup path. Failed assertions precede explicit server-session cleanup
 observation, so that observation is unverified for failed trials; deferred test
 cleanup remains in place.
 
-Root cause and fixture stability remain unresolved. No runtime error semantics,
-driver behavior, timeout, expected-error alternatives or skip rules are changed.
-Passing repetitions do not establish a repair. This remains a release/integration
-residual; broader repair would require a separate scope decision. Final exact-head
-census, local validation and CI results are recorded separately in the PR rather
-than treating earlier counts or passing tests as final-head evidence.
+At the revision-1 review, root cause and fixture stability remained unresolved,
+and PR122 was held draft pending a separate repair. That historical decision and
+the first full-suite failure are retained; passing repetitions did not establish
+a repair. PR122 itself changed no runtime semantics, driver, timeout, expected
+error or skip rule. The current synchronization below supersedes the old
+repair-pending status, not the historical evidence or its causal uncertainty.
 
 The original example still has generated_code/database verification skips;
 the manifest companion's four-axis success is a separate finite evidence path.
@@ -172,3 +172,35 @@ Native coverage has finite residuals. Historical testmain/expiry causes remain
 unproven by later passing tests. The staged runner's fixed BLOCKERS and the
 separate human release boundary remain. No unknown reduction, whole-Issue
 acceptance, merge or release readiness is claimed.
+
+
+## Revision 2: synchronization after PR124
+
+PR122 now includes main `cf1c8651dbdb2ea57b251d02115245f122273614` by a normal
+merge. That main includes [PR124](https://github.com/recoweft/goquent/pull/124)
+at `a92abbcf49be4e691e5de24ae21a77c7c0dc7cbb`. Its exact-main
+[CI](https://github.com/recoweft/goquent/actions/runs/40114301787) and
+[Docs](https://github.com/recoweft/goquent/actions/runs/40114301785) both succeeded
+before synchronization. The merge had no conflicts. The PR's diff against main
+still consists only of two design documents and two test files.
+
+PR124 was integrated under explicitly limited acceptance of finite improvements,
+not historical causal repair. Its strict rollback sentinel and owned logical-close
+classification, complete cancellation-frame forwarding, real-pq mechanism tests
+and failed-assertion cleanup remain intact. These do not guarantee physical
+cleanup, server abort acknowledgement or every cancellation ordering. The original
+MAINT12 failure's cause remains unproven; the historical PG failure's exact tree
+and cause also remain unknown. The independent
+[unresolved release-blocking track in Issue123](https://github.com/recoweft/goquent/issues/123#issuecomment-6386876158)
+remains open. PR124 integration is not unconditional permission to integrate PR122.
+
+The 18 synthetic cases and candidate design are unchanged. Complete real Go
+consumed-universe and negative-closure evidence remain unavailable; no producer
+or production unknown promotion is added. Fresh final-head census, ordinary
+and strict gates, local full/race/native results and CI are recorded with exact
+source identities in PR122 and Issue121. Historical counts above, and PR124's
+separate 1,495-unknown measurement, are not substituted for this PR's census.
+A fresh classification, cleanup or watchdog failure is a current review blocker;
+it must not be absorbed into historical residuals or erased by rerunning to pass.
+The worker keeps PR122 draft; the controller decides its finite integration
+readiness from current evidence and retained residuals.
