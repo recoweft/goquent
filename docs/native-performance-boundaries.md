@@ -277,8 +277,10 @@ trial. The production concrete-driver check is not bypassed or changed.
 | Begin through sql.DB, cancel lifetime, await automatic driver.Rollback entry and cancel forwarding, explicit sql.Tx.Rollback while driver blocked, release driver | exact driver.ErrBadConn | exact sql.ErrTxDone | The existing ended-context exception can preserve cancellation; the explicit caller cannot recover the hidden driver error |
 
 Connect and the pre-transaction backend-PID query use Background contexts. BeginTx
-receives a standard WithCancel lifetime context; database/sql forwards its derived
-transaction context to pq in the automatic case. No query cancellation context is
+receives the caller's standard WithCancel lifetime context. Go 1.25.0
+`database/sql.beginDC` forwards that caller context to driver.BeginTx first,
+then derives a separate context for its internal Tx/awaitDone lifecycle. The
+decorator forwards the caller context unchanged to pq. No query cancellation context is
 used in these controls. There is no semantic timeout event; five-second channel
 watchdogs and bounded cleanup conditions only detect a stalled fixture.
 
