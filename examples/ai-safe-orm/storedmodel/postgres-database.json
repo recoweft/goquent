@@ -1,0 +1,100 @@
+{
+  "context": {
+    "dialect": "postgres",
+    "catalog": "testdb",
+    "schema": "public",
+    "server_version": "16.10 (Debian 16.10-1.pgdg13+1)",
+    "version_source": "catalog_select",
+    "scope": "tables",
+    "tables": [
+      "users"
+    ],
+    "visibility": "catalog_visible",
+    "coverage": {
+      "tables": "partial",
+      "columns": "partial",
+      "indexes": "complete",
+      "foreign_keys": "complete",
+      "checks": "complete",
+      "identity": "complete",
+      "version": "complete"
+    }
+  },
+  "tables": [
+    {
+      "identity": {
+        "catalog": "testdb",
+        "schema": "public",
+        "name": "users",
+        "state": "complete"
+      },
+      "coverage": {
+        "columns": "partial",
+        "indexes": "complete",
+        "foreign_keys": "complete",
+        "checks": "complete",
+        "identity": "complete"
+      },
+      "name": "users",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default_state": "unknown",
+          "default_source": "postgres.information_schema.columns"
+        },
+        {
+          "name": "tenant_id",
+          "type": "character varying",
+          "nullable": false,
+          "default_state": "unknown",
+          "default_source": "postgres.information_schema.columns"
+        },
+        {
+          "name": "name",
+          "type": "character varying",
+          "nullable": false,
+          "default_state": "unknown",
+          "default_source": "postgres.information_schema.columns"
+        },
+        {
+          "name": "email",
+          "type": "character varying",
+          "nullable": false,
+          "default_state": "unknown",
+          "default_source": "postgres.information_schema.columns"
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp without time zone",
+          "nullable": true,
+          "default_state": "unknown",
+          "default_source": "postgres.information_schema.columns"
+        }
+      ],
+      "indexes": [
+        {
+          "keys": [
+            {
+              "column": "tenant_id",
+              "order": "asc",
+              "nulls": "last"
+            }
+          ],
+          "predicate": {
+            "state": "none"
+          },
+          "method": "btree",
+          "visibility": "visible",
+          "attributes": "complete",
+          "name": "idx_users_tenant_id",
+          "columns": [
+            "tenant_id"
+          ],
+          "raw_definition": "CREATE INDEX idx_users_tenant_id ON public.users USING btree (tenant_id)"
+        }
+      ]
+    }
+  ]
+}

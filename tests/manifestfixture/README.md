@@ -3,9 +3,10 @@
 This companion uses the current `examples/ai-safe-orm/schema.json` and
 `policies.json`. `users_generated.go` is actual typed repository generator output;
 the example's handwritten `main.go` is **not** generated code. The example does
-not call this repository. Its original manifest and schema/policy-only stage stay
-unchanged, including their two skipped axes. Companion success does not discharge
-that example's missing evidence or any release blocker.
+not call this repository. GQ-MAINT-14 separately extends the original saved manifest and its stage with
+example-owned inputs under `examples/ai-safe-orm/storedmodel`; this companion's
+artifacts and result scope remain independent. Companion success does not count
+as original example evidence or discharge any release blocker.
 
 ## Independent expectations
 

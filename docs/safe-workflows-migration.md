@@ -94,10 +94,16 @@ AtomicWrite/OptimisticVersion paths refuse at their extra boundary. Consult the
 | Review | Ordinary review, exact clean nonempty base/head strict diff review, manifest verification separately | Preserve risk/precision failures and unknown/new counts; do not lower thresholds or bulk-adopt baselines to make a gate green |
 | Performance/observation | Explicit performance plan and bounded event tests, separately identified native/mock measurements | No automatic EXPLAIN; restricted role/custom operator/cast/network faults remain unverified unless tested |
 
-The checked-in example manifest verifies supplied schema/policy only;
-`generated_code` and `database` are skipped. The legacy manifest in
-`orm/manifest/testdata/legacy-example.json` remains a stale negative fixture.
+The original saved example manifest now explicitly declares schema, policy,
+generated code and a database expectation for its string-tenant model. Use the
+[example-owned inputs and verification commands](../examples/ai-safe-orm/storedmodel/README.md)
+for four-axis supplied comparison. This deliberately extends the prior two-axis
+scope; old measurements with optional skips remain historical evidence. The
+handwritten executable's integer-tenant/datetime model stays separate. The legacy
+manifest in `orm/manifest/testdata/legacy-example.json` remains a stale negative.
 Do not regenerate it or adopt a review baseline to silence findings.
+Neither supplied equality nor separately collected native owned derivatives prove
+live freshness, physical DB identity, authorization or release acceptance.
 
 For native validation use only the repository's dedicated disposable Compose
 fixtures and the existing integration suite. Explicitly set `TEST_MYSQL_DSN`,
