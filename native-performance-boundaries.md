@@ -380,3 +380,12 @@ Rollback and completed their proxy/session/control checks. These are deliberate
 failure controls, not failed native-cancellation investigation trials. No overlay
 is committed. Existing strict rollback 13 cases, owned close 17 cases, actual
 sql.Conn/Tx ordering and rows-failure controls are separate mock/unit evidence.
+
+## Subsequent bounded contract (GQ-MAINT-13 PR2)
+
+PR124 and PR122 are now merged in main `7a39d9fdb09364f92e16660040161b6822ffb6a9`.
+Earlier draft-status statements above are historical. The
+[bounded cancellation contract](native-cancellation-contract.md) maps the public
+observation boundaries, adopted finite review scope and remaining unproved
+native orders. It preserves the unresolved Issue123 release blocker; integration
+of either earlier PR did not establish historical repair or release eligibility.
