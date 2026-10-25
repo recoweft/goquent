@@ -137,9 +137,22 @@ assert c.stage('manifest')['status'] == 'pass'
 # Actual registry rejection for mutated generated code, using a private copy.
 import shutil
 area = Path(sys.argv[1]) / 'regen'
-shutil.copytree('examples/ai-safe-orm/storedmodel', area)
-for p in area.rglob('*'):
-    p.chmod(0o700 if p.is_dir() else 0o600)
+def private_copytree(source, target):
+    shutil.copytree(source, target)
+    # copytree restores source directory metadata, including the root mode.
+    target.chmod(0o700)
+    for p in target.rglob('*'):
+        p.chmod(0o700 if p.is_dir() else 0o600)
+# Empty synthetic source reproduces ordinary clone permissions even when the
+# developer checkout itself is 0700. No raw evidence is put in this source.
+mode_source = Path(sys.argv[1]) / 'mode-source'
+mode_source.mkdir(mode=0o700)
+mode_source.chmod(0o755)
+mode_target = Path(sys.argv[1]) / 'mode-target'
+private_copytree(mode_source, mode_target)
+mode_source.chmod(0o700)
+assert mode_target.stat().st_mode & 0o777 == 0o700
+private_copytree('examples/ai-safe-orm/storedmodel', area)
 source = area / 'users_generated.go'
 source.write_bytes(source.read_bytes() + b'\n// CANARY_REGEN_DRIFT\n')
 code, log = c.command([str(c.cli), 'manifest', 'check-repositories', '--config', str(area / 'repositories.json')])
