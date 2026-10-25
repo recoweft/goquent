@@ -68,9 +68,9 @@ examples/, docs/, specs/   Runnable examples, usage guides and design contracts
 
 ## Toolchain and validation
 
-- `go.mod` declares Go `1.25.0` and preferred toolchain `go1.26.4`. Both GitHub
+- `go.mod` declares Go `1.25.0` and preferred toolchain `go1.26.10`. Both GitHub
   workflows bootstrap Go `1.25.9`; Go's toolchain selection may download/use
-  `go1.26.4`. Record `go version` when reporting tests.
+  `go1.26.10`. Record `go version` when reporting tests.
 - Run `go test ./...`. Run `make test-integration` for the repository's MySQL 8
   and PostgreSQL 16 container-backed suite. Explicit `TEST_MYSQL_DSN` and
   `TEST_POSTGRES_DSN` make connection failures fail rather than skip. Report skips,
