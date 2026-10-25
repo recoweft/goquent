@@ -1,0 +1,100 @@
+{
+  "context": {
+    "dialect": "mysql",
+    "catalog": "def",
+    "schema": "testdb",
+    "server_version": "8.4.6",
+    "version_source": "catalog_select",
+    "scope": "tables",
+    "tables": [
+      "users"
+    ],
+    "visibility": "catalog_visible",
+    "coverage": {
+      "tables": "partial",
+      "columns": "partial",
+      "indexes": "partial",
+      "foreign_keys": "partial",
+      "checks": "partial",
+      "identity": "complete",
+      "version": "complete"
+    }
+  },
+  "tables": [
+    {
+      "identity": {
+        "catalog": "def",
+        "schema": "testdb",
+        "name": "users",
+        "state": "complete"
+      },
+      "coverage": {
+        "columns": "partial",
+        "indexes": "partial",
+        "foreign_keys": "partial",
+        "checks": "partial",
+        "identity": "complete"
+      },
+      "name": "users",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default_state": "unknown",
+          "default_source": "mysql.information_schema.columns"
+        },
+        {
+          "name": "tenant_id",
+          "type": "varchar(64)",
+          "nullable": false,
+          "default_state": "unknown",
+          "default_source": "mysql.information_schema.columns"
+        },
+        {
+          "name": "name",
+          "type": "varchar(255)",
+          "nullable": false,
+          "default_state": "unknown",
+          "default_source": "mysql.information_schema.columns"
+        },
+        {
+          "name": "email",
+          "type": "varchar(255)",
+          "nullable": false,
+          "default_state": "unknown",
+          "default_source": "mysql.information_schema.columns"
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp",
+          "nullable": true,
+          "default_state": "unknown",
+          "default_source": "mysql.information_schema.columns"
+        }
+      ],
+      "indexes": [
+        {
+          "keys": [
+            {
+              "column": "tenant_id",
+              "order": "asc",
+              "nulls": "engine_default"
+            }
+          ],
+          "predicate": {
+            "state": "none"
+          },
+          "method": "btree",
+          "visibility": "visible",
+          "attributes": "complete",
+          "name": "idx_users_tenant_id",
+          "columns": [
+            "tenant_id"
+          ],
+          "raw_definition": "[{\"String\":\"tenant_id\",\"Valid\":true},{\"String\":\"\",\"Valid\":false},{\"Int64\":0,\"Valid\":false},{\"String\":\"A\",\"Valid\":true},\"BTREE\",\"YES\",1,1]\n"
+        }
+      ]
+    }
+  ]
+}

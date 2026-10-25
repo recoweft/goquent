@@ -44,6 +44,45 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(run.manifest_evidence(log, 2), run.result('fail', 2))
         self.assertEqual(run.manifest_evidence(log, 0), run.result('unverified', 0))
 
+    def test_manifest_malformed_and_exit_disagreement(self):
+        log = self.root / 'view.json'
+        good = dict(kind='goquent.verification_view', version=1, count=4,
+                    present=True, known=True, fresh=True,
+                    items=[dict(check=k, status='ok') for k in
+                           ('schema', 'policy', 'generated_code', 'database')])
+        for mutation in (
+            lambda v: v.update(items=v['items'][:-1]),
+            lambda v: v.update(items=[None] * 4),
+            lambda v: v.update(items={}),
+            lambda v: v.update(version=True),
+            lambda v: v.update(count=True),
+            lambda v: v.update(fresh=False),
+            lambda v: v.update(truncated=True),
+            lambda v: v['items'][0].update(status='stale'),
+        ):
+            value = json.loads(json.dumps(good))
+            mutation(value)
+            log.write_text(json.dumps(value))
+            for code in (0, 1, 2):
+                row = run.manifest_evidence(log, code)
+                self.assertNotEqual(row['status'], 'pass')
+                self.assertNotIn('checks', row)
+        log.write_text(json.dumps(good))
+        self.assertNotIn('checks', run.manifest_evidence(log, 1))
+
+    def test_original_manifest_inputs_and_owner(self):
+        collector = run.Collector(self.root, self.root)
+        log = self.root / 'empty'
+        log.write_text('{}')
+        with patch.object(collector, 'build', return_value=0), patch.object(
+                collector, 'command', return_value=(0, log)) as command:
+            self.assertEqual(collector.stage('manifest')['status'], 'unverified')
+        args = command.call_args.args[0]
+        self.assertIn('examples/ai-safe-orm/goquent.manifest.json', args)
+        self.assertIn('examples/ai-safe-orm/storedmodel/users_generated.go', args)
+        self.assertIn('examples/ai-safe-orm/storedmodel/mysql-database.json', args)
+        self.assertNotIn('tests/manifestfixture', ' '.join(args))
+
     def test_manifest_native_invoked_preflight_failure_is_not_unverified(self):
         collector = run.Collector(self.root, self.root, True)
         log = self.root / 'failed-preflight'

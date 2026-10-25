@@ -12,7 +12,8 @@ import tarfile
 
 STAGES = ('inventory', 'offline', 'full', 'race', 'vet', 'regen', 'canary',
           'example', 'schema', 'binding', 'observation', 'native',
-          'ordinary', 'strict', 'manifest', 'manifest-evidence', 'manifest-native')
+          'ordinary', 'strict', 'manifest', 'manifest-evidence', 'manifest-native',
+          'example-manifest-evidence', 'example-manifest-native')
 # These inherited deficits cannot be discharged by aggregate command success.
 BLOCKERS = ('review-risk-precision', 'review-unknown', 'manifest-coverage',
             'native-performance-limits', 'historical-testmain-cause',
@@ -188,9 +189,13 @@ class Collector:
         if self.cli.exists():
             return 0
         code, _ = self.command(['go', 'build', '-o', str(self.cli), './cmd/goquent'])
+        if code == 0:
+            self.cli.chmod(0o700)
         return code
 
-    def manifest_evidence(self, native=False):
+    def manifest_evidence(self, native=False, original=False):
+        prefix = 'examples/ai-safe-orm/storedmodel' if original else 'tests/manifestfixture'
+        stage = ('example-' if original else '') + ('manifest-native' if native else 'manifest-evidence')
         if native and not self.prepare_native():
             if self.native_failure is not None:
                 return result('fail', self.native_failure, reason='native-preflight-command')
@@ -199,26 +204,30 @@ class Collector:
         if build_code:
             return result('fail', build_code, reason='build')
         code, _ = self.command([str(self.cli), 'manifest', 'check-repositories',
-                               '--config', 'tests/manifestfixture/repositories.json'])
+                               '--config', prefix + '/repositories.json'])
         if code:
             return result('fail', code, reason='generated-source')
-        area = self.output / ('manifest-native' if native else 'manifest-evidence')
+        area = self.output / stage
         area.mkdir(mode=0o700)
         if native:
             code, log = self.command(['go', 'test', '-json', '-p', '1', '-count=1',
-                './tests/manifestfixture', '-run', '^TestManifestEvidenceNative$',
+                './' + prefix, '-run', '^TestManifestEvidenceNative$',
                 '-args', '-manifest-evidence-output', str(area)], native=True)
             observed = test_evidence(log, code)
             if observed['status'] != 'pass':
                 return observed
             events = [json.loads(line) for line in log.read_text().splitlines()]
             passed = {e.get('Test') for e in events if e.get('Action') == 'pass'}
-            if not {'TestManifestEvidenceNative/mysql', 'TestManifestEvidenceNative/postgres'} <= passed:
+            required = {'TestManifestEvidenceNative/' + d for d in ('mysql', 'postgres')}
+            if original:
+                required |= {'TestManifestEvidenceNative/' + d + '/assertion-cleanup' for d in ('mysql', 'postgres')}
+            if not required <= passed:
                 return result('unverified', code, reason='native-evidence-missing')
         (area / 'provenance.json').write_text(json.dumps(dict(
-            source='tests/manifestfixture/declaration.go',
-            generator_input='tests/manifestfixture/generator-input.json',
-            registry='tests/manifestfixture/repositories.json',
+            owner='original saved model' if original else 'companion',
+            source=prefix + '/declaration.go',
+            generator_input=prefix + '/generator-input.json',
+            registry=prefix + '/repositories.json',
             expected='committed fingerprints; native changes only declared database identity',
             current='migration.ReadSchema owned fixture' if native else 'supplied declared snapshot',
             native=native), indent=2))
@@ -226,21 +235,28 @@ class Collector:
         for dialect in ('mysql', 'postgres'):
             work = area / dialect
             work.mkdir(mode=0o700)
-            code_name = 'tests/manifestfixture/users_generated.go'
+            code_name = prefix + '/users_generated.go'
             target = work / code_name
             target.parent.mkdir(parents=True, mode=0o700)
             target.write_bytes((self.root / code_name).read_bytes())
             schema = self.root / 'examples/ai-safe-orm/schema.json'
             policy = self.root / 'examples/ai-safe-orm/policies.json'
-            fixture = self.root / 'tests/manifestfixture'
-            stored = json.loads((area / (dialect + '-manifest.json') if native else
-                                 fixture / (dialect + '.manifest.json')).read_text())
+            fixture = self.root / prefix
+            canonical = self.root / 'examples/ai-safe-orm/goquent.manifest.json' if original and dialect == 'mysql' else fixture / (dialect + '.manifest.json')
+            stored_path = area / (dialect + '-manifest.json') if native else canonical
+            stored = json.loads(stored_path.read_text())
             current = area / (dialect + '-current.json') if native else fixture / (dialect + '-database.json')
             expected_checks = dict(schema='ok', policy='ok', generated_code='ok', database='ok')
             cases = ('four-axis', 'code-drift', 'database-drift', 'schema-content', 'policy-content',
                      'missing-code', 'database-disabled', 'missing-database', 'invalid-manifest',
                      'missing-fingerprints', 'missing-stored-code', 'unreadable-input')
+            if original:
+                cases += ('schema-drift', 'policy-drift', 'missing-stored-database',
+                          'omitted-schema', 'omitted-policy', 'invalid-schema',
+                          'invalid-policy', 'invalid-database', 'unreadable-database',
+                          'stored-schema-hash', 'stored-policy-hash', 'code-path-drift')
             for case in cases:
+                schema_input, policy_input = schema, policy
                 m = json.loads(json.dumps(stored))
                 checks = dict(expected_checks)
                 want, status = 0, 'pass'
@@ -290,10 +306,66 @@ class Collector:
                 elif case == 'unreadable-input':
                     args[1] = 'CANARY_MISSING_PATH'
                     checks, want, status = {}, 2, 'fail'
+                if case in ('schema-drift', 'policy-drift'):
+                    axis = case.split('-')[0]
+                    value = json.loads((schema if axis == 'schema' else policy).read_text())
+                    changed = work / (case + '-current.json')
+                    if axis == 'schema':
+                        value['tables'][0]['columns'][0]['type'] = 'CANARY_CURRENT_TYPE'
+                        schema_input = changed
+                    else:
+                        value[0]['pii_columns'] = ['CANARY_CURRENT_POLICY']
+                        policy_input = changed
+                    changed.write_text(json.dumps(value))
+                    checks[axis], want, status = 'stale', 1, 'fail'
+                    # Policy flags also belong to the schema fingerprint.
+                    if axis == 'policy':
+                        checks['schema'] = 'stale'
+                elif case == 'missing-stored-database':
+                    m.pop('database_fingerprint', None)
+                    checks['database'], want, status = 'stale', 1, 'fail'
+                elif case in ('omitted-schema', 'omitted-policy'):
+                    axis = case.split('-')[1]
+                    if axis == 'schema':
+                        schema_input = None
+                    else:
+                        policy_input = None
+                    checks['schema'] = 'stale'
+                    if axis == 'policy':
+                        checks['policy'] = 'stale'
+                    want, status = 1, 'fail'
+                elif case.startswith('invalid-') and case != 'invalid-manifest':
+                    bad = work / (case + '-current.json')
+                    bad.write_text('CANARY_INVALID_JSON')
+                    if case == 'invalid-schema':
+                        schema_input = bad
+                    elif case == 'invalid-policy':
+                        policy_input = bad
+                    else:
+                        args[-1] = str(bad)
+                    checks, want, status = {}, 2, 'fail'
+                elif case == 'unreadable-database':
+                    args[-1] = str(work / 'CANARY_ABSENT_DATABASE')
+                    checks, want, status = {}, 2, 'fail'
+                elif case in ('stored-schema-hash', 'stored-policy-hash'):
+                    axis = case.split('-')[1]
+                    m[axis + '_fingerprint'] = 'sha256:CANARY_STORED_HASH'
+                    checks[axis], want, status = 'stale', 1, 'fail'
+                elif case == 'code-path-drift':
+                    renamed = work / 'renamed.go'
+                    renamed.write_bytes(target.read_bytes())
+                    args[1] = 'renamed.go'
+                    checks['generated_code'], want, status = 'stale', 1, 'fail'
                 path = work / (case + '.json')
                 path.write_text(json.dumps(m))
-                command = [str(self.cli), 'manifest', 'verify', '--format', 'json', '--manifest', str(path),
-                           '--schema', str(schema), '--policy', str(policy)] + args
+                # The positive invokes the actual canonical artifact, not a rewritten copy.
+                manifest_path = stored_path if case == 'four-axis' else path
+                command = [str(self.cli), 'manifest', 'verify', '--format', 'json', '--manifest', str(manifest_path)]
+                if schema_input is not None:
+                    command += ['--schema', str(schema_input)]
+                if policy_input is not None:
+                    command += ['--policy', str(policy_input)]
+                command += args
                 code, log = self.command(command, cwd=work)
                 row = manifest_evidence(log, code)
                 # Error cases have no fabricated check results. Raw logs remain local.
@@ -340,8 +412,8 @@ class Collector:
         return ['--diff', str(patch), '--diff-base-root', str(roots[0]), str(roots[1])]
 
     def stage(self, name):
-        if name in ('manifest-evidence', 'manifest-native'):
-            return self.manifest_evidence(native=name == 'manifest-native')
+        if name in ('manifest-evidence', 'manifest-native', 'example-manifest-evidence', 'example-manifest-native'):
+            return self.manifest_evidence(native=name.endswith('-native'), original=name.startswith('example-'))
         if name == 'inventory':
             return self.simple(['go', 'version'])
         if name in ('full', 'race', 'native'):
@@ -374,9 +446,12 @@ class Collector:
         if build_code:
             return result('fail', build_code, reason='build')
         if name == 'manifest':
-            code, _ = self.command([str(self.cli), 'manifest', 'verify', '--manifest', 'examples/ai-safe-orm/goquent.manifest.json',
-                '--schema', 'examples/ai-safe-orm/schema.json', '--policy', 'examples/ai-safe-orm/policies.json'])
-            return result('fail' if code else 'skip', code, reason='generated-code-database-not-supplied')
+            code, log = self.command([str(self.cli), 'manifest', 'verify', '--format', 'json',
+                '--manifest', 'examples/ai-safe-orm/goquent.manifest.json',
+                '--schema', 'examples/ai-safe-orm/schema.json', '--policy', 'examples/ai-safe-orm/policies.json',
+                '--code', 'examples/ai-safe-orm/storedmodel/users_generated.go', '--against-db',
+                '--database-schema', 'examples/ai-safe-orm/storedmodel/mysql-database.json'])
+            return manifest_evidence(log, code)
         args = [str(self.cli), 'review', '--format', 'review-ci-json', '--fail-on', 'high']
         if name == 'strict':
             inputs = self.strict_inputs()
@@ -395,7 +470,8 @@ def manifest_evidence(path, code):
     """Require the complete four-check CLI view; exit zero alone proves nothing."""
     try:
         view = json.loads(path.read_text())
-        if (view['kind'] != 'goquent.verification_view' or view['version'] != 1 or
+        if (view['kind'] != 'goquent.verification_view' or type(view['version']) is not int or view['version'] != 1 or
+                type(view['count']) is not int or
                 view['count'] != 4 or view.get('truncated', False) or
                 view.get('present') is not True or view.get('known') is not True):
             raise ValueError()
@@ -404,6 +480,9 @@ def manifest_evidence(path, code):
         if len(items) != 4 or set(checks) != {'schema', 'policy', 'generated_code', 'database'}:
             raise ValueError()
         if any(v not in ('ok', 'skipped', 'stale') for v in checks.values()):
+            raise ValueError()
+        stale = 'stale' in checks.values()
+        if view.get('fresh') is not (not stale) or code != (1 if stale else 0):
             raise ValueError()
         if code:
             status = 'fail'
@@ -414,7 +493,7 @@ def manifest_evidence(path, code):
         else:
             status = 'pass'
         return result(status, code, checks=checks)
-    except (ValueError, KeyError, TypeError, OSError):
+    except (ValueError, KeyError, TypeError, AttributeError, OSError):
         return result('fail' if code else 'unverified', code)
 
 
@@ -436,7 +515,7 @@ def review_evidence(path, code):
                 gate[key] for key in ('risk_failed', 'precision_failed', 'manifest_failed', 'input_failed'))):
             status = 'unverified'
         return result(status, code, gate=gate, findings=findings)
-    except (ValueError, KeyError, TypeError, OSError):
+    except (ValueError, KeyError, TypeError, AttributeError, OSError):
         return result('fail' if code else 'unverified', code)
 
 

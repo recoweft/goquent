@@ -5,6 +5,8 @@
   "dialect": "mysql",
   "schema_fingerprint": "sha256:65fc30aa31ebf691deae8c68bae7559005d478d0a00662b55ca18fb97868e5c0",
   "policy_fingerprint": "sha256:8fa9cac9c88d18d8896f580d9a2698072db3d7c58f28bca6d08fba0e50a09599",
+  "generated_code_fingerprint": "sha256:eea62272bec83caa1a4dd18984bc70133efe77b43743266b95a2837c697cf305",
+  "database_fingerprint": "sha256:101b9b3463d17a0a7ac63db6d9da675fbd9dce664c1b1f9b4d9f1790e366d7a2",
   "tables": [
     {
       "name": "users",

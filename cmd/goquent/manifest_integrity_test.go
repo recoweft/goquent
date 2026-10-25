@@ -74,17 +74,21 @@ func TestManifestIntegrityConsumers(t *testing.T) {
 }
 
 func TestExampleManifestRegeneration(t *testing.T) {
-	schema := "../../examples/ai-safe-orm/schema.json"
-	policy := "../../examples/ai-safe-orm/policies.json"
-	stored, err := manifest.Load("../../examples/ai-safe-orm/goquent.manifest.json")
+	// Generated-code hashing includes the literal repo-relative path.
+	t.Chdir("../..")
+	schema := "examples/ai-safe-orm/schema.json"
+	policy := "examples/ai-safe-orm/policies.json"
+	database := "examples/ai-safe-orm/storedmodel/mysql-database.json"
+	code := "examples/ai-safe-orm/storedmodel/users_generated.go"
+	stored, err := manifest.Load("examples/ai-safe-orm/goquent.manifest.json")
 	if err != nil {
 		t.Fatal("fixture loading failed")
 	}
-	a, err := buildManifestFromFlags("mysql", schema, policy, "", "", nil)
+	a, err := buildManifestFromFlags("mysql", schema, policy, database, "", []string{code})
 	if err != nil {
 		t.Fatal("generation failed")
 	}
-	b, err := buildManifestFromFlags("mysql", schema, policy, "", "", nil)
+	b, err := buildManifestFromFlags("mysql", schema, policy, database, "", []string{code})
 	if err != nil {
 		t.Fatal("regeneration failed")
 	}
@@ -96,7 +100,7 @@ func TestExampleManifestRegeneration(t *testing.T) {
 	if !bytes.Equal(x, y) || !bytes.Equal(x, z) {
 		t.Fatal("example regeneration differs beyond generation time")
 	}
-	legacy, err := manifest.Load("../../orm/manifest/testdata/legacy-example.json")
+	legacy, err := manifest.Load("orm/manifest/testdata/legacy-example.json")
 	if err != nil {
 		t.Fatal("legacy fixture loading failed")
 	}
@@ -115,7 +119,7 @@ func TestExampleManifestRegeneration(t *testing.T) {
 	}
 	p := filepath.Join(t.TempDir(), "capture.json")
 	var out, diag bytes.Buffer
-	if run([]string{"manifest", "--dialect", "mysql", "--schema", schema, "--policy", policy, "--unsafe-local-output", p}, &out, &diag) != 0 {
+	if run([]string{"manifest", "--dialect", "mysql", "--schema", schema, "--policy", policy, "--code", code, "--database-schema", database, "--unsafe-local-output", p}, &out, &diag) != 0 {
 		t.Fatal("capture failed")
 	}
 	captured, err := manifest.Load(p)

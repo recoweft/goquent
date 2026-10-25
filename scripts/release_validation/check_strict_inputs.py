@@ -9,11 +9,11 @@ import tempfile
 import run
 
 
-def check(root, output):
+def check(root, output, registry_path='tests/manifestfixture/repositories.json'):
     collector = run.Collector(root, output)
     if collector.build():
         raise ValueError('build')
-    registry = (root / 'tests/manifestfixture/repositories.json').read_bytes()
+    registry = (root / registry_path).read_bytes()
     if not registry.endswith(b'\n'):
         raise ValueError('registry termination')
     base, head = output / 'base', output / 'head'
@@ -65,8 +65,12 @@ def main():
     os.umask(0o077)
     try:
         with tempfile.TemporaryDirectory(prefix='goquent-strict-regression-') as area:
-            check(Path(__file__).resolve().parents[2], Path(area))
-        print('STRICT_INPUT_REGRESSION_PASSED: cases=4; gate failures retained')
+            for name, registry in (('companion', 'tests/manifestfixture/repositories.json'),
+                                   ('original', 'examples/ai-safe-orm/storedmodel/repositories.json')):
+                output = Path(area) / name
+                output.mkdir(mode=0o700)
+                check(Path(__file__).resolve().parents[2], output, registry)
+        print('STRICT_INPUT_REGRESSION_PASSED: cases=8; gate failures retained')
         return 0
     except Exception:
         print('STRICT_INPUT_REGRESSION_FAILED: details omitted')
