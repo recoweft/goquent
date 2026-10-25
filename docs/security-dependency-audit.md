@@ -126,6 +126,39 @@ sumdb.Client.Lookup, not the imported module-parsing paths. Their fixed module
 version is v0.40.0. Retaining v0.34.0 is a bounded non-reachability disposition,
 not an ignore rule; reassess if imports or use change.
 
+### Selected graph beyond the loaded packages
+
+A supplemental check of `https://vuln.go.dev/index/modules.json` and each
+candidate's `https://vuln.go.dev/ID/<ID>.json` at 2026-10-25 14:03–14:04 UTC
+compared the `go list -m all` versions with official introduced/fixed ranges and
+withdrawn status. Unlike source scanning, this checks module presence without
+loading their packages. The graph is identical before/after the toolchain edit.
+In addition to the two x/mod entries, these **15 active graph-only advisories**
+remain; none of these modules appeared in the normal or test package dependency
+list. They were not counted as source scanner detections or tested at runtime.
+
+| Selected module | Advisory IDs | Fixed module version |
+| --- | --- | --- |
+| goldmark v1.4.13 | [GO-2026-5320](https://pkg.go.dev/vuln/GO-2026-5320) | v1.7.17 |
+| x/sys v0.42.0 | [GO-2026-5024](https://pkg.go.dev/vuln/GO-2026-5024) | v0.44.0 |
+| x/net v0.52.0 | [GO-2026-4918](https://pkg.go.dev/vuln/GO-2026-4918) | v0.53.0 |
+| x/net v0.52.0 | [GO-2026-5025](https://pkg.go.dev/vuln/GO-2026-5025), [5026](https://pkg.go.dev/vuln/GO-2026-5026), [5027](https://pkg.go.dev/vuln/GO-2026-5027), [5028](https://pkg.go.dev/vuln/GO-2026-5028), [5029](https://pkg.go.dev/vuln/GO-2026-5029), [5030](https://pkg.go.dev/vuln/GO-2026-5030) | v0.55.0 |
+| x/net v0.52.0 | [GO-2026-5942](https://pkg.go.dev/vuln/GO-2026-5942) | v0.56.0 |
+| x/net v0.52.0 | [GO-2026-6603](https://pkg.go.dev/vuln/GO-2026-6603), [6610](https://pkg.go.dev/vuln/GO-2026-6610), [6611](https://pkg.go.dev/vuln/GO-2026-6611), [6612](https://pkg.go.dev/vuln/GO-2026-6612), [6617](https://pkg.go.dev/vuln/GO-2026-6617) | v0.60.0 |
+
+The lib/pq index candidates GO-2026-6166, 6168, 6169, 6170, 6171, 6172 and
+6173 were withdrawn on 2026-08-18 in their official ID records; they are not
+active findings. No other active version-range candidates were identified for
+the selected external modules. This comparison is bounded to that DB snapshot.
+
+No blanket graph upgrade is performed: retain these findings and reassess before
+loading new packages, changing build configuration or shipping downstream code
+that imports them. Dependency maintainers own that reassessment; the finite
+closure here is explicit inventory and absence from this build's package graph,
+not a promise about other builds. An attempted `govulncheck -scan module` without
+a package pattern exited 1 because the module root has no Go files; it was not
+used as successful evidence or treated as clean.
+
 ### Toolchain, separately from the application
 
 Binary scans of the actual old/new `GOROOT/bin/go` returned 3 / 0. The old binary
