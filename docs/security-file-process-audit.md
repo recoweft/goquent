@@ -139,6 +139,7 @@ the normal repository test suite retains its established execution environment.
 | `go test ./cmd/goquent -run '^TestSecurityFile' -count=1 -timeout=30s` | Exit0 including subsequently added short-write fixture. |
 | `go test -race ./orm/manifest ./orm/review ./cmd/goquent -run '^Test(SecurityFile\|SecurityProcess\|ExplicitLocalArtifact\|RepositoryCheck\|CISourceBoundaries)' -count=1 -timeout=120s` | Exit0. |
 | `go test ./orm/review -run '^TestSecurityProcessDriverBoundary/native_' -count=1 -timeout=45s`; same with `-race` | Both exit0; these native cases were added after the broad focused/race and integration run began. |
+| `go test -race ./orm/review -run '^TestSecurityProcess' -count=1 -timeout=60s` | Exit0 after final fixture-only change to publish complete handshake markers by rename and clear reaped child identity. |
 | Temporary `-overlay` mutant, manifest root regression only | Exit1 at opened-root identity assertion; successful build. Real implementation passes. |
 | `make test-integration` | Exit0, explicit local MySQL8/PostgreSQL16 fixture DSNs, `go test ./... -count=1`, 26 passing packages. Non-verbose output does not enumerate individual skips. Later native additions tested separately above and by final-head CI. |
 | `go vet ./...`; `sh scripts/test-public-output-check.sh`; `python3 scripts/release_validation/check_strict_inputs.py` | All exit0. |

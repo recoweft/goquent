@@ -73,7 +73,8 @@ func TestSecurityProcessHelper(t *testing.T) {
 		return
 	}
 	write := func(name string, b []byte) {
-		if os.WriteFile(filepath.Join(dir, name), b, 0600) != nil {
+		p := filepath.Join(dir, name)
+		if os.WriteFile(p+".tmp", b, 0600) != nil || os.Rename(p+".tmp", p) != nil {
 			t.Fatal("fixture handshake failed")
 		}
 	}
@@ -161,10 +162,13 @@ func TestSecurityProcessHelper(t *testing.T) {
 			write("release-child", []byte("release after load returned"))
 			securityWaitFile(t, filepath.Join(dir, "child-after-cancel"))
 			var status syscall.WaitStatus
-			if _, err := syscall.Wait4(child, &status, 0, nil); err != nil || !status.Exited() || status.ExitStatus() != 0 {
+			_, err := syscall.Wait4(child, &status, 0, nil)
+			if err == nil {
+				child = 0
+			}
+			if err != nil || !status.Exited() || status.ExitStatus() != 0 {
 				t.Fatal("child cleanup failed")
 			}
-			child = 0
 		}
 	}
 }
