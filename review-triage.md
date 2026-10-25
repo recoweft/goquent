@@ -6,6 +6,13 @@ gates or a release decision. See [staged validation](staged-release-validation.m
 [typed loading](static-review-types.md), [precision](static-review-precision.md)
 and [source comparison](static-review-ci.md).
 
+Current-state update: [GQ-MAINT-15 disposition](release-blocker-disposition.md)
+records a fresh complete-private census and remaining decision boundaries.
+The measurements below belong to their stated historical heads. In particular,
+their original-example generated-code/database skips predate PR127: both inputs
+are now explicitly supplied for the original saved model. They are no longer
+current missing axes; handwritten-model/live-identity/coverage limits remain.
+
 ## Fresh evidence and measurement boundary
 
 Fresh local collection used Go 1.26.4 after both integration workflows for PR108
@@ -433,7 +440,10 @@ No historical testmain or expiry failure cause is established by a later passing
 test. [GQ-MAINT-09](native-performance-boundaries.md) adds finite restricted-role,
 PostgreSQL custom operator/cast and controlled loopback fault cases. Broader
 privilege, extension and network-fault coverage remains unverified; per-case
-fresh execution evidence is required, and MySQL operator/cast is not applicable. Manifest generated_code/database coverage stays skipped.
+fresh execution evidence is required, and MySQL operator/cast is not applicable.
+The original manifest generated_code/database skips above are historical;
+PR127 supplied both axes for its saved model, as detailed in the current
+[disposition](release-blocker-disposition.md).
 All fixed staged-runner blockers and the separate human release boundary remain.
 This diagnosis adds no public API, JSON/SARIF/wire/hash format, runtime semantics,
 loader repair, suppression or baseline update, and does not claim release

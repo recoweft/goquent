@@ -4,6 +4,12 @@ GQ-MAINT-09 PR1, [Issue #115](https://github.com/recoweft/goquent/issues/115).
 This supplements [the acquisition contract](performance-plans.md); it does not
 expand the accepted grammar, native versions, error meanings, or authority.
 
+Current release disposition is recorded in the
+[GQ-MAINT-15 ledger](release-blocker-disposition.md). The measurements and manifest
+skips below belong to this document's historical source; PR127 subsequently
+supplied the original saved model's code/database axes. Native scope limitations
+and the fixed release blocker are unchanged.
+
 ## Case matrix
 
 All cases require the existing disposable MySQL/PostgreSQL Compose fixture,
