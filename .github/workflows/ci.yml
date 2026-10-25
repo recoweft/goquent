@@ -5,8 +5,15 @@ on:
     branches: ["main"]
   pull_request:
 
+permissions: {}
+
+env:
+  GOTOOLCHAIN: local
+
 jobs:
   test:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -40,11 +47,15 @@ jobs:
       TEST_MYSQL_DSN: root:password@tcp(127.0.0.1:3306)/testdb?parseTime=true
       TEST_POSTGRES_DSN: postgres://postgres:password@127.0.0.1:5432/testdb?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          go-version: '1.25.9'
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.10'
+          cache: false
 
       - name: Check public test output boundary
         run: sh scripts/test-public-output-check.sh
