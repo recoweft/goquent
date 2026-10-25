@@ -4343,7 +4343,7 @@ Generate builds a stable manifest from known schema/model/policy inputs.
 func Load(path string) (*Manifest, error)
 ```
 
-Load reads a manifest JSON file.
+Load reads a manifest JSON file of at most 8 MiB, including whitespace.
 
 <a name="Manifest.PublicView"></a>
 ### func \(\*Manifest\) PublicView
@@ -12013,7 +12013,7 @@ type Config struct {
 func LoadConfig(path string) (Config, error)
 ```
 
-LoadConfig reads a JSON review config file.
+LoadConfig reads a JSON review config file of at most 8 MiB, including whitespace.
 
 <a name="ConfigSuppression"></a>
 ## type ConfigSuppression
