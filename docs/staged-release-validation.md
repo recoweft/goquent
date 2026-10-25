@@ -121,6 +121,12 @@ in `commits.json` and may be stated in the PR as requested metadata.
 
 ## Blocker, limitation and unverified register
 
+For the GQ-MAINT-15 current-head census, per-ID classification, finite stopping
+conditions, adopted exploration boundaries and pending human release decisions, see the
+[release blocker disposition](release-blocker-disposition.md). The historical
+observations below remain source-attributed; neither the new ledger nor finite
+manifest success changes the fixed `BLOCKERS` tuple or aggregate result.
+
 These are inherited observations, **not fresh validation results for this PR**.
 Fresh invocation evidence belongs in the PR/report, with local/CI and native/mock
 clearly separated. A later success is not proof of the cause of an earlier failure.

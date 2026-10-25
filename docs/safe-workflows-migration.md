@@ -115,6 +115,9 @@ opt-in and does not read DSNs. Native execution demonstrations remain in
 
 Use the [staged validation runner and blocker ledger](staged-release-validation.md)
 for fresh evidence collection after PR1.
+The [release disposition and human decision matrix](release-blocker-disposition.md)
+separate current measured findings, finite guarantees, unavailable historical
+attribution and the adopted finite scope for future review; no release decision is adopted there.
 Retain inherited unresolved evidence: intermittent testmain review unknown and
 historical expiry failure causes are not established; previous successful reruns
 are not explanations. Record tests that were skipped or not run, and separate

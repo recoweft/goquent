@@ -5,6 +5,12 @@ The [release blocker](https://github.com/recoweft/goquent/issues/123#issuecommen
 remains unresolved. This document separates current behavior from an **adopted limited** finite acceptance contract. It does not change production code
 or existing native test expectations. Separate human release review is required.
 
+Current-state update: [GQ-MAINT-15 disposition](release-blocker-disposition.md)
+maps the separate release track's four obligations and preserves the historical
+evidence below. Original-manifest skips mentioned in the old validation ledger
+predate PR127's supplied four-axis saved-model coverage; they are not current
+missing inputs. Native invisible-return and human-acceptance limits remain.
+
 ## Evidence sufficiency before new work
 
 | Evidence | Sufficient for | Insufficient for |
