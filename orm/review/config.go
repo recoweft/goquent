@@ -3,11 +3,11 @@ package review
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/recoweft/goquent/internal/inputjson"
 	"github.com/recoweft/goquent/orm/query"
 )
 
@@ -35,9 +35,9 @@ type ConfigSuppression struct {
 	Expires string `json:"expires,omitempty"`
 }
 
-// LoadConfig reads a JSON review config file.
+// LoadConfig reads a JSON review config file of at most 8 MiB, including whitespace.
 func LoadConfig(path string) (Config, error) {
-	b, err := os.ReadFile(path)
+	b, err := inputjson.ReadSourceFile(path)
 	if err != nil {
 		return Config{}, err
 	}

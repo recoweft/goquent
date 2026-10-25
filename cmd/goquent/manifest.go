@@ -5,10 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/recoweft/goquent/internal/inputjson"
 	"github.com/recoweft/goquent/orm/manifest"
 	"github.com/recoweft/goquent/orm/migration"
 	"github.com/recoweft/goquent/orm/publicoutput"
@@ -339,7 +339,7 @@ func buildManifestFromFlags(dialect, schemaPath, policyPath, databaseSchemaPath,
 }
 
 func loadSchema(path string) (*migration.Schema, error) {
-	b, err := os.ReadFile(path)
+	b, err := inputjson.ReadSourceFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +351,7 @@ func loadSchema(path string) (*migration.Schema, error) {
 }
 
 func loadPolicies(path string) ([]query.TablePolicy, error) {
-	b, err := os.ReadFile(path)
+	b, err := inputjson.ReadSourceFile(path)
 	if err != nil {
 		return nil, err
 	}

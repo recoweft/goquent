@@ -254,7 +254,8 @@ func readMessage(r *bufio.Reader) ([]byte, error) {
 	for {
 		header, err := readLine()
 		if err != nil {
-			return nil, err
+			// EOF after Content-Length is an incomplete frame, not clean shutdown.
+			return nil, publicoutput.ErrOutput
 		}
 		if strings.TrimSpace(header) == "" {
 			break
