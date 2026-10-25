@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/recoweft/goquent/internal/inputjson"
 	"github.com/recoweft/goquent/orm/internal/planversion"
 	"github.com/recoweft/goquent/orm/internal/stringutil"
 	"github.com/recoweft/goquent/orm/migration"
@@ -220,9 +221,9 @@ func Generate(opts Options) (*Manifest, error) {
 	return out, nil
 }
 
-// Load reads a manifest JSON file.
+// Load reads a manifest JSON file of at most 8 MiB, including whitespace.
 func Load(path string) (*Manifest, error) {
-	b, err := os.ReadFile(path)
+	b, err := inputjson.ReadSourceFile(path)
 	if err != nil {
 		return nil, err
 	}
