@@ -1,0 +1,35 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  GOTOOLCHAIN: local
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  vulnerability:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.10'
+          cache: false
+      - name: Check scanner publication boundary
+        run: python3 -m unittest discover -s scripts/security -p 'test_*.py'
+      - name: Check source and test vulnerability reachability
+        run: python3 scripts/security/check.py
