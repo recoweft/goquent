@@ -10,6 +10,13 @@ remain unchanged. Neither integration nor passing tests clears them.
 
 ## Measurement identity and limits
 
+For the later GQ-MAINT-15 PR2 measurement at PR144 merge, see
+[review warning provenance](review-warning-provenance.md): 1,510 complete
+findings, 187 high-or-above, and unknown attribution 1,014 identity / 496 context.
+It reviews all eleven non-test high-or-above findings. The measurements below
+remain historical main23059408 evidence; PR2 does not replace or clear the seven
+fixed blockers or extend saved-model/native guarantees.
+
 The measured current source is main
 `23059408f16d463bbe9594b5d29040a3b7be5fc3`, the merge of
 [PR127](https://github.com/recoweft/goquent/pull/127). Its exact
