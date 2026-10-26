@@ -105,8 +105,8 @@ func FuzzSecurityInputRPC(f *testing.F) {
 		if len(b) > 65536 {
 			t.Skip()
 		}
-		// Independent implementations currently promise the same raw JSON grammar
-		// and structural budgets. Typed validation remains separate.
+		// The MCP adapter retains the shared raw checker verdict. This is adapter
+		// consistency, not independent-parser evidence; typed validation is separate.
 		if validateJSON(b) != (inputjson.CheckJSON(b) == nil) {
 			t.Fatal("raw validator disagreement")
 		}
