@@ -27,9 +27,14 @@ approved read-only diagnostics succeeded. Branch creation required approval
 because sandbox Git metadata was read-only. These results do not imply unrestricted
 network access or DB availability.
 
-Toolchain: Go 1.26.10 linux/amd64, `GOTOOLCHAIN=local`, `GOPROXY=off`, a private
-build cache, existing pinned dependencies. Ordinary CLI, strict CLI and source
-census used this same environment. No configuration, baseline, manifest or
+Historical toolchain correction: the later [test-origin audit](test-warning-intent.md)
+found that the retained CLI build and saved version log identify Go 1.25.0,
+not the originally reported Go 1.26.10. The census process environment remains
+unverified; the later audit obtains a fresh complete source report under explicit
+Go 1.26.10. The originally intended environment used `GOTOOLCHAIN=local`,
+`GOPROXY=off`, a private build cache and existing pinned dependencies. That
+configuration does not independently establish the census process environment.
+No configuration, baseline, manifest or
 runtime-evidence producer was supplied to review. No live DB connection was
 made; server versions, live schema/identity and native behavior are unverified.
 The separate manifest check uses supplied saved-model inputs, not a live DB.
@@ -94,8 +99,8 @@ The 176 test warnings occur in `tests` (106), `orm` (53), `orm/query` (12),
 `orm/migration` (two), `orm/review` (one), `tests/contracts` (one), and
 `examples/ai-safe-orm/storedmodel` (one). This is provenance accounting only.
 Neither test placement nor a raw/unknown classification establishes safety or a
-defect. Individual test-warning intent/safety review remains the next finite
-investigation, subject to the controller's decision.
+defect. The later [test-origin audit](test-warning-intent.md) individually reviews
+a fresh complete test population. Its source, toolchain and execution limits are separate.
 
 ### Precision and overlapping evidence
 
@@ -276,7 +281,7 @@ for these handwritten docs; Docs workflow runs only on main.
 | Insufficient information | Live DB/executor behavior, complete test-warning intent, general runtime safety and historical/native causal unknowns remain unverified |
 | Non-test high-or-above review | All 11 measured items reviewed; no unreviewed item in this population |
 | Next repair candidates | **0**: no supported-contract violation with an expected/actual mismatch was established; do not invent a repair to reduce counts |
-| Next finite investigation | Controller may commission individual intent/path review of the 176 test-origin high-or-above items; counts must be remeasured if source changes |
+| Test-origin follow-up | The [PR3 audit](test-warning-intent.md) records the separately measured population and individual source coverage; it does not infer safety from test placement |
 
 All seven [fixed blockers](release-blocker-disposition.md), native unknowns,
 legacy stale-manifest behavior, and the limited applicability of existing
