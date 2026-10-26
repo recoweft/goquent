@@ -10,13 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/recoweft/goquent/orm/conv"
 	"github.com/recoweft/goquent/orm/driver"
 	qbapi "github.com/recoweft/goquent/orm/internal/querybuilder/api"
 	qbmysql "github.com/recoweft/goquent/orm/internal/querybuilder/database/mysql"
 	qbpostgres "github.com/recoweft/goquent/orm/internal/querybuilder/database/postgres"
 	scanner "github.com/recoweft/goquent/orm/internal/rowscan"
-	"github.com/recoweft/goquent/orm/internal/writeinput"
 )
 
 // Query wraps goquent QueryBuilder and the Driver.
@@ -65,41 +63,6 @@ type Query struct {
 	withDeleted         bool
 	onlyDeleted         bool
 }
-
-// CursorColumn describes an ordered column used by keyset cursor predicates.
-type CursorColumn struct {
-	Name      string
-	Direction string
-	Raw       bool
-}
-
-// CursorAsc returns an ascending keyset cursor column.
-func CursorAsc(name string) CursorColumn {
-	return CursorColumn{Name: name, Direction: "asc"}
-}
-
-// CursorDesc returns a descending keyset cursor column.
-func CursorDesc(name string) CursorColumn {
-	return CursorColumn{Name: name, Direction: "desc"}
-}
-
-// CursorAscExpr returns an ascending trusted SQL expression for keyset cursor
-// predicates.
-func CursorAscExpr(expr string) CursorColumn {
-	return CursorColumn{Name: expr, Direction: "asc", Raw: true}
-}
-
-// CursorDescExpr returns a descending trusted SQL expression for keyset cursor
-// predicates.
-func CursorDescExpr(expr string) CursorColumn {
-	return CursorColumn{Name: expr, Direction: "desc", Raw: true}
-}
-
-// CursorAscAlias returns an ascending selected alias cursor column.
-func CursorAscAlias(alias string) CursorColumn { return CursorAsc(alias) }
-
-// CursorDescAlias returns a descending selected alias cursor column.
-func CursorDescAlias(alias string) CursorColumn { return CursorDesc(alias) }
 
 // New creates a Query with given db and table.
 func New(exec executor, table string, dialect driver.Dialect) *Query {
@@ -339,55 +302,6 @@ func (q *Query) Where(col string, args ...any) *Query {
 		q.err = fmt.Errorf("invalid Where usage")
 	}
 	return q
-}
-
-// WhereCursorAfter adds a keyset pagination predicate after the given cursor.
-func (q *Query) WhereCursorAfter(columns []CursorColumn, values ...any) *Query {
-	return q.whereCursor(columns, values, true)
-}
-
-// WhereCursorBefore adds a keyset pagination predicate before the given cursor.
-func (q *Query) WhereCursorBefore(columns []CursorColumn, values ...any) *Query {
-	return q.whereCursor(columns, values, false)
-}
-
-func (q *Query) whereCursor(columns []CursorColumn, values []any, after bool) *Query {
-	if q.err != nil {
-		return q
-	}
-	normalized, err := validateCursorColumns(columns, values)
-	if err != nil {
-		q.err = err
-		return q
-	}
-	raw, vals := q.cursorPredicate(normalized, values, after)
-	q.builder.WhereRaw(raw, vals)
-	return q
-}
-
-func (q *Query) cursorPredicate(columns []CursorColumn, values []any, after bool) (string, map[string]any) {
-	vals := make(map[string]any)
-	parts := make([]string, 0, len(columns))
-	for i := range columns {
-		comparisons := make([]string, 0, i+1)
-		for j := 0; j < i; j++ {
-			name := fmt.Sprintf("__goquent_cursor_%d_%d", i, j)
-			vals[name] = values[j]
-			comparisons = append(comparisons, fmt.Sprintf("%s = :%s", q.cursorColumnSQL(columns[j]), name))
-		}
-		name := fmt.Sprintf("__goquent_cursor_%d_%d", i, i)
-		vals[name] = values[i]
-		comparisons = append(comparisons, fmt.Sprintf("%s %s :%s", q.cursorColumnSQL(columns[i]), cursorComparisonOperator(columns[i].Direction, after), name))
-		parts = append(parts, "("+strings.Join(comparisons, " AND ")+")")
-	}
-	return "(" + strings.Join(parts, " OR ") + ")", vals
-}
-
-func (q *Query) cursorColumnSQL(column CursorColumn) string {
-	if column.Raw {
-		return column.Name
-	}
-	return quoteIdentifierPath(q.dialect, column.Name)
 }
 
 // First scans the first result into dest struct.
@@ -1479,13 +1393,6 @@ func (q *Query) RawSQL() (string, error) {
 	return q.builder.RawSql()
 }
 
-func dataToMap(data any) (map[string]any, error) {
-	if m, ok := data.(map[string]any); ok {
-		return m, nil
-	}
-	return conv.StructToMap(data)
-}
-
 // Insert executes an INSERT with the given data.
 func (q *Query) Insert(data any) (sql.Result, error) {
 	plan, err := q.PlanInsert(q.ctx, data)
@@ -1494,21 +1401,6 @@ func (q *Query) Insert(data any) (sql.Result, error) {
 		return nil, err
 	}
 	return q.executeResult(plan)
-}
-
-// PlanInsert builds an INSERT plan for data without executing it.
-func (q *Query) PlanInsert(ctx context.Context, data any) (*QueryPlan, error) {
-	if err := q.checkExactWrite(); err != nil {
-		return nil, err
-	}
-	if q.err != nil {
-		return nil, q.err
-	}
-	m, err := dataToMap(data)
-	if err != nil {
-		return nil, err
-	}
-	return q.planInsertRows(ctx, []map[string]any{m}, writeinput.Options{}, "insert", false)
 }
 
 // InsertGetId executes an INSERT and returns the auto-increment ID.
@@ -1558,11 +1450,6 @@ func (q *Query) InsertBatch(data []map[string]any) (sql.Result, error) {
 	return q.executeResult(plan)
 }
 
-// PlanInsertBatch builds a batch INSERT plan without executing it.
-func (q *Query) PlanInsertBatch(ctx context.Context, data []map[string]any) (*QueryPlan, error) {
-	return q.planInsertRows(ctx, data, writeinput.Options{}, "insert", true)
-}
-
 // InsertOrIgnore executes an INSERT IGNORE.
 func (q *Query) InsertOrIgnore(data []map[string]any) (sql.Result, error) {
 	plan, err := q.planInsertOrIgnore(q.ctx, data)
@@ -1571,10 +1458,6 @@ func (q *Query) InsertOrIgnore(data []map[string]any) (sql.Result, error) {
 		return nil, err
 	}
 	return q.executeResult(plan)
-}
-
-func (q *Query) planInsertOrIgnore(ctx context.Context, data []map[string]any) (*QueryPlan, error) {
-	return q.planInsertRows(ctx, data, writeinput.Options{}, "ignore", true)
 }
 
 // Upsert executes an UPSERT using ON DUPLICATE KEY UPDATE.
@@ -1587,10 +1470,6 @@ func (q *Query) Upsert(data []map[string]any, unique []string, updateCols []stri
 	return q.executeResult(plan)
 }
 
-func (q *Query) planUpsert(ctx context.Context, data []map[string]any, unique []string, updateCols []string) (*QueryPlan, error) {
-	return q.planInsertRows(ctx, data, writeinput.Options{Conflict: &writeinput.Conflict{Columns: unique, Updates: updateCols}}, "upsert", false)
-}
-
 // UpdateOrInsert performs UPDATE or INSERT based on condition.
 func (q *Query) UpdateOrInsert(cond map[string]any, values map[string]any) (sql.Result, error) {
 	plan, err := q.planUpdateOrInsert(q.ctx, cond, values)
@@ -1599,38 +1478,6 @@ func (q *Query) UpdateOrInsert(cond map[string]any, values map[string]any) (sql.
 		return nil, err
 	}
 	return q.executeResult(plan)
-}
-
-func (q *Query) planUpdateOrInsert(ctx context.Context, cond map[string]any, values map[string]any) (*QueryPlan, error) {
-	if err := q.checkExactWrite(); err != nil {
-		return nil, err
-	}
-	_ = ctx
-	if q.err != nil {
-		return nil, q.err
-	}
-	ib := newInsertBuilder(q.dialect)
-	if q.settings.strict {
-		merged := make(map[string]any, len(cond)+len(values))
-		for k, v := range cond {
-			merged[k] = v
-		}
-		for k, v := range values {
-			merged[k] = v
-		}
-		return q.planUpsert(ctx, []map[string]any{merged}, sortedMapKeys(cond), sortedMapKeys(values))
-	}
-	ib.Table(q.tableName()).UpdateOrInsert(cond, values)
-	sqlStr, args, snapshot, err := ib.BuildSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
-	plan.Columns = columnRefsFromNames(snapshot.Columns)
-	plan.Metadata = map[string]any{"insert_mode": "update_or_insert", "condition_columns": snapshot.UniqueColumns, "update_columns": snapshot.UpdateColumns}
-	q.finalizePlan(plan)
-	return plan, nil
 }
 
 // InsertUsing executes an INSERT INTO ... SELECT statement using columns from a subquery.
@@ -1643,31 +1490,6 @@ func (q *Query) InsertUsing(columns []string, sub *Query) (sql.Result, error) {
 	return q.executeResult(plan)
 }
 
-func (q *Query) planInsertUsing(ctx context.Context, columns []string, sub *Query) (*QueryPlan, error) {
-	if err := q.checkExactWrite(); err != nil {
-		return nil, err
-	}
-	_ = ctx
-	if q.err != nil {
-		return nil, q.err
-	}
-	ib := newInsertBuilder(q.dialect)
-	if q.settings.strict {
-		return nil, tenantError("insert_using_unsupported")
-	}
-	ib.Table(q.tableName()).InsertUsing(columns, sub.builder)
-	sqlStr, args, snapshot, err := ib.BuildSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	plan := newQueryPlan(OperationInsert, sqlStr, args)
-	plan.Tables = append(plan.Tables, TableRef{Name: snapshot.Table})
-	plan.Columns = columnRefsFromNames(snapshot.Columns)
-	plan.Metadata = map[string]any{"insert_mode": "insert_using"}
-	q.finalizePlan(plan)
-	return plan, nil
-}
-
 // Update executes an UPDATE with the given data.
 func (q *Query) Update(data any) (sql.Result, error) {
 	plan, err := q.PlanUpdate(q.ctx, data)
@@ -1678,21 +1500,6 @@ func (q *Query) Update(data any) (sql.Result, error) {
 	return q.executeResult(plan)
 }
 
-// PlanUpdate builds an UPDATE plan for data without executing it.
-func (q *Query) PlanUpdate(ctx context.Context, data any) (*QueryPlan, error) {
-	if err := q.checkExactWrite(); err != nil {
-		return nil, err
-	}
-	if q.err != nil {
-		return nil, q.err
-	}
-	m, err := dataToMap(data)
-	if err != nil {
-		return nil, err
-	}
-	return q.planUpdateValues(ctx, m, writeinput.Options{})
-}
-
 // Delete executes a DELETE query using current conditions.
 func (q *Query) Delete() (sql.Result, error) {
 	plan, err := q.PlanDelete(q.ctx)
@@ -1701,33 +1508,6 @@ func (q *Query) Delete() (sql.Result, error) {
 		return nil, err
 	}
 	return q.executeResult(plan)
-}
-
-// PlanDelete builds a DELETE plan without executing it.
-func (q *Query) PlanDelete(ctx context.Context) (*QueryPlan, error) {
-	if err := q.checkExactWrite(); err != nil {
-		return nil, err
-	}
-	_ = ctx
-	if q.err != nil {
-		return nil, q.err
-	}
-	delBuilder := newDeleteBuilder(q.dialect)
-	delBuilder.Table(q.tableName()).Delete()
-	source, err := q.policyBuilder(q.builder)
-	if err != nil {
-		return nil, err
-	}
-	copyBuilderStateDelete(source, delBuilder)
-	sqlStr, args, snapshot, err := delBuilder.BuildSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	plan := newQueryPlan(OperationDelete, sqlStr, args)
-	appendTableRef(plan, snapshot.Table, "")
-	appendWriteSnapshotMetadata(plan, snapshot)
-	q.finalizePlan(plan)
-	return plan, nil
 }
 
 // copyBuilderState duplicates where, join and order clauses from src to dst.
@@ -1799,57 +1579,6 @@ func validateSelectColumn(col string) error {
 		return fmt.Errorf("goquent: Select received a SQL expression-like field %q; use SelectRaw(...) for SQL expressions", col)
 	}
 	return nil
-}
-
-func validateCursorColumns(columns []CursorColumn, values []any) ([]CursorColumn, error) {
-	if len(columns) == 0 {
-		return nil, fmt.Errorf("goquent: cursor columns are required")
-	}
-	if len(columns) != len(values) {
-		return nil, fmt.Errorf("goquent: cursor column/value count mismatch")
-	}
-	normalized := make([]CursorColumn, len(columns))
-	for i, col := range columns {
-		name := strings.TrimSpace(col.Name)
-		if name == "" {
-			return nil, fmt.Errorf("goquent: cursor column name is required")
-		}
-		if col.Raw {
-			if err := validateRawSQLFragment(name); err != nil {
-				return nil, fmt.Errorf("goquent: invalid cursor expression %q: %w", col.Name, err)
-			}
-		} else {
-			if strings.Contains(name, "*") {
-				return nil, fmt.Errorf("goquent: cursor column %q cannot be a wildcard", col.Name)
-			}
-			if err := validateSelectColumn(name); err != nil {
-				return nil, fmt.Errorf("goquent: invalid cursor column %q: %w", col.Name, err)
-			}
-		}
-		dir, err := validateOrderDirection(col.Direction)
-		if err != nil {
-			return nil, err
-		}
-		if values[i] == nil {
-			return nil, fmt.Errorf("goquent: cursor value for %s is nil", name)
-		}
-		normalized[i] = CursorColumn{Name: name, Direction: dir, Raw: col.Raw}
-	}
-	return normalized, nil
-}
-
-func cursorComparisonOperator(direction string, after bool) string {
-	desc := strings.EqualFold(direction, "desc")
-	if after {
-		if desc {
-			return "<"
-		}
-		return ">"
-	}
-	if desc {
-		return ">"
-	}
-	return "<"
 }
 
 func escapeLikePattern(term string) string {
