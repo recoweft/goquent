@@ -37,8 +37,9 @@ between different source inputs. Normal files, internal/external tests, explicit
 files and explicitly discovered testdata are best effort. Excluded build-tag
 files, broken packages, module-external files and missing imports can remain
 unsupported. An explicit file still needs its surrounding buildable package.
-Dependencies must already be available to the Go toolchain. Go workspace and
-build settings follow the invoking environment.
+Dependencies must be available to the Go toolchain for complete analysis. Go
+workspace, acquisition and build settings follow the invoking environment;
+`-mod=readonly` does not disable network access or cache writes.
 
 Budgets are 4,096 files, 2 MiB per file, 64 MiB parsed input, 256 package
 directories and a 60-second loading deadline. An optional `Options.Context`
@@ -47,8 +48,14 @@ additional syntax requested by the loader. Budget or loading failures retain a
 file-level `STATIC_REVIEW_UNSUPPORTED` finding; they do not mean "no database
 operations." Type-confirmed calls and unresolved candidate locations survive
 partial loads. Compiler/loader diagnostics are discarded, not included in public
-errors, messages or evidence. The external Go process and its dependency export
-loading are time-bounded; this is not an OS memory sandbox for the Go toolchain.
+errors, messages or evidence. The deadline requests cancellation of package
+loading; it is not a hard wall-clock bound on all filesystem operations or
+descendant processes. Native Go command cancellation and external-driver
+cancellation have different behavior. In particular an external driver's children
+can outlive cancellation. Build settings, drivers and toolchain execution require
+host/application trust; read-only database analysis is not a process sandbox.
+See the [file and process audit](security-file-process-audit.md) for measured
+Linux cases, environment/network responsibilities and unverified boundaries.
 
 ## Tracking boundaries
 
