@@ -1,14 +1,13 @@
 package mcp
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"math"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/recoweft/goquent/internal/inputjson"
 	"github.com/recoweft/goquent/orm/publicoutput"
 )
 
@@ -75,62 +74,7 @@ func primitiveJSON(v any) ([]byte, error) {
 // validateJSON bounds direct and transport input and rejects duplicate/ambiguous
 // object keys before decoding loses information. Null values remain legal data.
 func validateJSON(b []byte) bool {
-	if len(b) > maxMessageBytes || !utf8.Valid(b) {
-		return false
-	}
-	d := json.NewDecoder(bytes.NewReader(b))
-	d.UseNumber()
-	elements := 0
-	var scan func(int) bool
-	scan = func(depth int) bool {
-		elements++
-		if depth > 32 || elements > 16384 {
-			return false
-		}
-		t, err := d.Token()
-		if err != nil {
-			return false
-		}
-		delim, ok := t.(json.Delim)
-		if !ok {
-			return true
-		}
-		switch delim {
-		case '{':
-			seen := map[string]bool{}
-			for d.More() {
-				key, err := d.Token()
-				if err != nil {
-					return false
-				}
-				k, ok := key.(string)
-				k = strings.ToLower(k)
-				if !ok || seen[k] {
-					return false
-				}
-				seen[k] = true
-				if !scan(depth + 1) {
-					return false
-				}
-			}
-			end, err := d.Token()
-			return err == nil && end == json.Delim('}')
-		case '[':
-			for d.More() {
-				if !scan(depth + 1) {
-					return false
-				}
-			}
-			end, err := d.Token()
-			return err == nil && end == json.Delim(']')
-		}
-		return false
-	}
-	if !scan(0) {
-		return false
-	}
-	_, err := d.Token()
-	return err == io.EOF
+	return inputjson.CheckJSON(b) == nil
 }
 
 // validID accepts UTF-8 strings or mathematical safe integers without float64.
