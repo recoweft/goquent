@@ -3,8 +3,10 @@
 The later [GQ-MAINT-15 PR2 provenance review](review-warning-provenance.md)
 records the complete PR144-merge population and all non-test high-or-above paths.
 Its 1,510 total findings, 187 high-or-above and 1,014/496 unknown-cause split are
-separate from the historical measurements below. Test-origin safety review is
-still pending; no comparison or gate change is adopted.
+separate from the historical measurements below. The later
+[test-origin intent audit](test-warning-intent.md) records complete
+individual source coverage on its separately measured head, with live limits
+retained. No comparison or gate change is adopted.
 
 GQ-MAINT-06 PR1, [Issue #109](https://github.com/recoweft/goquent/issues/109).
 This is a bounded diagnosis of the current review contract, not a repair of its
