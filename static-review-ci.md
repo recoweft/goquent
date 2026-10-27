@@ -245,3 +245,9 @@ actual CLI output file; validation prints only a fixed result, never raw errors.
 identity from dependency closure and records buildable source counterexamples.
 It changes no production comparison rule and does not establish a narrower
 context witness or promote unknown findings.
+
+## SELECT closure investigation follow-up
+
+[GQ-MAINT-15 PR5](select-context-closure.md) inventories current input owners,
+negative dependencies and external-process gaps, with finite source controls.
+It establishes no narrower-context witness or production comparison change.
