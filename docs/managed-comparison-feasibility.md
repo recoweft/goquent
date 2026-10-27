@@ -166,3 +166,27 @@ privacy guarantee or release-blocker disposition changes. Seven blockers and
 separate human release judgement remain. Draft PR/check success does not mean
 managed feasibility, worker readiness, merge approval, whole-Issue acceptance,
 user completion or permission to start another work item.
+
+## Resource-stage follow-up (2026-10-28)
+
+The original PR7 no-go above remains a record of that attempt. A later host-side
+RelayWeft probe observed systemd user-manager delegation of memory/pids, enforced
+2 GiB/64-task values for a small parent and child, and confirmed removal of its
+temporary unit. A separate `/usr/bin/true` launcher check also completed with
+pre-exec limit verification and confirmed cleanup. These are user-supplied host
+results, not real-loader or adversarial managed comparison evidence.
+
+The resource-only entry and opt-in integration test now live in
+[`scripts/managed_resources`](../scripts/managed_resources/README.md), without a
+runtime dependency on a RelayWeft checkout. This addresses the provisioning
+route for the first missing premise; it does not change the independent
+acceptance matrix or implement the supervisor/loader/owner. The user subsequently ran the Goquent host integration test: normal exit 0,
+command failure exit 7, and deadline termination exit 1 all passed, with
+pre-exec limits verified and unit cleanup confirmed in every case. These are
+resource-stage results only; no stress test or managed comparison was run. Production
+behavior, historical counts and unknown outcomes remain unchanged.
+
+This resource-stage follow-up is isolated on
+`experiment/managed-comparison-resources`, based on c51e084. The approved scope
+ends at resource-stage separation and organization; supervisor, isolation and
+real-loader implementation remain separate future work.
