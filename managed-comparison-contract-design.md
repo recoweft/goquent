@@ -375,3 +375,11 @@ full-gate/coverage parity and zero false unchanged controls, or a bounded no-go
 report naming the failed premise. Production integration, guarantee adoption,
 unknown promotion, public formats, blocker clearance and release each remain
 outside that approval. This worker does not start that next work.
+
+## Test-only feasibility follow-up
+
+The separately authorized [PR7 feasibility attempt](managed-comparison-feasibility.md)
+records a bounded no-go before managed admission on the inspected worker profile.
+Existing namespace tools did not establish the required process-domain resource
+enforcement. No launcher was adopted and no managed positive or acceptance-matrix
+pass is claimed. Production alternative B and all existing boundaries remain.
