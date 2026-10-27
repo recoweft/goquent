@@ -154,3 +154,11 @@ zero failures/skips. They check config/expiry and planner-policy separation,
 not a complete paired config/policy dependency closure. The strict comparison
 input checker, local documentation links and `git diff --check` also passed;
 changed Go source was formatted with gofmt. No dependency or manifest changed.
+
+## Managed execution design follow-up
+
+[GQ-MAINT-15 PR6](managed-comparison-contract-design.md) now designs additional
+premise B for one managed Linux/amd64 profile and the listed text addition. This
+supersedes the earlier plan's PR6 label: it is design only, not production stage
+three. The proposed boundary is not implemented or adopted, and no real closure
+witness is claimed. Current unknown outcomes and the release boundary remain.

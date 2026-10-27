@@ -212,3 +212,10 @@ not represented as local execution.
 [GQ-MAINT-15 PR5](select-context-closure.md) inventories current input owners,
 negative dependencies and external-process gaps, with finite source controls.
 It establishes no narrower-context witness or production comparison change.
+
+## Managed execution design follow-up
+
+[GQ-MAINT-15 PR6](managed-comparison-contract-design.md) is the separately
+commissioned design of additional premise B, replacing the earlier prospective
+PR6 production stage. It proposes a bounded managed profile; implementation and
+guarantee adoption still require separate review. Stage-two closure is unmet.
