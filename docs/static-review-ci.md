@@ -238,3 +238,10 @@ errata01's official draft-04 JSON Schema using `scripts/check-review-sarif.py`.
 That validation tool requires Python `jsonschema`; it is a development check,
 not a new Go/runtime dependency. Pass a locally fetched official schema and an
 actual CLI output file; validation prints only a fixed result, never raw errors.
+
+## Bounded SELECT identity follow-up
+
+[GQ-MAINT-15 PR4](select-comparison-identity.md) separates existing typed SELECT
+identity from dependency closure and records buildable source counterexamples.
+It changes no production comparison rule and does not establish a narrower
+context witness or promote unknown findings.
