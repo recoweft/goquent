@@ -206,3 +206,9 @@ model. `go test ./orm/review -run
 `go mod verify`, local documentation-link checks and `git diff --check` also
 passed. The broader suites are delegated to the unchanged repository workflows,
 not represented as local execution.
+
+## SELECT closure investigation follow-up
+
+[GQ-MAINT-15 PR5](select-context-closure.md) inventories current input owners,
+negative dependencies and external-process gaps, with finite source controls.
+It establishes no narrower-context witness or production comparison change.
