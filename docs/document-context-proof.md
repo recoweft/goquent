@@ -227,3 +227,10 @@ census and strict comparison are therefore rerun after committing it and are
 reported against their own SHA in PR122/Issue121. Full/race/native validation
 also uses that final clean head, without edits during collection. The historical
 revision-1 native failure and independent Issue123 release blocker remain.
+
+## Bounded SELECT identity follow-up
+
+[GQ-MAINT-15 PR4](select-comparison-identity.md) separates existing typed SELECT
+identity from dependency closure and records buildable source counterexamples.
+It changes no production comparison rule and does not establish a narrower
+context witness or promote unknown findings.
