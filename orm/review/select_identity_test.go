@@ -17,7 +17,7 @@ import (
 func TestBoundedSelectIdentitySourceCounterexamples(t *testing.T) {
 	const source = "package fixture\nimport \"github.com/recoweft/goquent/orm\"\nfunc sample(db *orm.DB) { var rows []map[string]any; _ = db.Table(\"PRIVATE_TABLE_CANARY\").Select(\"*\").Where(\"id\", 1).Get(&rows) }\n"
 	const dependency = "package fixture\nconst bound = 1\n"
-	for _, mode := range []string{"same", "document", "dependency", "build_selection", "moved", "second_location"} {
+	for _, mode := range []string{"same", "document", "dependency", "dependency_added", "dependency_deleted", "build_selection", "moved", "second_location"} {
 		t.Run(mode, func(t *testing.T) {
 			base, head := ciFixture(t)
 			old := map[string]string{"sample.go": source, "value.go": dependency}
@@ -27,6 +27,11 @@ func TestBoundedSelectIdentitySourceCounterexamples(t *testing.T) {
 				next["note.txt"] = "bounded context edit\n"
 			case "dependency":
 				next["value.go"] = strings.Replace(dependency, "= 1", "= 2", 1)
+			case "dependency_added":
+				// An absent package member becomes present without editing the SELECT.
+				delete(old, "value.go")
+			case "dependency_deleted":
+				delete(next, "value.go")
 			case "build_selection":
 				// Same terminal and constant value; a different selected file set.
 				next["value.go"] = "//go:build ignore\n\n" + dependency
