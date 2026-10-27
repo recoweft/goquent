@@ -1,5 +1,9 @@
 # Remaining release blockers: evidence and decisions
 
+The later [test-origin warning audit](test-warning-intent.md) completes finite
+individual source coverage of its measured test high-risk population. It preserves
+all blocker decisions and distinguishes mock execution from unrun live fixtures.
+
 GQ-MAINT-15, revision 1; Refs [Issue 128](https://github.com/recoweft/goquent/issues/128).
 This is a diagnosis with an **adopted finite review scope**, not release
 acceptance. The delivered answer to consultation
