@@ -166,3 +166,11 @@ privacy guarantee or release-blocker disposition changes. Seven blockers and
 separate human release judgement remain. Draft PR/check success does not mean
 managed feasibility, worker readiness, merge approval, whole-Issue acceptance,
 user completion or permission to start another work item.
+
+## Inner-domain contract follow-up
+
+[PR8 inner resource domain](inner-resource-domain.md) records a new execution's
+outer 2 GiB/512 observations and a concrete manager-owned nested launch contract.
+It does not revise the historical PR7 observations above. No inner probe or
+managed comparison ran; the remaining acceptance matrix and production fallback
+stay in force. Existing draft PR151 is assessed separately in that follow-up.
